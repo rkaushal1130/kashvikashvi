@@ -1,0 +1,48 @@
+{
+  "name": "kashvimlm",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "server": "npm run dev --prefix server",
+    "server:dev": "npm run dev --prefix server",
+    "build": "vite build",
+    "lint": "oxlint",
+    "preview": "vite preview",
+    "test:frontend": "node --test src/tests/frontend.test.js",
+    "test:admin": "node --test src/tests/admin.test.js",
+    "test:final": "node --test src/tests/final.test.js",
+    "test": "npm test --prefix server",
+    "test:binary": "npm run test:binary --prefix backend",
+    "test:matching": "npm run test:matching --prefix backend",
+    "test:commission-calc": "npm run test:commission-calc --prefix backend",
+    "test:commission-eligibility": "npm run test:commission-eligibility --prefix backend",
+    "test:commission-ledger": "npm run test:commission-ledger --prefix backend",
+    "test:commission-posting": "npm run test:commission-posting --prefix backend",
+    "test:commission-wallet": "npm run test:commission-wallet --prefix backend",
+    "test:order-commission-lifecycle": "npm run test:order-commission-lifecycle --prefix backend",
+    "test:commission-reversal": "npm run test:commission-reversal --prefix backend",
+    "test:commission-api": "npm run test:commission-api --prefix backend",
+    "test:commission-dashboard": "npm run test:commission-dashboard --prefix backend",
+    "test:commission-security": "npm run test:commission-security --prefix backend",
+    "test:commission-suite": "npm run test:commission-suite --prefix backend",
+    "test:commission-reconciliation": "npm run test:commission-reconciliation --prefix backend",
+    "test:tree": "npm run test:tree --prefix server",
+    "test:api": "npm run test:api --prefix server",
+    "db:init": "npm run db:init --prefix server"
+  },
+  "dependencies": {
+    "lucide-react": "^1.43.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-router-dom": "^7.18.3"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^6.1.0",
+    "oxlint": "^1.79.0",
+    "vite": "^8.2.2"
+  }
+}

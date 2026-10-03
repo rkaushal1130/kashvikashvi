@@ -1,0 +1,372 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// NOTE: The enum types below are intentionally modelled as String.
+// src/database/schema.sql (the authoritative DDL applied by `npm run db:init`)
+// creates every one of these columns as VARCHAR, so Prisma enums — which map to
+// real Postgres enum types — made every write fail with
+// `type "public.Role" does not exist`. String keeps Prisma in sync with the DB.
+// Values use the SQL-native casing (e.g. 'Active', not 'ACTIVE'); raw SQL in
+// src/modules/** compares these columns case-sensitively.
+
+// 1. USERS (Authentication & Identity)
+model User {
+  id           String        @id @default(uuid())
+  email        String        @unique
+  phone        String        @unique
+  username     String        @unique
+  passwordHash String        @map("password_hash")
+  role         String        @default("distributor")
+  isActive     Boolean       @default(true) @map("is_active")
+  lastLoginAt  DateTime?     @map("last_login_at")
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+  distributor     Distributor?
+  auditLogs       AuditLog[]
+  supportTickets  SupportTicket[]
+  supportMessages SupportMessage[]
+  notifications   Notification[]
+
+  @@map("users")
+}
+
+// 2. DISTRIBUTORS (MLM Identity & Profile)
+model Distributor {
+  id                  String              @id @default(uuid())
+  userId              String              @unique @map("user_id")
+  user                User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  memberId            String              @unique @map("member_id") // e.g. 88767139 (Rahul kaushal)
+  fullName            String              @map("full_name")
+  sponsorId           String              @map("sponsor_id")
+  parentId            String?             @map("parent_id")
+  placementLeg        String              @default("auto") @map("placement_leg")
+  rank                String              @default("Business Center")
+  qualificationStatus String              @default("Active") @map("qualification_status")
+  currentPsv          Decimal             @default(0.00) @map("current_psv") @db.Decimal(10, 2)
+  lifetimeBv          Decimal             @default(0.00) @map("lifetime_bv") @db.Decimal(12, 2)
+  teamSize            Int                 @default(0) @map("team_size")
+  panNumber           String?             @map("pan_number")
+  bankName            String?             @map("bank_name")
+  accountNumber       String?             @map("bank_account_number")
+  ifscCode            String?             @map("bank_ifsc_code")
+  address             String?
+  city                String?
+  state               String?
+  pincode             String?
+  country             String              @default("India")
+  joinedAt            DateTime            @default(now()) @map("joined_at")
+  updatedAt           DateTime            @updatedAt @map("updated_at")
+
+  wallet              Wallet?
+  orders              Order[]
+  bvLedgers           BvLedger[]
+  commissionLedgers   CommissionLedger[]
+  payouts             Payout[]
+  supportTickets      SupportTicket[]
+  notifications       Notification[]
+  trainingProgress    TrainingProgress[]
+  mlmTreeNodes        MlmTreeNode[]
+
+  @@index([memberId])
+  @@index([sponsorId])
+  @@index([parentId])
+  @@map("distributors")
+}
+
+// 3. PRODUCTS (Wholesale Store & Catalog Management)
+model Product {
+  id               String        @id @default(uuid())
+  sku              String        @unique
+  name             String
+  category         String        // 'Clothes & Hosiery (Hozri)' | 'Electronics & Smart Devices'
+  distributorPrice Decimal       @default(0.00) @map("distributor_price") @db.Decimal(10, 2)
+  mrp              Decimal       @default(0.00) @db.Decimal(10, 2)
+  volumeBv         Decimal       @default(0.00) @map("volume_bv") @db.Decimal(10, 2)
+  stockQuantity    Int           @default(0) @map("stock_quantity")
+  status           String        @default("In Stock")
+  imageUrl         String?       @map("image_url") @db.Text
+  sizeSpec         String?       @map("size_spec")
+  shortDesc        String?       @map("short_desc") @db.Text
+  benefits         Json          @default("[]")
+  usage            String?       @map("usage_instructions") @db.Text
+  isActive         Boolean       @default(true) @map("is_active")
+  createdAt        DateTime      @default(now()) @map("created_at")
+  updatedAt        DateTime      @updatedAt @map("updated_at")
+  orderItems       OrderItem[]
+
+  @@index([category])
+  @@map("products")
+}
+
+// 4. ORDERS & ORDER ITEMS (Wholesale Store Purchases)
+model Order {
+  id              String        @id @default(uuid())
+  orderNumber     String        @unique @map("order_number") // e.g. KASH-ORD-781923
+  distributorId   String        @map("distributor_id")
+  distributor     Distributor   @relation(fields: [distributorId], references: [id])
+  totalAmount     Decimal       @map("total_amount") @db.Decimal(12, 2)
+  totalBv         Decimal       @map("total_bv") @db.Decimal(10, 2)
+  totalMrp        Decimal       @map("total_mrp") @db.Decimal(12, 2)
+  savingsAmount   Decimal       @default(0.00) @map("savings_amount") @db.Decimal(12, 2)
+  paymentMethod   String        @default("Online Payment") @map("payment_method")
+  paymentStatus   String        @default("Paid") @map("payment_status")
+  orderStatus     String        @default("Processing") @map("order_status")
+  shippingAddress String        @map("shipping_address") @db.Text
+  trackingNumber  String?       @map("tracking_number")
+  deliveryEta     String        @default("2-4 Business Days via Bluedart Express") @map("delivery_eta")
+  placedAt        DateTime      @default(now()) @map("placed_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  items           OrderItem[]
+  bvLedgers       BvLedger[]
+
+  @@index([distributorId])
+  @@map("orders")
+}
+
+model OrderItem {
+  id                   String   @id @default(uuid())
+  orderId              String   @map("order_id")
+  order                Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId            String   @map("product_id")
+  product              Product  @relation(fields: [productId], references: [id])
+  quantity             Int      @default(1)
+  unitDistributorPrice Decimal  @map("unit_distributor_price") @db.Decimal(10, 2)
+  unitMrp              Decimal  @map("unit_mrp") @db.Decimal(10, 2)
+  unitBv               Decimal  @map("unit_bv") @db.Decimal(10, 2)
+  totalPrice           Decimal  @map("total_price") @db.Decimal(10, 2)
+  totalBv              Decimal  @map("total_bv") @db.Decimal(10, 2)
+
+  @@map("order_items")
+}
+
+// 5. MLM TREE (Dual-Leg Binary Topology)
+model MlmTreeNode {
+  id                  String       @id @default(uuid())
+  distributorId       String       @unique @map("distributor_id")
+  distributor         Distributor  @relation(fields: [distributorId], references: [id], onDelete: Cascade)
+  businessCenterCode  String       @default("BC 001") @map("business_center_code")
+  parentDistributorId String?      @map("parent_distributor_id")
+  leftChildId         String?      @map("left_child_id")
+  rightChildId        String?      @map("right_child_id")
+  legPosition         String?      @map("leg_position")
+  depth               Int          @default(0)
+  treePath            String?      @map("tree_path")
+  createdAt           DateTime     @default(now()) @map("created_at")
+
+  @@unique([parentDistributorId, legPosition])
+  @@index([distributorId])
+  @@index([parentDistributorId])
+  @@index([treePath])
+  @@map("mlm_tree")
+}
+
+// 6. BV LEDGER (Volume Accumulation & Leg Totals)
+model BvLedger {
+  id             String      @id @default(uuid())
+  distributorId  String      @map("distributor_id")
+  distributor    Distributor @relation(fields: [distributorId], references: [id], onDelete: Cascade)
+  sourceOrderId  String?     @map("source_order_id")
+  order          Order?      @relation(fields: [sourceOrderId], references: [id])
+  type           String      @map("transaction_type") // 'Personal_Order' | 'Downline_Left' | 'Downline_Right' | 'Cycle_Match'
+  legAffected    String?     @map("leg_affected")
+  amountBv       Decimal     @map("amount_bv") @db.Decimal(10, 2)
+  leftLegTotal   Decimal     @default(0.00) @map("left_leg_total") @db.Decimal(12, 2)
+  rightLegTotal  Decimal     @default(0.00) @map("right_leg_total") @db.Decimal(12, 2)
+  carryoverLeft  Decimal     @default(0.00) @map("carryover_left") @db.Decimal(12, 2)
+  carryoverRight Decimal     @default(0.00) @map("carryover_right") @db.Decimal(12, 2)
+  cycleWeek      Int         @map("cycle_week")
+  cycleYear      Int         @default(2026) @map("cycle_year")
+  createdAt      DateTime    @default(now()) @map("created_at")
+
+  @@index([distributorId])
+  @@map("bv_ledger")
+}
+
+// 7. COMMISSION LEDGER (Weekly 10% Binary Matching Bonus, TDS, Admin Fees)
+model CommissionLedger {
+  id                  String      @id @default(uuid())
+  distributorId       String      @map("distributor_id")
+  distributor         Distributor @relation(fields: [distributorId], references: [id], onDelete: Cascade)
+  cycleWeek           Int         @map("cycle_week")
+  cycleYear           Int         @default(2026) @map("cycle_year")
+  leftLegVolume       Decimal     @map("left_leg_volume") @db.Decimal(12, 2)
+  rightLegVolume      Decimal     @map("right_leg_volume") @db.Decimal(12, 2)
+  matchedVolume       Decimal     @map("matched_volume") @db.Decimal(12, 2)
+  binaryMatchingBonus Decimal     @map("binary_matching_bonus") @db.Decimal(12, 2)
+  directSponsorBonus  Decimal     @default(0.00) @map("direct_sponsor_bonus") @db.Decimal(12, 2)
+  leadershipBonus     Decimal     @default(0.00) @map("leadership_rank_bonus") @db.Decimal(12, 2)
+  grossCommission     Decimal     @map("gross_commission") @db.Decimal(12, 2)
+  tdsDeduction        Decimal     @map("tds_deduction") @db.Decimal(10, 2) // 5% TDS
+  adminCharge         Decimal     @map("admin_charge") @db.Decimal(10, 2)  // 5% Admin
+  netPayout           Decimal     @map("net_payout") @db.Decimal(12, 2)
+  status              String      @default("Calculated") // 'Calculated' | 'Approved' | 'Settled'
+  calculatedAt        DateTime    @default(now()) @map("calculated_at")
+  payouts             Payout[]
+
+  @@index([distributorId])
+  @@map("commission_ledger")
+}
+
+// 8. WALLET & WALLET TRANSACTIONS (Balances & Statements)
+model Wallet {
+  id                  String              @id @default(uuid())
+  distributorId       String              @unique @map("distributor_id")
+  distributor         Distributor         @relation(fields: [distributorId], references: [id], onDelete: Cascade)
+  availableBalance    Decimal             @default(0.00) @map("available_balance") @db.Decimal(12, 2)
+  pendingBalance      Decimal             @default(0.00) @map("pending_balance") @db.Decimal(12, 2)
+  lifetimeEarnings    Decimal             @default(0.00) @map("lifetime_earnings") @db.Decimal(12, 2)
+  lifetimeWithdrawals Decimal             @default(0.00) @map("lifetime_withdrawals") @db.Decimal(12, 2)
+  updatedAt           DateTime            @updatedAt @map("updated_at")
+  transactions        WalletTransaction[]
+
+  @@map("wallets")
+}
+
+model WalletTransaction {
+  id            String   @id @default(uuid())
+  walletId      String   @map("wallet_id")
+  wallet        Wallet   @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  type          String   @map("transaction_type") // 'COMMISSION_CREDIT' | 'WITHDRAWAL_DEBIT' | 'ORDER_PAYMENT'
+  amount        Decimal  @db.Decimal(12, 2)
+  balanceBefore Decimal  @map("balance_before") @db.Decimal(12, 2)
+  balanceAfter  Decimal  @map("balance_after") @db.Decimal(12, 2)
+  referenceId   String?  @map("reference_id")
+  remarks       String?
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([walletId])
+  @@map("wallet_transactions")
+}
+
+// 9. PAYOUTS (Bank Settlement Batches)
+model Payout {
+  id                 String            @id @default(uuid())
+  payoutBatchCode    String            @map("payout_batch_code")
+  distributorId      String            @map("distributor_id")
+  distributor        Distributor       @relation(fields: [distributorId], references: [id])
+  commissionLedgerId String?           @map("commission_ledger_id")
+  commissionLedger   CommissionLedger? @relation(fields: [commissionLedgerId], references: [id])
+  amount             Decimal           @db.Decimal(12, 2)
+  bankName           String            @map("bank_name")
+  accountNumber      String            @map("account_number")
+  ifscCode           String            @map("ifsc_code")
+  utrReference       String?           @map("utr_reference")
+  status             String            @default("Queued")
+  processedAt        DateTime?         @map("processed_at")
+  createdAt          DateTime          @default(now()) @map("created_at")
+
+  @@index([distributorId])
+  @@map("payouts")
+}
+
+// 10. TRAINING PROGRESS (Curriculum & JumpStart)
+model TrainingProgress {
+  id            String      @id @default(uuid())
+  distributorId String      @map("distributor_id")
+  distributor   Distributor @relation(fields: [distributorId], references: [id], onDelete: Cascade)
+  moduleCode    String      @map("module_code")
+  moduleTitle   String      @map("module_title")
+  isCompleted   Boolean     @default(false) @map("is_completed")
+  completedAt   DateTime?   @map("completed_at")
+
+  @@unique([distributorId, moduleCode])
+  @@map("training_progress")
+}
+
+// 11. SUPPORT TICKETS (Screen E)
+model SupportTicket {
+  id            String          @id @default(uuid())
+  ticketNumber  String          @unique @map("ticket_number") // e.g. KV-TKT-781290
+  userId        String?         @map("user_id")
+  user          User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  name          String
+  email         String
+  phone         String?
+  distributorId String?         @map("distributor_id")
+  distributor   Distributor?    @relation(fields: [distributorId], references: [id], onDelete: SetNull)
+  department    String
+  subject       String
+  description   String          @db.Text
+  status        String          @default("Open")
+  priority      String          @default("Medium")
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+
+  messages      SupportMessage[]
+
+  @@index([ticketNumber])
+  @@index([userId])
+  @@index([distributorId])
+  @@index([status])
+  @@map("support_tickets")
+}
+
+model SupportMessage {
+  id        String        @id @default(uuid())
+  ticketId  String        @map("ticket_id")
+  ticket    SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  senderId  String        @map("sender_id")
+  sender    User?         @relation(fields: [senderId], references: [id], onDelete: SetNull)
+  message   String        @db.Text
+  createdAt DateTime      @default(now()) @map("created_at")
+
+  @@index([ticketId])
+  @@index([senderId])
+  @@map("support_messages")
+}
+
+// 12. NOTIFICATIONS (Screen A Alerts)
+model Notification {
+  id            String           @id @default(uuid())
+  distributorId String?          @map("distributor_id")
+  distributor   Distributor?     @relation(fields: [distributorId], references: [id], onDelete: Cascade)
+  userId        String?          @map("user_id")
+  user          User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title         String
+  message       String           @db.Text
+  type          String           @default("SYSTEM")
+  isRead        Boolean          @default(false) @map("is_read")
+  actionUrl     String?          @map("action_url")
+  createdAt     DateTime         @default(now()) @map("created_at")
+
+  @@index([distributorId])
+  @@index([userId])
+  @@index([type])
+  @@index([isRead])
+  @@map("notifications")
+}
+
+// 13. AUDIT LOGS (Immutable Compliance Ledger)
+model AuditLog {
+  id                 String      @id @default(uuid())
+  actorId            String?     @map("actor_id")
+  user               User?       @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  action             String
+  entityType         String      @map("entity_type")
+  entityId           String?     @map("entity_id")
+  memberId           String?     @map("member_id")
+  sponsorId          String?     @map("sponsor_id")
+  placementParentId  String?     @map("placement_parent_id")
+  position           String?
+  reason             String?
+  oldValue           Json?       @map("old_value")
+  newValue           Json?       @map("new_value")
+  ipAddress          String?     @map("ip_address")
+  userAgent          String?     @map("user_agent")
+  createdAt          DateTime    @default(now()) @map("created_at")
+
+  @@index([action])
+  @@index([actorId])
+  @@index([entityType])
+  @@index([entityId])
+  @@index([memberId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+

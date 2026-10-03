@@ -1,0 +1,1839 @@
+// Complete Normalized Prisma Schema for Kashvimlm Enterprise MLM Platform
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ==========================================
+// ENUMS
+// ==========================================
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  DISTRIBUTOR
+  CUSTOMER
+  SUPPORT
+}
+
+enum AccountStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  PENDING_KYC
+  BLOCKED
+}
+
+enum DistributorStatus {
+  PENDING
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  TERMINATED
+}
+
+enum PlacementPosition {
+  LEFT
+  RIGHT
+}
+
+enum CenterStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+  NOT_SPECIFIED
+}
+
+enum AddressType {
+  BILLING
+  SHIPPING
+  LEGAL
+}
+
+enum KYCStatus {
+  NOT_SUBMITTED
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+}
+
+enum BankAccountStatus {
+  PENDING_VERIFICATION
+  VERIFIED
+  REJECTED
+}
+
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  OUT_OF_STOCK
+  INACTIVE
+  DISCONTINUED
+}
+
+enum InventoryTransactionType {
+  PURCHASE_RECEIPT
+  ORDER_FULFILLMENT
+  ADJUSTMENT
+  RETURN
+  TRANSFER
+}
+
+enum OrderStatus {
+  PENDING
+  PAYMENT_PENDING
+  PAID
+  CONFIRMED
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  CREDIT_CARD
+  DEBIT_CARD
+  WALLET
+  BANK_TRANSFER
+  CRYPTO
+  UPI
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum BVSourceType {
+  ORDER
+  ORDER_REFUND
+  ADJUSTMENT
+  BONUS
+  REVERSAL
+}
+
+enum BVTransactionType {
+  ORDER_ACCRUAL
+  COMMISSION_DEDUCTION
+  MANUAL_ADJUSTMENT
+  FLUSH
+  CARRYOVER
+}
+
+enum CommissionPeriodStatus {
+  OPEN
+  PROCESSING
+  CALCULATED
+  APPROVED
+  PAID
+  CLOSED
+  LOCKED
+  CALCULATING
+  FINALIZED
+}
+
+enum CommissionRuleType {
+  BASE
+  PC_ORDER
+  MILESTONE
+  FRONTLINE
+  BINARY
+  RANK
+  LEVEL_COMMISSION
+  OTHER
+}
+
+enum CommissionType {
+  BASE
+  PC_ORDER
+  MILESTONE
+  FRONTLINE
+  BINARY
+  RANK
+  OTHER
+  BINARY_MATCH
+  DIRECT_REFERRAL
+  FAST_START
+  MATCHING_BONUS
+  RANK_ACHIEVEMENT
+  LEADERSHIP_POOL
+}
+
+enum CommissionStatus {
+  PENDING
+  QUALIFIED
+  CALCULATED
+  PAID
+  REVERSED
+  CANCELLED
+  APPROVED
+  ON_HOLD
+}
+
+enum LevelCommissionStatus {
+  CALCULATED
+  APPROVED
+  PAID
+  CANCELLED
+  REVERSED
+  FORFEITED
+}
+
+enum CommissionTransactionStatus {
+  PENDING
+  APPROVED
+  AVAILABLE
+  PAID
+  REVERSED
+  CANCELLED
+}
+
+enum BonusType {
+  FAST_START
+  CAR_BONUS
+  LIFESTYLE_BONUS
+  RANK_BONUS
+  GLOBAL_POOL
+}
+
+enum BonusStatus {
+  PENDING
+  APPROVED
+  PAID
+  EXPIRED
+}
+
+enum WalletTransactionType {
+  CREDIT
+  DEBIT
+  COMMISSION
+  PAYOUT
+  REFUND
+  ADJUSTMENT
+  REVERSAL
+  COMMISSION_CREDIT
+  BONUS_CREDIT
+  ORDER_PAYMENT
+  PAYOUT_WITHDRAWAL
+  PEER_TRANSFER_DEBIT
+  PEER_TRANSFER_CREDIT
+  ADMIN_ADJUSTMENT
+}
+
+enum WalletTransactionStatus {
+  PENDING
+  COMPLETED
+  REVERSED
+  FAILED
+}
+
+enum PayoutStatus {
+  REQUESTED
+  UNDER_REVIEW
+  APPROVED
+  PROCESSING
+  PAID
+  REJECTED
+  FAILED
+  COMPLETED
+  CANCELLED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_USER
+  RESOLVED
+  CLOSED
+}
+
+enum NewsStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum EnrollmentStatus {
+  DRAFT
+  PENDING
+  KYC_REVIEW
+  APPROVED
+  REJECTED
+  COMPLETED
+}
+
+enum TrainingCourseCategory {
+  ORIENTATION
+  BUSINESS_SETUP
+  PRODUCT
+  ETHICS
+  MARKETING
+  TOOLS
+}
+
+// ==========================================
+// ENTITIES
+// ==========================================
+
+// 1. User
+model User {
+  id                String            @id @default(uuid())
+  userId            String?           @unique
+  fullName          String?
+  email             String            @unique
+  phone             String?
+  passwordHash      String
+  referralCode      String?           @unique
+  sponsorId         String?
+  placementId       String?
+  position          PlacementPosition?
+  roleId            String?
+  roleName          UserRole          @default(DISTRIBUTOR)
+  status            AccountStatus     @default(ACTIVE)
+  isActive          Boolean           @default(true)
+  emailVerified     Boolean           @default(false)
+  emailVerifiedAt   DateTime?
+  phoneVerifiedAt   DateTime?
+  lastLoginAt       DateTime?
+  deletedAt         DateTime?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  role              Role?             @relation(fields: [roleId], references: [id])
+  distributorProfile DistributorProfile?
+  customer          Customer?
+  securityProfile   SecurityProfile?
+  addresses         Address[]
+  wallet            Wallet?
+  cart              Cart?
+  orders            Order[]
+  notifications     Notification[]
+  auditLogs         AuditLog[]
+  supportTickets    SupportTicket[]   @relation("TicketCreator")
+  assignedTickets   SupportTicket[]   @relation("TicketAssignee")
+  supportMessages   SupportMessage[]
+  sessions          Session[]
+  passwordResetTokens PasswordResetToken[]
+  newsArticles      News[]            @relation("NewsAuthor")
+
+  @@index([email])
+  @@index([userId])
+  @@index([referralCode])
+  @@index([sponsorId])
+  @@index([placementId])
+  @@index([roleName])
+  @@index([status])
+  @@index([phone])
+  @@index([lastLoginAt])
+  @@map("users")
+}
+
+// 2. Role
+model Role {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  permissions Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  users       User[]
+
+  @@map("roles")
+}
+
+// 3. DistributorProfile
+model DistributorProfile {
+  id              String            @id @default(uuid())
+  userId          String            @unique
+  distributorId   String?           @unique // Explicit distributor ID (e.g. KV-1001)
+  distributorCode String            @unique // Unique distributor ID e.g., DST-10001
+  firstName       String
+  lastName        String
+  displayName     String?
+  dateOfBirth     DateTime?
+  gender          Gender            @default(NOT_SPECIFIED)
+  status          DistributorStatus @default(PENDING)
+  rankId          String?
+  currentRankId   String?
+  highestRankId   String?
+  
+  // Sponsor (Enroller) Lineage - Person who referred them
+  sponsorId       String?
+
+  lifetimePV      Decimal           @default(0.00) @db.Decimal(12, 2)
+  lifetimeGV      Decimal           @default(0.00) @db.Decimal(12, 2)
+  joinedAt        DateTime          @default(now())
+  activatedAt     DateTime?
+  deletedAt       DateTime?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  user                  User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  currentRank           Rank?                     @relation("CurrentRank", fields: [currentRankId], references: [id])
+  highestRank           Rank?                     @relation("HighestRank", fields: [highestRankId], references: [id])
+  
+  // MLM Level System (PROMPT 2)
+  currentLevelId        String?
+  currentLevel          Level?                    @relation("CurrentMemberLevel", fields: [currentLevelId], references: [id], onDelete: SetNull)
+  currentBB             Decimal                   @default(0.00) @db.Decimal(12, 2)
+  currentMatching       Decimal                   @default(0.00) @db.Decimal(12, 2)
+  
+  sponsor               DistributorProfile?       @relation("SponsorReferrals", fields: [sponsorId], references: [id])
+  sponsoredDistributors DistributorProfile[]      @relation("SponsorReferrals")
+
+  ancestorRelationships   SponsorRelationship[]   @relation("AncestorGenealogy")
+  descendantRelationships SponsorRelationship[]   @relation("DescendantGenealogy")
+
+  businessCenters       BusinessCenter[]
+  mlmNodes              MLMNode[]
+  customers             Customer[]
+  rankHistories         DistributorRankHistory[]
+  memberLevelHistories  MemberLevelHistory[]
+  bbTransactions        BBTransaction[]
+  matchingTransactions  MatchingTransaction[]
+  reconciliationAudits  ReconciliationAudit[]
+  statusHistories       DistributorStatusHistory[]
+  badges                DistributorBadge[]
+  kycProfile            KYCProfile?
+  bankAccounts          BankAccount[]
+  orders                Order[]
+  bvLedgers             BVLedger[]                @relation("DistributorBVLedger")
+  sourceBVLedgers       BVLedger[]                @relation("SourceDistributorBV")
+  commissions           Commission[]
+  bonuses               Bonus[]
+  payoutRequests        PayoutRequest[]
+  website               DistributorWebsite?
+  trainingProgress      TrainingProgress[]
+  enrollments           Enrollment[]
+  wallet                Wallet?
+  supportTickets        SupportTicket[]
+  earnedLevelCommissions LevelCommission[]       @relation("UplineLevelCommissions")
+  sourceLevelCommissions LevelCommission[]       @relation("SourceMemberLevelCommissions")
+  commissionTransactionsEarned  CommissionTransaction[] @relation("RecipientCommissionTransactions")
+  commissionTransactionsSourced CommissionTransaction[] @relation("SourceMemberCommissionTransactions")
+  commissionReversals           CommissionReversal[]    @relation("RecipientCommissionReversals")
+
+  @@index([userId])
+  @@index([distributorId])
+  @@index([distributorCode])
+  @@index([sponsorId])
+  @@index([status])
+  @@index([rankId])
+  @@index([currentRankId])
+  @@index([currentLevelId])
+  @@map("distributor_profiles")
+}
+
+// 4. DistributorStatus (History Tracker)
+model DistributorStatusHistory {
+  id             String            @id @default(uuid())
+  distributorId  String
+  previousStatus DistributorStatus
+  newStatus      DistributorStatus
+  reason         String?
+  changedBy      String?
+  createdAt      DateTime          @default(now())
+
+  distributor    DistributorProfile @relation(fields: [distributorId], references: [id], onDelete: Cascade)
+
+  @@index([distributorId])
+  @@map("distributor_status_history")
+}
+
+// 5. Customer (Retail / Preferred)
+model Customer {
+  id           String    @id @default(uuid())
+  userId       String    @unique
+  customerCode String    @unique
+  sponsorId    String?
+  isPreferred  Boolean   @default(false)
+  deletedAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sponsor      DistributorProfile? @relation(fields: [sponsorId], references: [id])
+  orders       Order[]
+  cart         Cart?
+
+  @@index([customerCode])
+  @@index([sponsorId])
+  @@map("customers")
+}
+
+// 6. SponsorRelationship (Unilevel Enroller Tree Lineage)
+model SponsorRelationship {
+  id           String   @id @default(uuid())
+  ancestorId   String
+  descendantId String
+  depth        Int      @default(1)
+  isDirect     Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  ancestor     DistributorProfile @relation("AncestorGenealogy", fields: [ancestorId], references: [id], onDelete: Cascade)
+  descendant   DistributorProfile @relation("DescendantGenealogy", fields: [descendantId], references: [id], onDelete: Cascade)
+
+  @@unique([ancestorId, descendantId])
+  @@index([ancestorId])
+  @@index([descendantId])
+  @@index([depth])
+  @@map("sponsor_relationships")
+}
+
+// 7. BusinessCenter (Supports multiple business centers per distributor, e.g. BC1, BC2, BC3)
+model BusinessCenter {
+  id                      String       @id @default(uuid())
+  distributorId           String
+  centerNumber            Int          @default(1) // 1 for BC-1, 2 for BC-2, etc.
+  centerCode              String       @unique     // e.g. DST-10001-BC1
+  status                  CenterStatus @default(ACTIVE)
+  leftVolume              Decimal      @default(0.00) @db.Decimal(12, 2)
+  rightVolume             Decimal      @default(0.00) @db.Decimal(12, 2)
+  accumulatedLeftVolume   Decimal      @default(0.00) @db.Decimal(12, 2)
+  accumulatedRightVolume  Decimal      @default(0.00) @db.Decimal(12, 2)
+  openedAt                DateTime?    @default(now())
+  closedAt                DateTime?
+  activatedAt             DateTime?
+  createdAt               DateTime     @default(now())
+  updatedAt               DateTime     @updatedAt
+
+  distributor             DistributorProfile @relation(fields: [distributorId], references: [id], onDelete: Cascade)
+  mlmNode                 MLMNode?
+  bvLedgerEntries         BVLedger[]
+  commissions             Commission[]
+
+  @@unique([distributorId, centerNumber])
+  @@index([distributorId])
+  @@index([status])
+  @@index([centerCode])
+  @@index([leftVolume])
+  @@index([rightVolume])
+  @@index([accumulatedLeftVolume])
+  @@index([accumulatedRightVolume])
+  @@map("business_centers")
+}
+
+// 8. MLMNode (Binary Tree Placement - Strictly independent of sponsorId)
+model MLMNode {
+  id                String             @id @default(uuid())
+  businessCenterId  String             @unique
+  distributorId     String
+  
+  // Binary Tree Placement Parent
+  placementParentId String?
+  placementPosition PlacementPosition?
+  
+  depth             Int                @default(0)
+  binaryPath        String?            // Materialized path e.g., "ROOT/L/R"
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  businessCenter    BusinessCenter     @relation(fields: [businessCenterId], references: [id], onDelete: Cascade)
+  distributor       DistributorProfile @relation(fields: [distributorId], references: [id], onDelete: Cascade)
+  placementParent   MLMNode?           @relation("BinaryChildren", fields: [placementParentId], references: [id], onDelete: Restrict)
+  children          MLMNode[]          @relation("BinaryChildren")
+
+  // Constraint: One LEFT and one RIGHT child per parent node strictly enforced
+  @@unique([placementParentId, placementPosition])
+  @@index([distributorId])
+  @@index([businessCenterId])
+  @@index([placementParentId])
+  @@index([placementPosition])
+  @@index([placementParentId, placementPosition])
+  @@index([binaryPath])
+  @@map("mlm_nodes")
+}
+
+// 9. Address
+model Address {
+  id             String      @id @default(uuid())
+  userId         String
+  type           AddressType @default(SHIPPING)
+  isDefault      Boolean     @default(false)
+  recipientName  String
+  phone          String?
+  streetAddress  String
+  apartment      String?
+  city           String
+  state          String
+  postalCode     String
+  country        String      @default("USA")
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  user           User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shippingOrders Order[]     @relation("ShippingAddress")
+  billingOrders  Order[]     @relation("BillingAddress")
+
+  @@index([userId])
+  @@map("addresses")
+}
+
+// 10. KYCProfile
+model KYCProfile {
+  id               String    @id @default(uuid())
+  distributorId    String    @unique
+  status           KYCStatus @default(NOT_SUBMITTED)
+  idType           String?   // PASSPORT, NATIONAL_ID, DRIVERS_LICENSE
+  idNumber         String?
+  documentFrontUrl String?
+  documentBackUrl  String?
+  selfieUrl        String?
+  taxIdNumber      String?
+  verifiedAt       DateTime?
+  rejectionReason  String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  distributor      DistributorProfile @relation(fields: [distributorId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@map("kyc_profiles")
+}
+
+// 11. BankAccount
+model BankAccount {
+  id                 String            @id @default(uuid())
+  distributorId      String
+  status             BankAccountStatus @default(PENDING_VERIFICATION)
+  isPrimary          Boolean           @default(false)
+  bankName           String
+  accountHolderName  String
+  accountNumber      String
+  routingNumber      String?           // Routing Number, IFSC, or SWIFT/BIC
+  branchName         String?
+  verifiedAt         DateTime?
+  deletedAt          DateTime?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  distributor        DistributorProfile @relation(fields: [distributorId], references: [id], onDelete: Cascade)
+  payoutRequests     PayoutRequest[]
+
+  @@index([distributorId])
+  @@index([status])
+  @@map("bank_accounts")
+}
+
+// 12. SecurityProfile
+model SecurityProfile {
+  id                  String    @id @default(uuid())
+  userId              String    @unique
+  twoFactorEnabled    Boolean   @default(false)
+  twoFactorSecret     String?
+  lastLoginAt         DateTime?
+  lastLoginIp         String?
+  failedLoginAttempts Int       @default(0)
+  lockoutUntil        DateTime?
+  securityQuestion    String?
+  securityAnswerHash  String?
+  securityPinHash     String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("security_profiles")
+}
+
+// 13. Product
+model Product {
+  id                 String        @id @default(uuid())
+  sku                String        @unique
+  name               String
+  slug               String        @unique
+  description        String?
+  categoryId         String
+  wholesalePrice     Decimal       @default(0.00) @db.Decimal(12, 2)
+  mrp                Decimal       @default(0.00) @db.Decimal(12, 2)
+  retailPrice        Decimal       @default(0.00) @db.Decimal(12, 2)
+  distributorPrice   Decimal       @default(0.00) @db.Decimal(12, 2)
+  bv                 Decimal       @default(0.00) @db.Decimal(12, 2) // Business Volume
+  costPrice          Decimal?      @db.Decimal(12, 2)
+  stock              Int           @default(0)
+  lowStockThreshold  Int           @default(10)
+  status             ProductStatus @default(DRAFT)
+  isFeatured         Boolean       @default(false)
+  isAutoShipEligible Boolean       @default(true)
+  weightKg           Decimal?      @db.Decimal(6, 2)
+  deletedAt          DateTime?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  category           ProductCategory        @relation(fields: [categoryId], references: [id])
+  images             ProductImage[]
+  inventory          Inventory?
+  orderItems         OrderItem[]
+  cartItems          CartItem[]
+  inventoryTxns      InventoryTransaction[]
+
+  @@index([sku])
+  @@index([categoryId])
+  @@index([status])
+  @@index([isFeatured])
+  @@index([createdAt])
+  @@map("products")
+}
+
+// 14. ProductCategory
+model ProductCategory {
+  id           String            @id @default(uuid())
+  categoryCode String?           @unique // e.g. CLOTHES_HOSIERY, ELECTRONICS_SMART_DEVICES
+  name         String
+  slug         String            @unique
+  description  String?
+  imageUrl     String?
+  isActive     Boolean           @default(true)
+  displayOrder Int               @default(0)
+  parentId     String?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  parent       ProductCategory?  @relation("SubCategories", fields: [parentId], references: [id])
+  children     ProductCategory[] @relation("SubCategories")
+  products     Product[]
+
+  @@index([slug])
+  @@index([categoryCode])
+  @@index([parentId])
+  @@map("product_categories")
+}
+
+// 15. ProductImage
+model ProductImage {
+  id           String   @id @default(uuid())
+  productId    String
+  url          String
+  altText      String?
+  displayOrder Int      @default(0)
+  isPrimary    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  product      Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@map("product_images")
+}
+
+// 16. Inventory
+model Inventory {
+  id                String   @id @default(uuid())
+  productId         String   @unique
+  quantityOnHand    Int      @default(0)
+  quantityReserved  Int      @default(0)
+  reorderThreshold  Int      @default(10)
+  warehouseLocation String?
+  updatedAt         DateTime @updatedAt
+
+  product           Product                @relation(fields: [productId], references: [id], onDelete: Cascade)
+  transactions      InventoryTransaction[]
+
+  @@map("inventories")
+}
+
+// 17. InventoryTransaction
+model InventoryTransaction {
+  id              String                   @id @default(uuid())
+  inventoryId     String
+  productId       String
+  type            InventoryTransactionType
+  quantity        Int
+  balanceAfter    Int
+  referenceNumber String?
+  notes           String?
+  createdAt       DateTime                 @default(now())
+
+  inventory       Inventory                @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
+  product         Product                  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([inventoryId])
+  @@index([productId])
+  @@map("inventory_transactions")
+}
+
+// 18. Cart
+model Cart {
+  id         String     @id @default(uuid())
+  userId     String?    @unique
+  customerId String?    @unique
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  user       User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  customer   Customer?  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  items      CartItem[]
+
+  @@map("carts")
+}
+
+// 19. CartItem
+model CartItem {
+  id        String   @id @default(uuid())
+  cartId    String
+  productId String
+  quantity  Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  cart      Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([cartId, productId])
+  @@map("cart_items")
+}
+
+// 20. Order
+model Order {
+  id                String      @id @default(uuid())
+  orderNumber       String      @unique // Unique order number e.g., ORD-2026-10001
+  userId            String?
+  distributorId     String?
+  customerId        String?
+  status            OrderStatus @default(PENDING)
+  subtotal          Decimal     @db.Decimal(12, 2)
+  taxAmount         Decimal     @default(0.00) @db.Decimal(12, 2)
+  shippingAmount    Decimal     @default(0.00) @db.Decimal(12, 2)
+  discountAmount    Decimal     @default(0.00) @db.Decimal(12, 2)
+  totalAmount                  Decimal     @db.Decimal(12, 2)
+  totalBV                      Decimal     @default(0.00) @db.Decimal(12, 2)
+  commissionableBusinessVolume Decimal     @default(0.00) @db.Decimal(12, 2)
+  
+  shippingAddressId String?
+  billingAddressId  String?
+  trackingNumber    String?
+  paidAt            DateTime?
+  cancelledAt       DateTime?
+  deletedAt         DateTime?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  user              User?               @relation(fields: [userId], references: [id])
+  distributor       DistributorProfile? @relation(fields: [distributorId], references: [id])
+  customer          Customer?           @relation(fields: [customerId], references: [id])
+  shippingAddress   Address?            @relation("ShippingAddress", fields: [shippingAddressId], references: [id])
+  billingAddress    Address?            @relation("BillingAddress", fields: [billingAddressId], references: [id])
+  
+  items             OrderItem[]
+  payments          Payment[]
+  bvLedgers         BVLedger[]
+  commissions       Commission[]        @relation("OrderCommissions")
+  levelCommissions  LevelCommission[]   @relation("OrderLevelCommissions")
+  commissionTransactions CommissionTransaction[] @relation("OrderCommissionTransactions")
+  commissionReversals    CommissionReversal[]    @relation("OrderCommissionReversals")
+
+  @@index([orderNumber])
+  @@index([userId])
+  @@index([distributorId])
+  @@index([customerId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("orders")
+}
+
+// 21. OrderItem
+model OrderItem {
+  id         String   @id @default(uuid())
+  orderId    String
+  productId  String
+  quantity   Int
+  unitPrice        Decimal  @db.Decimal(12, 2)
+  unitBV           Decimal  @default(0.00) @db.Decimal(12, 2)
+  totalPrice       Decimal  @db.Decimal(12, 2)
+  totalBV          Decimal  @default(0.00) @db.Decimal(12, 2)
+  commissionableBV Decimal  @default(0.00) @db.Decimal(12, 2)
+  createdAt        DateTime @default(now())
+
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product    Product  @relation(fields: [productId], references: [id])
+
+  @@index([orderId])
+  @@index([productId])
+  @@map("order_items")
+}
+
+// 22. Payment
+model Payment {
+  id                   String        @id @default(uuid())
+  orderId              String
+  paymentNumber        String        @unique // Unique payment ID e.g., PAY-10001
+  method               PaymentMethod
+  status               PaymentStatus @default(PENDING)
+  amount               Decimal       @db.Decimal(12, 2)
+  currency             String        @default("USD")
+  gatewayTransactionId String?       @unique
+  gatewayResponse      Json?
+  paidAt               DateTime?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+
+  order                Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([paymentNumber])
+  @@index([orderId])
+  @@index([status])
+  @@map("payments")
+}
+
+// 23. BVLedger (Immutable Business Volume Ledger)
+model BVLedger {
+  id                  String             @id @default(uuid())
+  distributorId       String
+  businessCenterId    String?
+  sourceType          BVSourceType       @default(ORDER)
+  sourceId            String             @default("") // Mandatory reference (orderId, refundId, bonusId, etc.)
+  bv                  Decimal            @default(0.00) @db.Decimal(12, 2)
+  amount              Decimal            @default(0.00) @db.Decimal(12, 2) // alias for bv
+  balanceAfter        Decimal            @default(0.00) @db.Decimal(12, 2)
+  position            PlacementPosition? // LEFT or RIGHT leg attribution
+  sourceDistributorId String?            // Distributor generating the BV
+  commissionPeriodId  String?
+  type                BVTransactionType  @default(ORDER_ACCRUAL)
+  orderId             String?
+  description         String?
+  createdAt           DateTime           @default(now())
+
+  distributor         DistributorProfile  @relation("DistributorBVLedger", fields: [distributorId], references: [id], onDelete: Cascade)
+  sourceDistributor   DistributorProfile? @relation("SourceDistributorBV", fields: [sourceDistributorId], references: [id])
+  businessCenter      BusinessCenter?     @relation(fields: [businessCenterId], references: [id])
+  order               Order?              @relation(fields: [orderId], references: [id])
+  commissionPeriod    CommissionPeriod?   @relation(fields: [commissionPeriodId], references: [id])
+
+  @@index([distributorId])
+  @@index([businessCenterId])
+  @@index([sourceType])
+  @@index([sourceId])
+  @@index([position])
+  @@index([distributorId, position])
+  @@index([commissionPeriodId])
+  @@index([createdAt])
+  @@map("bv_ledgers")
+}
+
+// 24. CommissionPeriod (Calculation Period)
+model CommissionPeriod {
+  id                         String                 @id @default(uuid())
+  startDate                  DateTime
+  endDate                    DateTime
+  status                     CommissionPeriodStatus @default(OPEN)
+  processedAt                DateTime?
+  periodCode                 String?                @unique // e.g. W-2026-38, M-2026-09
+  totalCommissionsCalculated Decimal                @default(0.00) @db.Decimal(12, 2)
+  totalBVProcessed           Decimal                @default(0.00) @db.Decimal(12, 2)
+  lockedAt                   DateTime?
+  finalizedAt                DateTime?
+  createdAt                  DateTime               @default(now())
+  updatedAt                  DateTime               @updatedAt
+
+  commissions                Commission[]
+  bonuses                    Bonus[]
+  bvLedgerEntries            BVLedger[]
+  rankHistories              DistributorRankHistory[]
+  levelCommissions           LevelCommission[]      @relation("PeriodLevelCommissions")
+
+  @@index([periodCode])
+  @@index([status])
+  @@index([startDate, endDate])
+  @@map("commission_periods")
+}
+
+// 25. CommissionRule (Database-Driven Rules)
+model CommissionRule {
+  id                String             @id @default(uuid())
+  name              String
+  type              CommissionRuleType
+  enabled           Boolean            @default(true)
+  configurationJson Json?
+  priority          Int                @default(1)
+  effectiveFrom     DateTime?
+  effectiveTo       DateTime?
+
+  // Compatibility fields
+  ruleCode          String?            @unique // e.g. BINARY_MATCH_10
+  percentage        Decimal?           @db.Decimal(5, 2)
+  fixedAmount       Decimal?           @db.Decimal(12, 2)
+  minPersonalBV     Decimal            @default(0.00) @db.Decimal(12, 2)
+  minGroupBV        Decimal            @default(0.00) @db.Decimal(12, 2)
+  maxPayoutCap      Decimal?           @db.Decimal(12, 2)
+  rankRequiredId    String?
+  isActive          Boolean            @default(true)
+  parameters        Json?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  rankRequired      Rank?              @relation(fields: [rankRequiredId], references: [id])
+  commissions       Commission[]
+
+  @@index([type])
+  @@index([enabled])
+  @@index([priority])
+  @@map("commission_rules")
+}
+
+// 26. Commission (Immutable Commission Ledger)
+model Commission {
+  id                  String             @id @default(uuid())
+  commissionNumber    String             @unique // Unique ID e.g., COM-10001
+  businessReference   String             @unique // Unique business reference for strict idempotency
+  distributorId       String
+  businessCenterId    String?
+  periodId            String?
+  ruleId              String?
+  type                CommissionRuleType @default(BASE)
+  amount              Decimal            @db.Decimal(12, 2)
+  status              CommissionStatus   @default(CALCULATED)
+  leftVolumeMatched   Decimal            @default(0.00) @db.Decimal(12, 2)
+  rightVolumeMatched  Decimal            @default(0.00) @db.Decimal(12, 2)
+  sourceOrderId       String?
+  sourceDistributorId String?
+  details             Json?
+  payoutDate          DateTime?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  distributor         DistributorProfile @relation(fields: [distributorId], references: [id], onDelete: Cascade)
+  businessCenter      BusinessCenter?    @relation(fields: [businessCenterId], references: [id])
+  period              CommissionPeriod?  @relation(fields: [periodId], references: [id])
+  rule                CommissionRule?    @relation(fields: [ruleId], references: [id])
+  sourceOrder         Order?             @relation("OrderCommissions", fields: [sourceOrderId], references: [id])
+
+  @@index([commissionNumber])
+  @@index([businessReference])
+  @@index([distributorId])
+  @@index([periodId])
+  @@index([status])
+  @@index([type])
+  @@index([businessCenterId])
+  @@map("commissions")
+}
+
+// 27. Bonus
+model Bonus {
+  id            String      @id @default(uuid())
+  bonusNumber   String      @unique // Unique ID e.g., BON-10001
+  distributorId String
+  periodId      String?
+  type          BonusType
+  amount        Decimal     @db.Decimal(12, 2)
+  status        BonusStatus @default(PENDING)
+  reason        String
+  awardedAt     DateTime    @default(now())
+  paidAt        DateTime?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  distributor   DistributorProfile @relation(fields: [distributorId], references: [id], onDelete: Cascade)
+  period        CommissionPeriod?  @relation(fields: [periodId], references: [id])
+
+  @@index([bonusNumber])
+  @@index([distributorId])
+  @@index([periodId])
+  @@index([status])
+  @@map("bonuses")
+}
+
+// 28. Wallet (Distributor E-Wallet)
+model Wallet {
+  id               String   @id @default(uuid())
+  distributorId    String?  @unique
+  userId           String?  @unique
+  availableBalance Decimal  @default(0.00) @db.Decimal(12, 2)
+  balance          Decimal  @default(0.00) @db.Decimal(12, 2) // alias for availableBalance
+  pendingBalance   Decimal  @default(0.00) @db.Decimal(12, 2)
+  lifetimeEarned   Decimal  @default(0.00) @db.Decimal(12, 2)
+  totalEarned      Decimal  @default(0.00) @db.Decimal(12, 2) // alias for lifetimeEarned
+  lifetimePaid     Decimal  @default(0.00) @db.Decimal(12, 2)
+  totalWithdrawn   Decimal  @default(0.00) @db.Decimal(12, 2) // alias for lifetimePaid
+  currency         String   @default("USD")
+  isLocked         Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  distributor      DistributorProfile? @relation(fields: [distributorId], references: [id], onDelete: Cascade)
+  user             User?               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions     WalletTransaction[]
+
+  @@index([distributorId])
+  @@index([userId])
+  @@map("wallets")
+}
+
+// 29. WalletTransaction
+model WalletTransaction {
+  id                String                  @id @default(uuid())
+  walletId          String
+  transactionNumber String                  @unique // Unique ID e.g., WTX-10001
+  type              WalletTransactionType
+  status            WalletTransactionStatus @default(COMPLETED)
+  amount            Decimal                 @db.Decimal(12, 2)
+  feeAmount         Decimal                 @default(0.00) @db.Decimal(12, 2)
+  netAmount         Decimal                 @db.Decimal(12, 2)
+  balanceBefore     Decimal                 @db.Decimal(12, 2)
+  balanceAfter      Decimal                 @db.Decimal(12, 2)
+  referenceId       String?                 // Reference ID for Commission, Order, or Payout
+  memberId          String?                 // Direct member/distributor reference (Prompt 20)
+  commissionTransactionId String?           // Direct CommissionTransaction reference (Prompt 20)
+  orderId           String?                 // Direct Order reference (Prompt 20)
+  description       String
+  createdAt         DateTime                @default(now())
+
+  wallet            Wallet                  @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  payoutRequest     PayoutRequest?
+  levelCommission   LevelCommission?        @relation("LevelCommissionWalletTx")
+  commissionTransaction CommissionTransaction? @relation("CommissionTransactionWalletTx")
+
+  @@index([transactionNumber])
+  @@index([walletId])
+  @@index([type])
+  @@index([referenceId])
+  @@index([memberId])
+  @@index([commissionTransactionId])
+  @@index([orderId])
+  @@map("wallet_transactions")
+}
+
+// 30. PayoutRequest
+model PayoutRequest {
+  id                  String        @id @default(uuid())
+  payoutNumber        String        @unique // Unique ID e.g., POR-10001
+  distributorId       String
+  bankAccountId       String
+  walletTransactionId String?       @unique
+  amount              Decimal       @db.Decimal(12, 2)
+  fee                 Decimal       @default(0.00) @db.Decimal(12, 2)
+  netAmount           Decimal       @db.Decimal(12, 2)
+  status              PayoutStatus  @default(REQUESTED)
+  requestedAt         DateTime      @default(now())
+  processedAt         DateTime?
+  failureReason       String?
+  adminNotes          String?
+  referenceNumber     String?       // External bank transfer tracking
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  distributor         DistributorProfile @relation(fields: [distributorId], references: [id], onDelete: Cascade)
+  bankAccount         BankAccount        @relation(fields: [bankAccountId], references: [id])
+  walletTransaction   WalletTransaction? @relation(fields: [walletTransactionId], references: [id])
+
+  @@index([payoutNumber])
+  @@index([distributorId])
+  @@index([status])
+  @@index([requestedAt])
+  @@map("payout_requests")
+}
+
+// 31. Rank
+model Rank {
+  id               String   @id @default(uuid())
+  rankCode         String   @unique // e.g. RANK_BRONZE
+  name             String
+  level            Int      @unique
+  minPersonalBV    Decimal  @default(0.00) @db.Decimal(12, 2)
+  minGroupBV       Decimal  @default(0.00) @db.Decimal(12, 2)
+  minActiveLegs    Int      @default(0)
+  binaryWeeklyCap  Decimal  @db.Decimal(12, 2)
+  oneTimeBonus     Decimal  @default(0.00) @db.Decimal(12, 2)
+  iconUrl          String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  currentDistributors DistributorProfile[]     @relation("CurrentRank")
+  highestDistributors DistributorProfile[]     @relation("HighestRank")
+  rankHistories       DistributorRankHistory[]
+  commissionRules     CommissionRule[]
+  coursesRequired     TrainingCourse[]
+
+  @@index([level])
+  @@map("ranks")
+}
+
+// 32. DistributorRankHistory
+model DistributorRankHistory {
+  id            String    @id @default(uuid())
+  distributorId String
+  rankId        String
+  periodId      String?
+  personalBV    Decimal   @default(0.00) @db.Decimal(12, 2)
+  groupBV       Decimal   @default(0.00) @db.Decimal(12, 2)
+  achievedAt    DateTime  @default(now())
+  createdAt     DateTime  @default(now())
+
+  distributor   DistributorProfile @relation(fields: [distributorId], references: [id], onDelete: Cascade)
+  rank          Rank               @relation(fields: [rankId], references: [id])
+  period        CommissionPeriod?  @relation(fields: [periodId], references: [id])
+
+  @@index([distributorId])
+  @@index([rankId])
+  @@map("distributor_rank_history")
+}
+
+// 33. Badge
+model Badge {
+  id          String   @id @default(uuid())
+  badgeCode   String   @unique
+  name        String
+  description String
+  iconUrl     String?
+  criteria    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  distributors DistributorBadge[]
+
+  @@map("badges")
+}
+
+// 34. DistributorBadge
+model DistributorBadge {
+  id            String   @id @default(uuid())
+  distributorId String
+  badgeId       String
+  earnedAt      DateTime @default(now())
+
+  distributor   DistributorProfile @relation(fields: [distributorId], references: [id], onDelete: Cascade)
+  badge         Badge              @relation(fields: [badgeId], references: [id], onDelete: Cascade)
+
+  @@unique([distributorId, badgeId])
+  @@index([distributorId])
+  @@map("distributor_badges")
+}
+
+// 35. TrainingCourse
+model TrainingCourse {
+  id                 String                 @id @default(uuid())
+  slug               String                 @unique
+  title              String
+  description        String
+  category           TrainingCourseCategory @default(ORIENTATION)
+  thumbnailUrl       String?
+  isMandatory        Boolean                @default(false)
+  minRankRequiredId  String?
+  displayOrder       Int                    @default(0)
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+
+  minRankRequired    Rank?                  @relation(fields: [minRankRequiredId], references: [id])
+  lessons            TrainingLesson[]
+
+  @@index([category])
+  @@map("training_courses")
+}
+
+// 36. TrainingLesson
+model TrainingLesson {
+  id              String   @id @default(uuid())
+  courseId        String
+  title           String
+  content         String
+  videoUrl        String?
+  durationMinutes Int      @default(0)
+  displayOrder    Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  course          TrainingCourse     @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  progress        TrainingProgress[]
+
+  @@index([courseId])
+  @@map("training_lessons")
+}
+
+// 37. TrainingProgress
+model TrainingProgress {
+  id            String    @id @default(uuid())
+  distributorId String
+  lessonId      String
+  isCompleted   Boolean   @default(false)
+  startedAt     DateTime? @default(now())
+  completedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  distributor   DistributorProfile @relation(fields: [distributorId], references: [id], onDelete: Cascade)
+  lesson        TrainingLesson     @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@unique([distributorId, lessonId])
+  @@index([distributorId])
+  @@map("training_progress")
+}
+
+// 38. DistributorWebsite (Replicated Storefront)
+model DistributorWebsite {
+  id            String   @id @default(uuid())
+  distributorId String   @unique
+  slug          String?  @unique
+  subdomain     String   @unique
+  title         String   @default("My KASHVIMLM Store")
+  siteTitle     String?  // alias for title
+  description   String?
+  bio           String?  // alias for description
+  theme         String   @default("LIGHT") // LIGHT, DARK, EMERALD, SAPPHIRE, GOLD
+  logo          String?
+  bannerUrl     String?
+  isPublished   Boolean  @default(true)
+  isActive      Boolean  @default(true) // alias for isPublished
+  contactEmail  String?
+  contactPhone  String?
+  socialLinks   Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  distributor   DistributorProfile @relation(fields: [distributorId], references: [id], onDelete: Cascade)
+  links         WebsiteLink[]
+
+  @@index([slug])
+  @@index([subdomain])
+  @@map("distributor_websites")
+}
+
+// 39. WebsiteLink (Navigation & Referral Links)
+model WebsiteLink {
+  id               String   @id @default(uuid())
+  websiteId        String
+  label            String   @default("Shop Products")
+  url              String   @default("/")
+  type             String   @default("CUSTOM") // SHOP, ENROLL, CONTACT, SOCIAL, CUSTOM
+  sortOrder        Int      @default(0)
+  enabled          Boolean  @default(true)
+  slug             String?  @unique
+  targetUrl        String?
+  clicksCount      Int      @default(0)
+  conversionsCount Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  website          DistributorWebsite @relation(fields: [websiteId], references: [id], onDelete: Cascade)
+
+  @@index([websiteId])
+  @@index([sortOrder])
+  @@map("website_links")
+}
+
+// 40. News (Announcements & Updates)
+model News {
+  id             String      @id @default(uuid())
+  title          String
+  slug           String      @unique
+  summary        String
+  content        String
+  image          String?
+  bannerUrl      String?     // alias for image
+  status         NewsStatus  @default(DRAFT)
+  isPublished    Boolean     @default(true) // alias for status === PUBLISHED
+  publishedAt    DateTime?   @default(now())
+  authorId       String?
+  targetAudience String      @default("ALL")
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  author         User?       @relation("NewsAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([slug])
+  @@index([status])
+  @@index([isPublished])
+  @@index([publishedAt])
+  @@index([authorId])
+  @@map("news")
+}
+
+// 41. SupportTicket
+model SupportTicket {
+  id            String          @id @default(uuid())
+  ticketNumber  String          @unique // e.g. TCK-10001
+  userId        String?
+  name          String
+  email         String
+  phone         String?
+  distributorId String?
+  department    String          @default("GENERAL")
+  subject       String
+  description   String          @db.Text
+  status        TicketStatus    @default(OPEN)
+  priority      TicketPriority  @default(MEDIUM)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  user          User?           @relation("TicketCreator", fields: [userId], references: [id], onDelete: SetNull)
+  distributor   DistributorProfile? @relation(fields: [distributorId], references: [id], onDelete: SetNull)
+  assignedToId  String?
+  assignedTo    User?           @relation("TicketAssignee", fields: [assignedToId], references: [id])
+  closedAt      DateTime?
+  messages      SupportMessage[]
+
+  @@index([ticketNumber])
+  @@index([userId])
+  @@index([distributorId])
+  @@index([status])
+  @@map("support_tickets")
+}
+
+// 42. SupportMessage
+model SupportMessage {
+  id          String   @id @default(uuid())
+  ticketId    String
+  senderId    String
+  message     String
+  attachments Json?
+  createdAt   DateTime @default(now())
+
+  ticket      SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  sender      User          @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId])
+  @@map("support_messages")
+}
+
+// 43. Notification
+model Notification {
+  id        String    @id @default(uuid())
+  userId    String
+  title     String
+  message   String
+  type      String    @default("INFO")
+  linkUrl   String?
+  isRead    Boolean   @default(false)
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isRead])
+  @@map("notifications")
+}
+
+// 44. Enrollment (Registration Wizard / Pipeline)
+model Enrollment {
+  id                String             @id @default(uuid())
+  enrollmentNumber  String             @unique
+  enrollmentType    UserRole           @default(DISTRIBUTOR)
+  sponsorId         String
+  prospectEmail     String
+  prospectPhone     String?
+  legalName         String?
+  dateOfBirth       DateTime?
+  status            EnrollmentStatus   @default(DRAFT)
+  currentStep       Int                @default(1)
+  
+  // Placement details (Step 3)
+  businessCenterId  String?
+  placementParentId String?
+  placementPosition PlacementPosition?
+
+  // Package / Starter Kit (Step 4)
+  selectedPackage   String?
+  starterKitId      String?
+  packagePrice      Decimal?           @db.Decimal(12, 2)
+  packageBV         Decimal?           @db.Decimal(12, 2)
+
+  // Security & Completion (Step 5 & Submit)
+  securityPinHash   String?
+  rejectionReason   String?
+  createdUserId     String?
+  completedAt       DateTime?
+
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  sponsor           DistributorProfile @relation(fields: [sponsorId], references: [id])
+  steps             EnrollmentStep[]
+
+  @@index([enrollmentNumber])
+  @@index([sponsorId])
+  @@index([status])
+  @@index([prospectEmail])
+  @@map("enrollments")
+}
+
+// 45. EnrollmentStep
+model EnrollmentStep {
+  id           String    @id @default(uuid())
+  enrollmentId String
+  stepNumber   Int
+  stepName     String
+  isCompleted  Boolean   @default(false)
+  stepData     Json?
+  completedAt  DateTime?
+
+  enrollment   Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+
+  @@unique([enrollmentId, stepNumber])
+  @@map("enrollment_steps")
+}
+
+// 46. AuditLog
+model AuditLog {
+  id           String   @id @default(uuid())
+  userId       String?
+  action       String   // e.g., "LOGIN", "STATUS_CHANGE", "PAYOUT_APPROVED"
+  entityType   String   // e.g., "DistributorProfile", "Wallet", "Order"
+  entityId     String?
+  previousData Json?
+  newData      Json?
+  ipAddress    String?
+  userAgent    String?
+  createdAt    DateTime @default(now())
+
+  user         User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([action])
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// 47. SystemSetting
+model SystemSetting {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  value       String
+  dataType    String   @default("STRING") // STRING, DECIMAL, BOOLEAN, JSON
+  category    String   @default("GENERAL")
+  description String?
+  isPublic    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([key])
+  @@index([category])
+  @@map("system_settings")
+}
+
+// 48. Session (Refresh Token Rotation)
+model Session {
+  id               String   @id @default(uuid())
+  userId           String
+  refreshTokenHash String   @unique
+  family           String   // UUID token family tracking for rotation
+  isRevoked        Boolean  @default(false)
+  expiresAt        DateTime
+  userAgent        String?
+  ipAddress        String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([refreshTokenHash])
+  @@index([family])
+  @@map("sessions")
+}
+
+// 49. PasswordResetToken
+model PasswordResetToken {
+  id         String   @id @default(uuid())
+  userId     String
+  tokenHash  String   @unique
+  expiresAt  DateTime
+  isUsed     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@map("password_reset_tokens")
+}
+
+// ==========================================
+// MLM LEVEL ARCHITECTURE MODELS (PROMPT 2)
+// ==========================================
+
+// 50. Level (Configurable MLM Levels: Silver, Gold, Platinum, Diamond, Ruby)
+model Level {
+  id                    String               @id @default(uuid())
+  name                  String               // "Silver", "Gold", "Platinum", "Diamond", "Ruby"
+  code                  String               @unique // "SILVER", "GOLD", "PLATINUM", "DIAMOND", "RUBY"
+  order                 Int                  @unique // 1, 2, 3, 4, 5
+  requiredBB            Decimal              @default(0.00) @db.Decimal(12, 2)
+  requiredMatching      Decimal              @default(0.00) @db.Decimal(12, 2)
+  requiredLeftMatching  Decimal              @default(0.00) @db.Decimal(12, 2)
+  requiredRightMatching Decimal              @default(0.00) @db.Decimal(12, 2)
+  isActive              Boolean              @default(true)
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+
+  currentMembers   DistributorProfile[] @relation("CurrentMemberLevel")
+  historiesAsNew   MemberLevelHistory[] @relation("NewLevel")
+  historiesAsPrev  MemberLevelHistory[] @relation("PreviousLevel")
+
+  @@index([code])
+  @@index([order])
+  @@index([isActive])
+  @@index([requiredBB])
+  @@index([requiredLeftMatching])
+  @@index([requiredRightMatching])
+  @@map("levels")
+}
+
+// 51. MemberLevelHistory (Immutable Level Promotion Audit Trail)
+model MemberLevelHistory {
+  id                      String             @id @default(uuid())
+  memberId                String
+  previousLevelId         String?
+  newLevelId              String
+  previousLevelCode       String?            // "STARTER", "SILVER", "GOLD", "PLATINUM", "DIAMOND", "RUBY"
+  newLevelCode            String?            // "SILVER", "GOLD", "PLATINUM", "DIAMOND", "RUBY"
+  previousBB              Decimal            @default(0.00) @db.Decimal(12, 2)
+  previousMatching        Decimal            @default(0.00) @db.Decimal(12, 2)
+  previousLeftMatching    Decimal?           @default(0.00) @db.Decimal(12, 2)
+  previousRightMatching   Decimal?           @default(0.00) @db.Decimal(12, 2)
+  qualifyingBB            Decimal            @default(0.00) @db.Decimal(12, 2)
+  qualifyingMatching      Decimal            @default(0.00) @db.Decimal(12, 2)
+  qualifyingLeftMatching  Decimal?           @default(0.00) @db.Decimal(12, 2)
+  qualifyingRightMatching Decimal?           @default(0.00) @db.Decimal(12, 2)
+  reason                  String?            @default("LEVEL_REQUIREMENTS_MET")
+  source                  String?            @default("SYSTEM") // "SYSTEM", "SYSTEM_AUTO", "ORDER", etc.
+  createdAt               DateTime           @default(now())
+
+  member                  DistributorProfile @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  previousLevel           Level?             @relation("PreviousLevel", fields: [previousLevelId], references: [id], onDelete: Restrict)
+  newLevel                Level              @relation("NewLevel", fields: [newLevelId], references: [id], onDelete: Restrict)
+
+  // Prompt 9: Database constraint preventing duplicate promotion history records
+  @@unique([memberId, newLevelId])
+  @@index([memberId])
+  @@index([previousLevelId])
+  @@index([newLevelId])
+  @@index([createdAt])
+  @@map("member_level_histories")
+}
+
+// 52. BBTransaction (Immutable Personal Business Volume Ledger)
+model BBTransaction {
+  id           String             @id @default(uuid())
+  memberId     String
+  amount       Decimal            @db.Decimal(12, 2)
+  balanceAfter Decimal            @default(0.00) @db.Decimal(12, 2)
+  type         String             @default("CREDIT") // "CREDIT", "DEBIT", "ADJUSTMENT"
+  source       String             // "ORDER", "REFUND", "ADMIN_ADJUSTMENT", "BONUS"
+  referenceId  String             // Order ID, Refund ID, or Ref Number
+  description  String?
+  createdAt    DateTime           @default(now())
+
+  member       DistributorProfile @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  // Idempotency: Prevent the same source transaction from being credited twice to a member
+  @@unique([memberId, source, referenceId])
+  @@index([memberId])
+  @@index([referenceId])
+  @@index([source])
+  @@index([createdAt])
+  @@map("bb_transactions")
+}
+
+// 53. MatchingTransaction (Immutable Binary Matching Volume Ledger)
+model MatchingTransaction {
+  id           String             @id @default(uuid())
+  memberId     String
+  amount       Decimal            @db.Decimal(12, 2)
+  balanceAfter Decimal            @default(0.00) @db.Decimal(12, 2)
+  type         String             @default("CREDIT") // "CREDIT", "DEBIT", "MATCH_CYCLE", "ADJUSTMENT"
+  source       String             // "BINARY_MATCH", "ORDER_ROLLUP", "COMMISSION_CYCLE", "ADMIN_ADJUSTMENT"
+  referenceId  String             // Commission Period ID, Order ID, or Ref Number
+  description  String?
+  createdAt    DateTime           @default(now())
+
+  member       DistributorProfile @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  // Idempotency: Prevent the same source transaction from being credited twice to a member
+  @@unique([memberId, source, referenceId])
+  @@index([memberId])
+  @@index([referenceId])
+  @@index([source])
+  @@index([createdAt])
+  @@map("matching_transactions")
+}
+
+// 54. ReconciliationAudit (Audit Trail for Recalculation and Volume/Level Verification)
+model ReconciliationAudit {
+  id                    String             @id @default(uuid())
+  memberId              String
+  oldBB                 Decimal            @default(0.00) @db.Decimal(12, 2)
+  calculatedBB          Decimal            @default(0.00) @db.Decimal(12, 2)
+  bbDiscrepancy         Decimal            @default(0.00) @db.Decimal(12, 2)
+  oldMatching           Decimal            @default(0.00) @db.Decimal(12, 2)
+  calculatedMatching    Decimal            @default(0.00) @db.Decimal(12, 2)
+  matchingDiscrepancy   Decimal            @default(0.00) @db.Decimal(12, 2)
+  oldLeftVolume         Decimal            @default(0.00) @db.Decimal(12, 2)
+  calculatedLeftVolume  Decimal            @default(0.00) @db.Decimal(12, 2)
+  oldRightVolume        Decimal            @default(0.00) @db.Decimal(12, 2)
+  calculatedRightVolume Decimal            @default(0.00) @db.Decimal(12, 2)
+  oldLevel              String             @default("BASE")
+  calculatedLevel       String             @default("BASE")
+  promoted              Boolean            @default(false)
+  hasDiscrepancy        Boolean            @default(false)
+  discrepancyDetails    Json?
+  reason                String             @default("ADMIN_AUDIT")
+  actor                 String             @default("SYSTEM") // Admin User ID, Email, or "SYSTEM"
+  createdAt             DateTime           @default(now())
+
+  member                DistributorProfile @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@index([memberId])
+  @@index([hasDiscrepancy])
+  @@index([actor])
+  @@index([createdAt])
+  @@map("reconciliation_audits")
+}
+
+// 55. LevelCommission (5-Level Unilevel Commission Ledger)
+model LevelCommission {
+  id                    String                @id @default(uuid())
+  commissionNumber      String                @unique // e.g. LCM-10001
+  businessReference     String                @unique // Idempotency: "LEVEL:{orderId}:L{level}:{distributorId}"
+  
+  orderId               String
+  distributorId         String                // Beneficiary: Upline distributor earning the commission
+  sourceDistributorId   String                // Downline purchaser who generated the order
+  
+  level                        Int                   // 1, 2, 3, 4, 5
+  ratePercentage               Decimal               @db.Decimal(5, 2)  // 24.00, 8.00, 13.00, 5.00, 4.00
+  commissionableBusinessVolume Decimal               @default(0.00) @db.Decimal(12, 2) // Authoritative commission base
+  orderBV                      Decimal               @db.Decimal(12, 2) // Base BV of the order
+  commissionAmount             Decimal               @db.Decimal(12, 2) // (commissionableBusinessVolume * ratePercentage) / 100
+  
+  status                       LevelCommissionStatus @default(CALCULATED)
+  currency              String                @default("INR")
+  
+  periodId              String?
+  walletTransactionId   String?               @unique
+  
+  calculationDetails    Json?
+  paidAt                DateTime?
+  cancelledAt           DateTime?
+  reversalReason        String?
+  
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+
+  order                 Order                 @relation("OrderLevelCommissions", fields: [orderId], references: [id], onDelete: Cascade)
+  distributor           DistributorProfile    @relation("UplineLevelCommissions", fields: [distributorId], references: [id], onDelete: Cascade)
+  sourceDistributor     DistributorProfile    @relation("SourceMemberLevelCommissions", fields: [sourceDistributorId], references: [id], onDelete: Cascade)
+  period                CommissionPeriod?     @relation("PeriodLevelCommissions", fields: [periodId], references: [id])
+  walletTransaction     WalletTransaction?    @relation("LevelCommissionWalletTx", fields: [walletTransactionId], references: [id])
+
+  @@unique([orderId, level])
+  @@index([distributorId, status])
+  @@index([sourceDistributorId])
+  @@index([orderId])
+  @@index([level])
+  @@index([status])
+  @@index([createdAt])
+  @@map("level_commissions")
+}
+
+model CommissionLevel {
+  id          String   @id @default(uuid())
+  levelNumber Int      @unique
+  percentage  Decimal  @db.Decimal(5, 2)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([levelNumber])
+  @@index([isActive])
+  @@map("commission_levels")
+}
+
+// 47. CommissionTransaction (Immutable Commission Ledger)
+model CommissionTransaction {
+  id                    String                      @id @default(uuid())
+  recipientMemberId     String
+  sourceMemberId        String
+  orderId               String
+  commissionLevel       Int                         // 1, 2, 3, 4, 5
+  businessVolume        Decimal                     @db.Decimal(12, 2)
+  percentage            Decimal                     @db.Decimal(5, 2)
+  grossCommissionAmount Decimal                     @db.Decimal(12, 2)
+  status                CommissionTransactionStatus @default(PENDING)
+  source                String                      @default("ORDER_PURCHASE")
+  idempotencyKey        String                      @unique
+  createdAt             DateTime                    @default(now())
+  updatedAt             DateTime                    @updatedAt
+
+  // Auditing, traceability & financial posting linkage
+  walletTransactionId   String?                     @unique
+  calculationDetails    Json?
+  reversalReason        String?
+  approvedAt            DateTime?
+  availableAt           DateTime?
+  paidAt                DateTime?
+  reversedAt            DateTime?
+  cancelledAt           DateTime?
+
+  recipient             DistributorProfile          @relation("RecipientCommissionTransactions", fields: [recipientMemberId], references: [id], onDelete: Restrict)
+  sourceMember          DistributorProfile          @relation("SourceMemberCommissionTransactions", fields: [sourceMemberId], references: [id], onDelete: Restrict)
+  order                 Order                       @relation("OrderCommissionTransactions", fields: [orderId], references: [id], onDelete: Restrict)
+  walletTransaction     WalletTransaction?          @relation("CommissionTransactionWalletTx", fields: [walletTransactionId], references: [id], onDelete: SetNull)
+  reversals             CommissionReversal[]        @relation("CommissionReversals")
+
+  @@unique([orderId, recipientMemberId, commissionLevel])
+  @@index([recipientMemberId, status])
+  @@index([recipientMemberId, commissionLevel])
+  @@index([recipientMemberId, createdAt])
+  @@index([sourceMemberId])
+  @@index([orderId])
+  @@index([commissionLevel])
+  @@index([status])
+  @@index([createdAt])
+  @@map("commission_transactions")
+}
+
+// 56. CommissionReversal (Prompt 22: Immutable Commission Reversals)
+model CommissionReversal {
+  id                    String                @id @default(uuid())
+  originalCommissionId  String
+  orderId               String
+  refundId              String?
+  recipientMemberId     String
+  commissionLevel       Int
+  reversedBV            Decimal               @default(0.00) @db.Decimal(12, 2)
+  originalAmount        Decimal               @db.Decimal(12, 2)
+  amount                Decimal               @db.Decimal(12, 2) // Compensatory reversal amount (e.g., -2400.00)
+  recoveryStatus        String                @default("COMPLETED") // COMPLETED, PENDING_ADMIN_RECONCILIATION, NEGATIVE_BALANCE_APPLIED, REVERSED_UNPAID
+  unrecoveredAmount     Decimal               @default(0.00) @db.Decimal(12, 2)
+  walletTransactionId   String?
+  idempotencyKey        String                @unique
+  reason                String
+  metadata              Json?
+  createdAt             DateTime              @default(now())
+
+  originalCommission    CommissionTransaction @relation("CommissionReversals", fields: [originalCommissionId], references: [id], onDelete: Restrict)
+  order                 Order                 @relation("OrderCommissionReversals", fields: [orderId], references: [id], onDelete: Restrict)
+  recipient             DistributorProfile    @relation("RecipientCommissionReversals", fields: [recipientMemberId], references: [id], onDelete: Restrict)
+
+  @@index([originalCommissionId])
+  @@index([orderId])
+  @@index([recipientMemberId])
+  @@index([recipientMemberId, createdAt])
+  @@index([refundId])
+  @@index([recoveryStatus])
+  @@index([createdAt])
+  @@map("commission_reversals")
+}
+
+
