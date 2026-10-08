@@ -19,6 +19,15 @@ const envSchema = z.object({
   JWT_REFRESH_SECRET: z.string().min(16, 'JWT_REFRESH_SECRET must be at least 16 characters'),
   JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),
   JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
+  FUNDING_PROVIDER: z.string().default('MOCK'),
+  FUNDING_PROVIDER_KEY_ID: z.string().optional(),
+  FUNDING_PROVIDER_KEY_SECRET: z.string().optional(),
+  FUNDING_PROVIDER_WEBHOOK_SECRET: z.string().optional(),
+  FUNDING_PROVIDER_ACCOUNT_NUMBER: z.string().optional(),
+  RAZORPAYX_KEY_ID: z.string().optional(),
+  RAZORPAYX_KEY_SECRET: z.string().optional(),
+  RAZORPAYX_WEBHOOK_SECRET: z.string().optional(),
+  RAZORPAYX_ACCOUNT_NUMBER: z.string().optional(),
 });
 
 const parseEnv = () => {

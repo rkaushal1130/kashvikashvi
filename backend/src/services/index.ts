@@ -41,6 +41,9 @@ export * from './commissionApi.service';
 export * from './commissionDashboard.service';
 export * from './commissionSecurity.service';
 export * from './commissionReconciliation.service';
+export * from './platformTreasury.service';
+export * from './funding.service';
+export * from './fundingWorkflow.service';
 
 
 

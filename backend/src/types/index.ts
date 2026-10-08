@@ -63,4 +63,6 @@ export * from './orderCommissionLifecycle.types';
 export * from './commissionReversal.types';
 export * from './commissionDashboard.types';
 export * from './commissionReconciliation.types';
+export * from './platformTreasury.types';
+export * from './funding.types';
 

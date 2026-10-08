@@ -50,8 +50,15 @@ app.use('/api', globalRateLimiter);
 // Request Logging
 app.use(requestLogger);
 
-// Body Parsers
-app.use(express.json({ limit: '10mb' }));
+// Body Parsers (with rawBody retention for payment webhook HMAC verification)
+app.use(
+  express.json({
+    limit: '10mb',
+    verify: (req: any, _res, buf) => {
+      req.rawBody = buf.toString();
+    },
+  })
+);
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Cookie Parser Middleware

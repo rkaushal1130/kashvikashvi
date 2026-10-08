@@ -125,4 +125,11 @@ apiRouter.use('/members', memberRouter);
 import { adminMemberRouter } from './adminMember.routes';
 apiRouter.use('/admin/members', adminMemberRouter);
 
+// Corporate Admin Funding Portal & Platform Treasury (Prompt 33 & 34): /api/v1/admin/funding & /api/v1/admin/treasury
+import { adminFundingRouter, adminTreasuryRouter, fundingWebhookRouter } from './funding.routes';
+apiRouter.use('/admin/funding', adminFundingRouter);
+apiRouter.use('/admin/treasury', adminTreasuryRouter);
+apiRouter.use('/webhooks/funding', fundingWebhookRouter);
+
 export default apiRouter;
+

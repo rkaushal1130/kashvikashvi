@@ -335,6 +335,7 @@ model User {
   sessions          Session[]
   passwordResetTokens PasswordResetToken[]
   newsArticles      News[]            @relation("NewsAuthor")
+  initiatedFundingTransactions FundingTransaction[] @relation("AdminInitiatedFundingTransactions")
 
   @@index([email])
   @@index([userId])
@@ -1835,5 +1836,156 @@ model CommissionReversal {
   @@index([createdAt])
   @@map("commission_reversals")
 }
+
+// ==========================================
+// PLATFORM TREASURY & WALLET LEDGER (PROMPT 30)
+// ==========================================
+
+enum PlatformTransactionType {
+  FUNDING
+  FUNDING_REVERSAL
+  COMMISSION_RESERVE
+  PAYOUT
+  ADJUSTMENT
+  REFUND
+  RECONCILIATION
+}
+
+enum PlatformTransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REVERSED
+}
+
+// 57. PlatformWallet (Company / Platform Treasury Wallet)
+model PlatformWallet {
+  id               String   @id @default(uuid())
+  walletCode       String   @unique @default("PRIMARY_TREASURY")
+  currency         String   @default("INR")
+  availableBalance Decimal  @default(0.00) @db.Decimal(14, 2)
+  pendingBalance   Decimal  @default(0.00) @db.Decimal(14, 2)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  transactions     PlatformWalletTransaction[]
+
+  @@map("platform_wallets")
+}
+
+// 58. PlatformWalletTransaction (Immutable Platform Treasury Ledger)
+model PlatformWalletTransaction {
+  id                    String                    @id @default(uuid())
+  walletId              String
+  transactionNumber     String                    @unique // e.g. PWX-xxxxxx-xxxx
+  type                  PlatformTransactionType
+  amount                Decimal                   @db.Decimal(14, 2)
+  balanceBefore         Decimal                   @db.Decimal(14, 2)
+  balanceAfter          Decimal                   @db.Decimal(14, 2)
+  referenceType         String                    // FUNDING, PAYOUT, COMMISSION, REFUND, ADJUSTMENT, RECONCILIATION
+  referenceId           String?
+  externalTransactionId String?
+  providerTransactionId String?
+  idempotencyKey        String?                   @unique
+  status                PlatformTransactionStatus @default(COMPLETED)
+  description           String
+  metadata              Json?
+  performedById         String?
+  createdAt             DateTime                  @default(now())
+
+  wallet                PlatformWallet            @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  fundingTransaction    FundingTransaction?
+
+  @@index([walletId])
+  @@index([type])
+  @@index([status])
+  @@index([referenceType, referenceId])
+  @@index([externalTransactionId])
+  @@index([providerTransactionId])
+  @@index([createdAt])
+  @@map("platform_wallet_transactions")
+}
+
+// ==========================================
+// ADMIN FUNDING PORTAL MODELS (PROMPT 31)
+// ==========================================
+
+enum FundingAccountStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  DISCONNECTED
+}
+
+enum FundingTransactionStatus {
+  CREATED
+  PENDING
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  REVERSED
+  RECONCILIATION_REQUIRED
+}
+
+// 59. FundingAccount (Verified Corporate Bank / Payment Provider Account)
+model FundingAccount {
+  id                  String               @id @default(uuid())
+  provider            String               // e.g. RAZORPAYX, CASHFREE, STRIPE_TREASURY, DIRECT_BANK_API
+  providerAccountId   String               // External provider secure token / account identifier
+  accountType         String               // e.g. CURRENT, ESCROW, VIRTUAL_ACCOUNT
+  accountName         String               // e.g. "Kashvi Corporate Operating Current Account"
+  maskedAccountNumber String               // e.g. "XXXXXXXX8921"
+  currency            String               @default("INR")
+  status              FundingAccountStatus @default(ACTIVE)
+  isPrimary           Boolean              @default(false)
+  metadata            Json?                // Operational non-sensitive configuration
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  transactions        FundingTransaction[]
+
+  @@unique([provider, providerAccountId])
+  @@index([provider])
+  @@index([status])
+  @@index([isPrimary])
+  @@map("funding_accounts")
+}
+
+// 60. FundingTransaction (Audit-Tracked Corporate Funding Lifecycle)
+model FundingTransaction {
+  id                          String                   @id @default(uuid())
+  fundingAccountId            String
+  initiatedByAdminId          String
+  amount                      Decimal                  @db.Decimal(14, 2)
+  currency                    String                   @default("INR")
+  status                      FundingTransactionStatus @default(CREATED)
+  provider                    String                   // e.g. RAZORPAYX, CASHFREE, BANK_WIRE
+  providerTransactionId       String?
+  idempotencyKey              String                   @unique
+  platformWalletTransactionId String?                  @unique
+  failureReason               String?
+  metadata                    Json?
+  initiatedAt                 DateTime                 @default(now())
+  completedAt                 DateTime?
+  createdAt                   DateTime                 @default(now())
+  updatedAt                   DateTime                 @updatedAt
+
+  fundingAccount              FundingAccount             @relation(fields: [fundingAccountId], references: [id], onDelete: Restrict)
+  initiatedByAdmin            User                       @relation("AdminInitiatedFundingTransactions", fields: [initiatedByAdminId], references: [id])
+  platformWalletTransaction   PlatformWalletTransaction? @relation(fields: [platformWalletTransactionId], references: [id])
+
+  // Strict uniqueness: provider + providerTransactionId prevents duplicate external transactions from being credited twice
+  @@unique([provider, providerTransactionId])
+  @@index([fundingAccountId])
+  @@index([initiatedByAdminId])
+  @@index([status])
+  @@index([provider])
+  @@index([initiatedAt])
+  @@index([createdAt])
+  @@map("funding_transactions")
+}
+
+
 
 
