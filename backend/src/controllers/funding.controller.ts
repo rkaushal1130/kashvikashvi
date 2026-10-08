@@ -483,6 +483,7 @@ export class FundingController {
       const signature =
         (req.headers['x-razorpay-signature'] as string) ||
         (req.headers['x-webhook-signature'] as string) ||
+        (req.headers['x-cashfree-signature'] as string) ||
         (req.headers['signature'] as string) ||
         '';
 
@@ -491,7 +492,8 @@ export class FundingController {
       const result = await FundingWorkflowService.handleProviderWebhook(
         payload,
         signature,
-        provider.toUpperCase()
+        provider.toUpperCase(),
+        req.headers as any
       );
 
       res.status(200).json({ success: true, ...result });

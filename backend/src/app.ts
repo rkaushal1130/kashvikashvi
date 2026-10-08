@@ -73,6 +73,10 @@ app.use('/api', protectMlmFields);
 app.use('/api/v1', apiRouter);
 app.use('/api', apiRouter);
 
+// Root Webhooks mount (Prompt 36)
+import { fundingWebhookRouter } from './routes/funding.routes';
+app.use('/webhooks/funding', fundingWebhookRouter);
+
 // 404 Handler
 app.use(notFoundHandler);
 

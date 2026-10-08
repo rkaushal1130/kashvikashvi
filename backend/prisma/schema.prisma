@@ -1986,6 +1986,21 @@ model FundingTransaction {
   @@map("funding_transactions")
 }
 
+// 61. WebhookEvent (Audit-Tracked Provider Inbound Webhook Idempotency Ledger - Prompt 36)
+model WebhookEvent {
+  id              String   @id @default(uuid())
+  provider        String
+  externalEventId String
+  eventType       String
+  payloadHash     String
+  processedAt     DateTime @default(now())
+  status          String   // PROCESSED, DUPLICATE_IGNORED, RECONCILIATION_REQUIRED, FAILED, UNMATCHED_TRANSACTION
+  metadata        Json?
 
-
-
+  @@unique([provider, externalEventId])
+  @@index([provider])
+  @@index([externalEventId])
+  @@index([status])
+  @@index([processedAt])
+  @@map("webhook_events")
+}

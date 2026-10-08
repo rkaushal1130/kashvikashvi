@@ -398,80 +398,33 @@ export class FundingWorkflowService {
   }
 
   /**
-   * 3. HANDLE PROVIDER WEBHOOK
-   * Authenticates HMAC-SHA256 signature, processes event, and settles or fails transaction idempotently.
+   * 3. HANDLE PROVIDER WEBHOOK (PROMPT 36)
+   * Authenticates HMAC-SHA256 signature, enforces WebhookEvent idempotency,
+   * cross-verifies amounts, and settles or flags transaction for reconciliation.
    */
   public static async handleProviderWebhook(
     rawPayload: string | Buffer,
     signature: string,
-    providerName: string = 'RAZORPAYX'
-  ): Promise<{ acknowledged: boolean; message: string; transactionId?: string }> {
-    const provider = FundingProviderFactory.getProvider(providerName);
-
-    // Cryptographic signature check
-    const webhookResult = await provider.handleWebhook(rawPayload, signature);
-    if (!webhookResult.isValid) {
-      logger.warn({ providerName }, 'Inbound funding webhook signature check failed');
-      throw AppError.unauthorized('Invalid provider webhook cryptographic signature', 'INVALID_WEBHOOK_SIGNATURE');
-    }
-
-    if (!webhookResult.providerTransactionId) {
-      return { acknowledged: true, message: 'Event ignored: no transaction ID found' };
-    }
-
-    // Lookup transaction by providerTransactionId
-    const txRecord = await prisma.fundingTransaction.findFirst({
-      where: {
-        providerTransactionId: webhookResult.providerTransactionId,
-      },
-      include: { fundingAccount: true },
+    providerName: string = 'RAZORPAYX',
+    headers?: Record<string, any>
+  ): Promise<{
+    acknowledged: boolean;
+    status?: string;
+    message: string;
+    transactionId?: string;
+    externalEventId?: string;
+    isCredited?: boolean;
+    isDuplicate?: boolean;
+    treasuryBalance?: number;
+    discrepancy?: { expectedAmount: number; confirmedAmount: number };
+  }> {
+    const { FundingWebhookService } = await import('./fundingWebhook.service');
+    return FundingWebhookService.processWebhook({
+      rawPayload,
+      signature,
+      providerName,
+      headers,
     });
-
-    if (!txRecord) {
-      logger.info(
-        { providerTransactionId: webhookResult.providerTransactionId },
-        'Webhook received for untracked transaction; acknowledged'
-      );
-      return { acknowledged: true, message: 'Transaction not found in platform ledger' };
-    }
-
-    // Idempotency: If already settled, do not credit again
-    if (txRecord.status === 'SUCCEEDED' && webhookResult.status === 'SUCCEEDED') {
-      return {
-        acknowledged: true,
-        message: 'Transaction already settled',
-        transactionId: txRecord.id,
-      };
-    }
-
-    // Succeeded event -> credit treasury
-    if (webhookResult.status === 'SUCCEEDED') {
-      await this.verifyAndProcessFunding('SYSTEM_WEBHOOK', txRecord.id, {
-        utrNumber: webhookResult.utrNumber,
-      });
-      return { acknowledged: true, message: 'Payment settled and treasury credited', transactionId: txRecord.id };
-    }
-
-    // Failed event
-    if (webhookResult.status === 'FAILED') {
-      await prisma.fundingTransaction.update({
-        where: { id: txRecord.id },
-        data: {
-          status: 'FAILED',
-          failureReason: webhookResult.error || 'Provider webhook reported payment failure',
-          completedAt: new Date(),
-        },
-      });
-      return { acknowledged: true, message: 'Payment marked failed', transactionId: txRecord.id };
-    }
-
-    // Reversed event -> debit treasury
-    if (webhookResult.status === 'REVERSED' && txRecord.status === 'SUCCEEDED') {
-      await this.processFundingReversal('SYSTEM_WEBHOOK', txRecord.id, 'Provider webhook reported payment chargeback/reversal');
-      return { acknowledged: true, message: 'Payment reversed and treasury debited', transactionId: txRecord.id };
-    }
-
-    return { acknowledged: true, message: 'Webhook event processed', transactionId: txRecord.id };
   }
 
   /**

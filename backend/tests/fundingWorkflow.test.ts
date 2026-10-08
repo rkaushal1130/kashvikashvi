@@ -279,7 +279,22 @@ describe('ADMIN FUNDING WORKFLOW & LIFECYCLE (PROMPT 33 TEST SUITE)', () => {
       return log as any;
     });
 
-    // 6. Mock prisma.$transaction
+    // 6. Mock webhookEvent (Prompt 36)
+    const inMemoryWebhookEvents = new Map();
+    if (prisma.webhookEvent) {
+      vi.spyOn(prisma.webhookEvent, 'findUnique').mockImplementation(async (args: any) => {
+        const key = `${args.where?.provider_externalEventId?.provider}:${args.where?.provider_externalEventId?.externalEventId}`;
+        return inMemoryWebhookEvents.get(key) || null;
+      });
+      vi.spyOn(prisma.webhookEvent, 'create').mockImplementation(async (args: any) => {
+        const key = `${args.data?.provider}:${args.data?.externalEventId}`;
+        const record = { id: `whe-${Date.now()}`, ...args.data, processedAt: new Date() };
+        inMemoryWebhookEvents.set(key, record);
+        return record as any;
+      });
+    }
+
+    // 7. Mock prisma.$transaction
     vi.spyOn(prisma, '$transaction').mockImplementation(async (callback: any) => {
       if (typeof callback === 'function') {
         return callback(prisma);

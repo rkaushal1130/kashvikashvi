@@ -12,6 +12,7 @@
     "preview": "vite preview",
     "test:frontend": "node --test src/tests/frontend.test.js",
     "test:admin": "node --test src/tests/admin.test.js",
+    "test:funding": "node --test src/tests/fundingPortal.test.js",
     "test:final": "node --test src/tests/final.test.js",
     "test": "npm test --prefix server",
     "test:binary": "npm run test:binary --prefix backend",

@@ -32,6 +32,7 @@ import BusinessVolumeManagementPage from './pages/admin/BusinessVolumeManagement
 import CommissionManagementPage from './pages/admin/CommissionManagementPage';
 import AuditLogsPage from './pages/admin/AuditLogsPage';
 import CommissionSettingsPage from './pages/admin/CommissionSettingsPage';
+import AdminFundingPortalPage from './pages/admin/AdminFundingPortalPage';
 
 function AppContent() {
   const location = useLocation();
@@ -125,6 +126,16 @@ function AppContent() {
               <ProtectedRoute adminOnly>
                 <AdminLayout>
                   <AdminDashboard />
+                </AdminLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/funding"
+            element={
+              <ProtectedRoute adminOnly>
+                <AdminLayout>
+                  <AdminFundingPortalPage />
                 </AdminLayout>
               </ProtectedRoute>
             }

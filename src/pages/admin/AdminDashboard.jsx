@@ -18,6 +18,7 @@ import {
   ScrollText,
   Activity,
   Calendar,
+  Landmark,
 } from 'lucide-react';
 import './AdminPages.css';
 
@@ -342,6 +343,20 @@ export default function AdminDashboard() {
           <div className="op-text">
             <h4>BV Volume Adjustments</h4>
             <p>Inspect ledger and post manual volume credits/debits with reason</p>
+          </div>
+          <ArrowRight size={16} className="op-arrow" />
+        </div>
+
+        <div
+          className="operation-card"
+          onClick={() => navigate('/admin/funding')}
+        >
+          <div className="op-icon blue">
+            <Landmark size={20} />
+          </div>
+          <div className="op-text">
+            <h4>Corporate Funding Portal</h4>
+            <p>Monitor platform treasury float, connected bank rails, and initiate capital injections</p>
           </div>
           <ArrowRight size={16} className="op-arrow" />
         </div>
