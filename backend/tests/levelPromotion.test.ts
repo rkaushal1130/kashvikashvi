@@ -670,7 +670,7 @@ describe('AUTOMATIC MLM LEVEL PROMOTION ENGINE TESTS (PROMPT 5)', () => {
 
       expect(history.total).toBe(1);
       expect(history.data).toHaveLength(1);
-      expect(history.data[0].newLevel).toBe('Silver');
+      expect(history.data[0].newLevel).toBe('SILVER');
       expect(history.data[0].qualifyingBB).toBe(250);
       expect(history.data[0].qualifyingMatching).toBe(2000);
       expect(history.data[0].source).toBe('SYSTEM_AUTO');

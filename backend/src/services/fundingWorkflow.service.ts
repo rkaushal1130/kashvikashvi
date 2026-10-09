@@ -197,7 +197,7 @@ export class FundingWorkflowService {
         action: 'FUNDING_TRANSACTION_INITIATED',
         entityType: 'FundingTransaction',
         entityId: createdTx.id,
-        previousData: null,
+        previousData: Prisma.DbNull,
         newData: {
           amount: amountDecimal.toNumber(),
           currency: createdTx.currency,

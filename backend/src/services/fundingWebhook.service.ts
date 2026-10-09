@@ -208,7 +208,13 @@ export class FundingWebhookService {
     // 6. Check transaction state idempotency (Requirement 6)
     // The same webhook may arrive multiple times: SUCCESS webhook, SUCCESS webhook, SUCCESS webhook.
     // Expected: One treasury credit. Never three credits.
-    if (txRecord.status === 'SUCCEEDED') {
+    const isReversalNotification =
+      signatureVerification.status === 'REVERSED' ||
+      eventType.toLowerCase().includes('reversed') ||
+      eventType.toLowerCase().includes('chargeback') ||
+      eventType.toLowerCase().includes('refund');
+
+    if (txRecord.status === 'SUCCEEDED' && !isReversalNotification) {
       logger.info(
         { transactionId: txRecord.id, providerTransactionId },
         '[FundingWebhook] Funding transaction already settled; duplicate credit strictly prevented'
@@ -401,7 +407,7 @@ export class FundingWebhookService {
 
     // 10. Handle REVERSED provider status
     if (verifiedStatus === 'REVERSED' || signatureVerification.status === 'REVERSED') {
-      if (txRecord.status === 'SUCCEEDED') {
+      if ((txRecord.status as string) === 'SUCCEEDED') {
         const { FundingWorkflowService } = await import('./fundingWorkflow.service');
         await FundingWorkflowService.processFundingReversal(
           'SYSTEM_WEBHOOK',

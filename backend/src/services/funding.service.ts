@@ -156,7 +156,7 @@ export class FundingService {
           action: 'FUNDING_ACCOUNT_CONNECTED',
           entityType: 'FundingAccount',
           entityId: created.id,
-          previousData: null,
+          previousData: Prisma.DbNull,
           newData: {
             provider: created.provider,
             providerAccountId: created.providerAccountId,

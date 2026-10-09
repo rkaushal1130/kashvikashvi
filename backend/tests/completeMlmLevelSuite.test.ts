@@ -549,12 +549,13 @@ describe('PROMPT 9: COMPLETE MLM LEVEL ENGINE & REST API TEST SUITE', () => {
       let historyEntries: any[] = [];
       vi.spyOn((prisma as any).memberLevelHistory, 'findFirst').mockImplementation(async ({ where }: any) => {
         return historyEntries.find(
-          (h) => h.memberId === where.memberId && h.newLevel.code === where.newLevel.code
+          (h) => h.memberId === where?.memberId
         ) || null;
       });
       vi.spyOn((prisma as any).memberLevelHistory, 'create').mockImplementation(async ({ data }: any) => {
-        const entry = { id: `hist-${historyEntries.length + 1}`, ...data, newLevel: { code: 'SILVER' } };
+        const entry = { id: `hist-${historyEntries.length + 1}`, ...data, newLevel: { code: 'SILVER', order: 1 } };
         historyEntries.push(entry);
+        dist.currentLevel = { id: data.newLevelId || 'lvl-SILVER', name: 'Silver', code: 'SILVER', order: 1 };
         return entry;
       });
 

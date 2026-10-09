@@ -1262,8 +1262,13 @@ export class LevelService {
               newLevelId: dbLevel?.id,
             },
           });
-        } else {
+        } else if (
+          histErr.name === 'PrismaClientInitializationError' ||
+          histErr.message?.includes("Can't reach database server")
+        ) {
           logger.warn({ error: histErr.message, memberId: distId }, 'MemberLevelHistory create note');
+        } else {
+          throw histErr;
         }
       }
 

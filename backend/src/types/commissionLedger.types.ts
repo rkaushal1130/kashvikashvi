@@ -6,11 +6,9 @@
  */
 
 export type CommissionTransactionStatus =
-  | 'EARNED'
   | 'PENDING'
   | 'APPROVED'
   | 'AVAILABLE'
-  | 'PAYOUT_PENDING'
   | 'PAID'
   | 'REVERSED'
   | 'CANCELLED';

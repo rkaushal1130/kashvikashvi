@@ -204,9 +204,9 @@ export interface ExecutePayoutResult {
 }
 
 /**
- * Result of commission reversal.
+ * Result of commission reversal in treasury context.
  */
-export interface ReverseCommissionResult {
+export interface TreasuryReverseCommissionResult {
   commissionId: string;
   orderId: string;
   recipientMemberId: string;

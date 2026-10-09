@@ -593,7 +593,7 @@ export class FundingReconciliationService {
                     idempotencyKey: `ORPHAN_${pName}_${ext.providerTransactionId}`,
                     failureReason: orphanDiscrepancy.description,
                     metadata: {
-                      reconciliationDiscrepancies: [orphanDiscrepancy],
+                      reconciliationDiscrepancies: [orphanDiscrepancy] as unknown as Prisma.InputJsonValue,
                       detectedInPeriodReconciliation: true,
                     },
                     initiatedAt: ext.settledAt || new Date(),
@@ -629,7 +629,7 @@ export class FundingReconciliationService {
           action: 'FUNDING_PERIOD_RECONCILIATION_EXECUTED',
           entityType: 'FundingTransaction',
           entityId: `PERIOD_${start.toISOString()}_${end.toISOString()}`,
-          previousData: null,
+          previousData: Prisma.DbNull,
           newData: {
             startDate: start.toISOString(),
             endDate: end.toISOString(),

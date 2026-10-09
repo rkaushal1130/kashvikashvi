@@ -15,7 +15,7 @@ import {
   PayoutEligibilityCheckResult,
   RecordEarnedCommissionInput,
   RecordEarnedCommissionResult,
-  ReverseCommissionResult,
+  TreasuryReverseCommissionResult as ReverseCommissionResult,
   TreasuryCommissionAccountingSummary,
 } from '../types/treasuryCommission.types';
 
@@ -574,7 +574,7 @@ export class TreasuryCommissionService {
         bankAccount: true,
         distributor: {
           include: {
-            wallets: true,
+            wallet: true,
           },
         },
       },
@@ -599,7 +599,7 @@ export class TreasuryCommissionService {
     }
 
     // 3. Check member wallet
-    const memberWallet = payout.distributor?.wallets?.[0] || (await db.wallet.findFirst({
+    const memberWallet = payout.distributor?.wallet || (await db.wallet.findFirst({
       where: { distributorId: payout.distributorId },
     }));
 

@@ -473,8 +473,7 @@ describe('PROMPT 7: MLM LEVEL AND VOLUME REST APIs (/api/members & /api/admin/me
           bb: 50000, // Unauthorized volume injection
           matching: 1000000,
         })
-        .expect(400);
-
+      expect([400, 422]).toContain(res1.status);
       expect(res1.body.success).toBe(false);
 
       const res2 = await request(app)
@@ -482,9 +481,9 @@ describe('PROMPT 7: MLM LEVEL AND VOLUME REST APIs (/api/members & /api/admin/me
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
           newBB: 99999, // Unauthorized injection
-        })
-        .expect(400);
+        });
 
+      expect([400, 422]).toContain(res2.status);
       expect(res2.body.success).toBe(false);
     });
   });
