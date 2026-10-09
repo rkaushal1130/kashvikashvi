@@ -84,6 +84,11 @@ import { payoutRouter, adminPayoutRouter } from './payout.routes';
 apiRouter.use('/payouts', payoutRouter);
 apiRouter.use('/admin/payouts', adminPayoutRouter);
 
+// Member Withdrawal System (Prompt 38): /api/v1/withdrawals & /api/v1/admin/withdrawals
+import { withdrawalRouter, adminWithdrawalRouter } from './withdrawal.routes';
+apiRouter.use('/withdrawals', withdrawalRouter);
+apiRouter.use('/admin/withdrawals', adminWithdrawalRouter);
+
 // Multi-Center Business Architecture: /api/v1/business-centers
 import { businessCenterRouter } from './businessCenter.routes';
 apiRouter.use('/business-centers', businessCenterRouter);

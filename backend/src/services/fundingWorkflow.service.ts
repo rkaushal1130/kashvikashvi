@@ -78,7 +78,8 @@ export class FundingWorkflowService {
    */
   public static async initiateFunding(
     adminId: string,
-    input: InitiateFundingInput
+    input: InitiateFundingInput,
+    metadataContext?: { ipAddress?: string; userAgent?: string }
   ): Promise<FundingWorkflowResult> {
     const amountDecimal = SafeDecimal.roundDecimal(input.amount, 2);
     if (amountDecimal.lessThanOrEqualTo(0)) {
@@ -87,6 +88,13 @@ export class FundingWorkflowService {
 
     if (amountDecimal.lessThan(100)) {
       throw AppError.badRequest('Minimum corporate funding amount is 100.00 INR', 'MINIMUM_AMOUNT_NOT_MET');
+    }
+
+    if (amountDecimal.greaterThan(10_000_000)) {
+      throw AppError.badRequest(
+        'Funding amount exceeds maximum configured limit of 10,000,000.00 INR. Requires Board / Executive approval.',
+        'MAXIMUM_AMOUNT_EXCEEDED'
+      );
     }
 
     // 1. Resolve and verify funding account
@@ -189,13 +197,17 @@ export class FundingWorkflowService {
         action: 'FUNDING_TRANSACTION_INITIATED',
         entityType: 'FundingTransaction',
         entityId: createdTx.id,
+        previousData: null,
         newData: {
           amount: amountDecimal.toNumber(),
           currency: createdTx.currency,
           provider: createdTx.provider,
           providerTransactionId: createdTx.providerTransactionId,
           idempotencyKey,
+          description: input.description,
         },
+        ipAddress: metadataContext?.ipAddress || null,
+        userAgent: metadataContext?.userAgent || null,
       },
     });
 
@@ -218,7 +230,7 @@ export class FundingWorkflowService {
   public static async verifyAndProcessFunding(
     adminId: string,
     transactionId: string,
-    options?: { utrNumber?: string }
+    options?: { utrNumber?: string; ipAddress?: string; userAgent?: string }
   ): Promise<VerifyAndSettleResult> {
     const txRecord = await prisma.fundingTransaction.findUnique({
       where: { id: transactionId.trim() },
@@ -307,10 +319,16 @@ export class FundingWorkflowService {
           action: 'FUNDING_TRANSACTION_FAILED',
           entityType: 'FundingTransaction',
           entityId: txRecord.id,
+          previousData: {
+            status: txRecord.status,
+          },
           newData: {
+            status: 'FAILED',
             reason: updatedFailed.failureReason,
             providerTransactionId: txRecord.providerTransactionId,
           },
+          ipAddress: options?.ipAddress || null,
+          userAgent: options?.userAgent || null,
         },
       });
 
@@ -327,74 +345,126 @@ export class FundingWorkflowService {
     }
 
     // 5. Handle SUCCEEDED provider status: Atomically credit Platform Treasury
-    return prisma.$transaction(async (db) => {
-      // Step A: Credit Platform Treasury with strict immutable ledger entry
-      const creditResult = await PlatformTreasuryService.creditTreasury(
-        {
-          amount: txRecord.amount,
-          type: 'FUNDING',
-          referenceType: 'FUNDING_TRANSACTION',
-          referenceId: txRecord.id,
-          externalTransactionId: verification.utrNumber || txRecord.providerTransactionId || undefined,
-          providerTransactionId: txRecord.providerTransactionId || undefined,
-          idempotencyKey: `TREASURY_CREDIT:${txRecord.id}`,
-          description: `Corporate funding from ${txRecord.fundingAccount.accountName} (${txRecord.provider})`,
-          performedById: adminId,
-          metadata: {
-            fundingTransactionId: txRecord.id,
-            providerTransactionId: txRecord.providerTransactionId,
-            utrNumber: verification.utrNumber,
+    try {
+      return await prisma.$transaction(async (db) => {
+        // Step 0: Double-check transaction state inside atomic transaction to prevent concurrent race condition
+        const currentTx = await db.fundingTransaction.findUnique({
+          where: { id: txRecord.id },
+          include: {
+            fundingAccount: true,
+            initiatedByAdmin: { select: { id: true, email: true, fullName: true } },
           },
-        },
-        db
-      );
+        });
 
-      // Step B: Mark FundingTransaction SUCCEEDED with link to PlatformWalletTransaction
-      const settledTx = await db.fundingTransaction.update({
-        where: { id: txRecord.id },
-        data: {
-          status: 'SUCCEEDED',
-          platformWalletTransactionId: creditResult.transaction.id,
-          completedAt: verification.settledAt || new Date(),
-        },
-        include: {
-          fundingAccount: true,
-          initiatedByAdmin: { select: { id: true, email: true, fullName: true } },
-        },
-      });
+        if (currentTx && currentTx.status === 'SUCCEEDED') {
+          const treasuryBalance = await PlatformTreasuryService.getTreasuryBalance({}, db);
+          return {
+            transaction: FundingService.formatTransaction(currentTx),
+            isCredited: false,
+            treasuryBalance: treasuryBalance.availableBalance,
+            message: 'Transaction has already been verified and credited to platform treasury.',
+          };
+        }
 
-      // Step C: AuditLog
-      await db.auditLog.create({
-        data: {
-          userId: adminId,
-          action: 'FUNDING_TRANSACTION_SUCCEEDED',
-          entityType: 'FundingTransaction',
-          entityId: txRecord.id,
-          newData: {
-            amount: SafeDecimal.round(txRecord.amount, 2),
+        // Step A: Credit Platform Treasury with strict immutable ledger entry
+        const creditResult = await PlatformTreasuryService.creditTreasury(
+          {
+            amount: txRecord.amount,
+            type: 'FUNDING',
+            referenceType: 'FUNDING_TRANSACTION',
+            referenceId: txRecord.id,
+            externalTransactionId: verification.utrNumber || txRecord.providerTransactionId || undefined,
+            providerTransactionId: txRecord.providerTransactionId || undefined,
+            idempotencyKey: `TREASURY_CREDIT:${txRecord.id}`,
+            description: `Corporate funding from ${txRecord.fundingAccount.accountName} (${txRecord.provider})`,
+            performedById: adminId,
+            metadata: {
+              fundingTransactionId: txRecord.id,
+              providerTransactionId: txRecord.providerTransactionId,
+              utrNumber: verification.utrNumber,
+            },
+          },
+          db
+        );
+
+        // Step B: Mark FundingTransaction SUCCEEDED with link to PlatformWalletTransaction
+        const settledTx = await db.fundingTransaction.update({
+          where: { id: txRecord.id },
+          data: {
+            status: 'SUCCEEDED',
             platformWalletTransactionId: creditResult.transaction.id,
-            newTreasuryBalance: creditResult.wallet.availableBalance,
-            utrNumber: verification.utrNumber,
+            completedAt: verification.settledAt || new Date(),
           },
-        },
+          include: {
+            fundingAccount: true,
+            initiatedByAdmin: { select: { id: true, email: true, fullName: true } },
+          },
+        });
+
+        // Step C: AuditLog
+        await db.auditLog.create({
+          data: {
+            userId: adminId,
+            action: 'FUNDING_TRANSACTION_SUCCEEDED',
+            entityType: 'FundingTransaction',
+            entityId: txRecord.id,
+            previousData: {
+              status: txRecord.status,
+            },
+            newData: {
+              status: 'SUCCEEDED',
+              amount: SafeDecimal.round(txRecord.amount, 2),
+              platformWalletTransactionId: creditResult.transaction.id,
+              newTreasuryBalance: creditResult.wallet.availableBalance,
+              utrNumber: verification.utrNumber,
+            },
+            ipAddress: options?.ipAddress || null,
+            userAgent: options?.userAgent || null,
+          },
+        });
+
+        logger.info(
+          {
+            transactionId: txRecord.id,
+            amount: SafeDecimal.round(txRecord.amount, 2),
+            newTreasuryBalance: creditResult.wallet.availableBalance,
+          },
+          'Funding transaction verified and settled! Platform Treasury successfully credited.'
+        );
+
+        return {
+          transaction: FundingService.formatTransaction(settledTx),
+          isCredited: true,
+          treasuryBalance: creditResult.wallet.availableBalance,
+          message: 'External payment verified successfully. Platform treasury has been credited.',
+        };
       });
-
-      logger.info(
-        {
-          transactionId: txRecord.id,
-          amount: SafeDecimal.round(txRecord.amount, 2),
-          newTreasuryBalance: creditResult.wallet.availableBalance,
-        },
-        'Funding transaction verified and settled! Platform Treasury successfully credited.'
-      );
-
-      return {
-        transaction: FundingService.formatTransaction(settledTx),
-        isCredited: true,
-        treasuryBalance: creditResult.wallet.availableBalance,
-        message: 'External payment verified successfully. Platform treasury has been credited.',
-      };
-    });
+    } catch (err: any) {
+      if (
+        err?.code === 'DUPLICATE_IDEMPOTENCY_KEY' ||
+        err?.code === 'P2002' ||
+        err?.message?.includes('duplicate') ||
+        err?.message?.includes('Unique constraint')
+      ) {
+        const latestTx = await prisma.fundingTransaction.findUnique({
+          where: { id: txRecord.id },
+          include: {
+            fundingAccount: true,
+            initiatedByAdmin: { select: { id: true, email: true, fullName: true } },
+          },
+        });
+        if (latestTx && latestTx.status === 'SUCCEEDED') {
+          const treasuryBalance = await PlatformTreasuryService.getTreasuryBalance();
+          return {
+            transaction: FundingService.formatTransaction(latestTx),
+            isCredited: false,
+            treasuryBalance: treasuryBalance.availableBalance,
+            message: 'Transaction has already been verified and credited to platform treasury.',
+          };
+        }
+      }
+      throw err;
+    }
   }
 
   /**
@@ -434,7 +504,8 @@ export class FundingWorkflowService {
   public static async processFundingReversal(
     adminId: string,
     transactionId: string,
-    reason: string
+    reason: string,
+    metadataContext?: { ipAddress?: string; userAgent?: string }
   ): Promise<{ transaction: FundingTransactionDTO; treasuryBalance: number }> {
     const txRecord = await prisma.fundingTransaction.findUnique({
       where: { id: transactionId.trim() },
@@ -491,11 +562,17 @@ export class FundingWorkflowService {
           action: 'FUNDING_TRANSACTION_REVERSED',
           entityType: 'FundingTransaction',
           entityId: txRecord.id,
+          previousData: {
+            status: txRecord.status,
+          },
           newData: {
+            status: 'REVERSED',
             reason,
             reversedAmount: SafeDecimal.round(txRecord.amount, 2),
             newTreasuryBalance: debitResult.wallet.availableBalance,
           },
+          ipAddress: metadataContext?.ipAddress || null,
+          userAgent: metadataContext?.userAgent || null,
         },
       });
 
@@ -516,14 +593,15 @@ export class FundingWorkflowService {
   }
 
   /**
-   * 5. RECONCILE FUNDING TRANSACTION (PROMPT 34)
-   * Authoritatively queries external provider to reconcile single transaction.
-   * If external provider confirms settlement and transaction is pending, credits treasury.
+   * 5. RECONCILE FUNDING TRANSACTION (PROMPT 40)
+   * Authoritatively performs 3-way reconciliation:
+   * External Provider <-> FundingTransaction <-> Platform Treasury Ledger
+   * Flags discrepancies as RECONCILIATION_REQUIRED without automatic ledger credit/debit.
    */
   public static async reconcileFundingTransaction(
     adminId: string,
     transactionId: string,
-    options?: { expectedAmount?: number; utrNumber?: string; notes?: string }
+    options?: { expectedAmount?: number; utrNumber?: string; notes?: string; ipAddress?: string; userAgent?: string }
   ): Promise<{
     transaction: FundingTransactionDTO;
     reconciliation: any;
@@ -531,113 +609,27 @@ export class FundingWorkflowService {
     treasuryBalance?: number;
     message: string;
   }> {
-    const txRecord = await prisma.fundingTransaction.findUnique({
-      where: { id: transactionId.trim() },
-      include: {
-        fundingAccount: true,
-        initiatedByAdmin: { select: { id: true, email: true, fullName: true } },
-      },
+    const { FundingReconciliationService } = await import('./fundingReconciliation.service');
+    const result = await FundingReconciliationService.reconcileFundingTransaction(transactionId, {
+      adminId,
+      expectedAmount: options?.expectedAmount,
+      notes: options?.notes,
+      ipAddress: options?.ipAddress,
+      userAgent: options?.userAgent,
     });
 
-    if (!txRecord) {
-      throw AppError.notFound(`Funding transaction '${transactionId}' not found`, 'TRANSACTION_NOT_FOUND');
-    }
-
-    if (!txRecord.providerTransactionId) {
-      throw AppError.badRequest(
-        'Transaction missing providerTransactionId; cannot reconcile with provider',
-        'MISSING_PROVIDER_TX_ID'
-      );
-    }
-
-    const provider = FundingProviderFactory.getProvider(txRecord.provider);
-    const expectedAmount = options?.expectedAmount ?? SafeDecimal.round(txRecord.amount, 2);
-    const reconResult = await provider.reconcileTransaction(
-      txRecord.providerTransactionId,
-      expectedAmount
-    );
-
-    // If transaction already SUCCEEDED
-    if (txRecord.status === 'SUCCEEDED') {
-      const treasury = await PlatformTreasuryService.getTreasuryBalance();
-      return {
-        transaction: FundingService.formatTransaction(txRecord),
-        reconciliation: reconResult,
-        isCredited: false,
-        treasuryBalance: treasury.availableBalance,
-        message: 'Transaction has already been reconciled and settled in platform ledger.',
-      };
-    }
-
-    // Provider confirmed settlement and match
-    if (reconResult.isMatched && reconResult.providerStatus === 'SUCCEEDED') {
-      const settleResult = await this.verifyAndProcessFunding(adminId, txRecord.id, {
-        utrNumber: reconResult.utrNumber || options?.utrNumber,
-      });
-
-      await prisma.auditLog.create({
-        data: {
-          userId: adminId,
-          action: 'FUNDING_TRANSACTION_RECONCILED',
-          entityType: 'FundingTransaction',
-          entityId: txRecord.id,
-          newData: {
-            reconciliation: reconResult as any,
-            settled: true,
-            notes: options?.notes,
-          } as Prisma.InputJsonValue,
-        },
-      });
-
-      return {
-        transaction: settleResult.transaction,
-        reconciliation: reconResult,
-        isCredited: true,
-        treasuryBalance: settleResult.treasuryBalance,
-        message: 'Funding transaction successfully reconciled and settled. Treasury credited.',
-      };
-    }
-
-    // Mismatch or discrepancy
-    if (!reconResult.isMatched) {
-      const updatedDiscrepancy = await prisma.fundingTransaction.update({
-        where: { id: txRecord.id },
-        data: {
-          status: 'RECONCILIATION_REQUIRED',
-          failureReason: `Amount discrepancy: Expected ${expectedAmount}, Provider reported ${reconResult.actualAmount}`,
-        },
-        include: {
-          fundingAccount: true,
-          initiatedByAdmin: { select: { id: true, email: true, fullName: true } },
-        },
-      });
-
-      await prisma.auditLog.create({
-        data: {
-          userId: adminId,
-          action: 'FUNDING_RECONCILIATION_DISCREPANCY',
-          entityType: 'FundingTransaction',
-          entityId: txRecord.id,
-          newData: {
-            reconciliation: reconResult as any,
-            notes: options?.notes,
-          } as Prisma.InputJsonValue,
-        },
-      });
-
-      return {
-        transaction: FundingService.formatTransaction(updatedDiscrepancy),
-        reconciliation: reconResult,
-        isCredited: false,
-        message: `Reconciliation discrepancy flagged: Expected ${expectedAmount}, actual ${reconResult.actualAmount}. Treasury was not credited.`,
-      };
-    }
+    const treasury = await PlatformTreasuryService.getTreasuryBalance();
 
     return {
-      transaction: FundingService.formatTransaction(txRecord),
-      reconciliation: reconResult,
+      transaction: result.transaction,
+      reconciliation: {
+        isMatched: result.isMatched,
+        providerStatus: result.providerStatus,
+        discrepancies: result.discrepancies,
+      },
       isCredited: false,
-      message: `Provider status: ${reconResult.providerStatus}. Treasury was not credited.`,
+      treasuryBalance: treasury.availableBalance,
+      message: result.message,
     };
   }
 

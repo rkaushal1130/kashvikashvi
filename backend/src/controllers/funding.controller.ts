@@ -2,18 +2,31 @@ import { NextFunction, Request, Response } from 'express';
 import { prisma } from '../config/database';
 import { FundingService } from '../services/funding.service';
 import { FundingWorkflowService } from '../services/fundingWorkflow.service';
+import { FundingReconciliationService } from '../services/fundingReconciliation.service';
 import { PlatformTreasuryService } from '../services/platformTreasury.service';
+import { TreasuryCommissionService } from '../services/treasuryCommission.service';
 import { sendSuccess } from '../utils/apiResponse';
 import { AppError } from '../utils/appError';
 import {
   connectFundingAccountSchema,
+  disconnectFundingAccountSchema,
+  discrepancyQuerySchema,
   fundingQuerySchema,
   initiateFundingSchema,
+  initiateTreasuryAdjustmentSchema,
+  reconcileFundingPeriodSchema,
   reconcileFundingSchema,
+  resolveFundingDiscrepancySchema,
   reverseFundingSchema,
   treasuryTransactionQuerySchema,
   verifyFundingSchema,
 } from '../validators/funding.validators';
+
+const getClientIp = (req: Request): string =>
+  (req.headers['x-forwarded-for'] as string)?.split(',')[0].trim() || req.ip || req.socket?.remoteAddress || '127.0.0.1';
+
+const getUserAgent = (req: Request): string =>
+  (req.headers['user-agent'] as string) || 'unknown';
 
 /**
  * ============================================================================
@@ -88,7 +101,15 @@ export class FundingController {
   ): Promise<void> {
     try {
       const input = connectFundingAccountSchema.parse(req.body);
-      const account = await FundingService.registerFundingAccount(input);
+      const ipAddress = getClientIp(req);
+      const userAgent = getUserAgent(req);
+      const adminId = (req as any).user?.id;
+
+      const account = await FundingService.registerFundingAccount(input, adminId, {
+        ipAddress,
+        userAgent,
+      });
+
       sendSuccess(res, {
         statusCode: 201,
         message: 'Corporate funding account connected successfully',
@@ -113,7 +134,17 @@ export class FundingController {
         throw AppError.unauthorized('Authentication required');
       }
 
-      const account = await FundingService.disconnectFundingAccount(req.params.id, req.user.id);
+      const parsedBody = disconnectFundingAccountSchema.safeParse(req.body);
+      const reason = parsedBody.success ? parsedBody.data.reason : undefined;
+      const ipAddress = getClientIp(req);
+      const userAgent = getUserAgent(req);
+
+      const account = await FundingService.disconnectFundingAccount(req.params.id, req.user.id, {
+        reason,
+        ipAddress,
+        userAgent,
+      });
+
       sendSuccess(res, {
         statusCode: 200,
         message: 'Corporate funding account disconnected successfully',
@@ -166,7 +197,13 @@ export class FundingController {
       }
 
       const input = initiateFundingSchema.parse(req.body);
-      const result = await FundingWorkflowService.initiateFunding(req.user.id, input);
+      const ipAddress = getClientIp(req);
+      const userAgent = getUserAgent(req);
+
+      const result = await FundingWorkflowService.initiateFunding(req.user.id, input, {
+        ipAddress,
+        userAgent,
+      });
 
       sendSuccess(res, {
         statusCode: 201,
@@ -356,8 +393,9 @@ export class FundingController {
 
   /**
    * 10. POST /api/admin/funding/:id/reconcile
-   * Reconciles external transaction against provider.
-   * If external provider reports settled, credits treasury atomically.
+   * Performs authoritative 3-way reconciliation comparing:
+   * External Provider <-> FundingTransaction <-> Platform Treasury Ledger
+   * If any discrepancy exists, flags RECONCILIATION_REQUIRED without automatic credit/debit.
    */
   public static async reconcileFunding(
     req: Request,
@@ -370,10 +408,121 @@ export class FundingController {
       }
 
       const input = reconcileFundingSchema.parse(req.body);
+      const ipAddress = getClientIp(req);
+      const userAgent = getUserAgent(req);
+
       const result = await FundingWorkflowService.reconcileFundingTransaction(
         req.user.id,
         req.params.id,
-        input
+        {
+          ...input,
+          ipAddress,
+          userAgent,
+        }
+      );
+
+      sendSuccess(res, {
+        statusCode: 200,
+        message: result.message,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST & GET /api/admin/funding/reconcile/period (PROMPT 40)
+   * Authoritative batch reconciliation over a date range.
+   * Compares all internal transactions and detects external success with no internal transaction.
+   */
+  public static async reconcileFundingPeriod(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      if (!req.user) {
+        throw AppError.unauthorized('Authentication required');
+      }
+
+      const payload = req.method === 'GET' ? req.query : req.body;
+      const input = reconcileFundingPeriodSchema.parse(payload);
+      const ipAddress = getClientIp(req);
+      const userAgent = getUserAgent(req);
+
+      const result = await FundingReconciliationService.reconcileFundingPeriod(
+        input.startDate,
+        input.endDate,
+        {
+          provider: input.provider,
+          adminId: req.user.id,
+          ipAddress,
+          userAgent,
+        }
+      );
+
+      sendSuccess(res, {
+        statusCode: 200,
+        message: `Funding period reconciliation completed: ${result.totalChecked} checked, ${result.matchedCount} matched, ${result.discrepancyCount} discrepancies detected`,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/admin/funding/discrepancies (PROMPT 40)
+   * Retrieves all funding transactions marked RECONCILIATION_REQUIRED for admin review.
+   */
+  public static async getDiscrepancies(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const query = discrepancyQuerySchema.parse(req.query);
+      const result = await FundingReconciliationService.getDiscrepancies(query);
+
+      sendSuccess(res, {
+        statusCode: 200,
+        message: 'Reconciliation discrepancies retrieved successfully',
+        data: result.discrepancies,
+        meta: result.pagination,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/admin/funding/:id/reconcile/resolve (PROMPT 40)
+   * Admin resolution of a flagged reconciliation discrepancy.
+   * Actions: FORCE_SETTLE_CREDIT, REVERSE_DEBIT, MARK_FAILED, MARK_RESOLVED_NO_ACTION.
+   */
+  public static async resolveDiscrepancy(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      if (!req.user) {
+        throw AppError.unauthorized('Authentication required');
+      }
+
+      const input = resolveFundingDiscrepancySchema.parse(req.body);
+      const ipAddress = getClientIp(req);
+      const userAgent = getUserAgent(req);
+
+      const result = await FundingReconciliationService.resolveDiscrepancy(
+        req.params.id,
+        input,
+        req.user.id,
+        {
+          ipAddress,
+          userAgent,
+        }
       );
 
       sendSuccess(res, {
@@ -401,10 +550,17 @@ export class FundingController {
       }
 
       const input = verifyFundingSchema.parse(req.body);
+      const ipAddress = getClientIp(req);
+      const userAgent = getUserAgent(req);
+
       const result = await FundingWorkflowService.verifyAndProcessFunding(
         req.user.id,
         req.params.id,
-        input
+        {
+          utrNumber: input.utrNumber,
+          ipAddress,
+          userAgent,
+        }
       );
 
       sendSuccess(res, {
@@ -432,15 +588,61 @@ export class FundingController {
       }
 
       const input = reverseFundingSchema.parse(req.body);
+      const ipAddress = getClientIp(req);
+      const userAgent = getUserAgent(req);
+
       const result = await FundingWorkflowService.processFundingReversal(
         req.user.id,
         req.params.id,
-        input.reason
+        input.reason,
+        {
+          ipAddress,
+          userAgent,
+        }
       );
 
       sendSuccess(res, {
         statusCode: 200,
         message: 'Funding transaction reversed and treasury debited successfully',
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/admin/treasury/adjust (and /api/admin/funding/adjust) (PROMPT 39)
+   * Initiates an authorized treasury adjustment (CREDIT or DEBIT) with mandatory reason and immutable audit log.
+   */
+  public static async initiateAdjustment(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      if (!req.user) {
+        throw AppError.unauthorized('Authentication required');
+      }
+
+      const input = initiateTreasuryAdjustmentSchema.parse(req.body);
+      const ipAddress = getClientIp(req);
+      const userAgent = getUserAgent(req);
+
+      const result = await PlatformTreasuryService.adjustTreasury({
+        adminId: req.user.id,
+        type: input.type,
+        amount: input.amount,
+        reason: input.reason,
+        referenceNumber: input.referenceNumber,
+        walletCode: input.walletCode,
+        ipAddress,
+        userAgent,
+      });
+
+      sendSuccess(res, {
+        statusCode: 200,
+        message: `Platform treasury ${input.type.toLowerCase()} adjustment processed and audited successfully`,
         data: result,
       });
     } catch (error) {
@@ -463,6 +665,137 @@ export class FundingController {
         statusCode: 200,
         message: 'Platform treasury reconciliation executed',
         data: report,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/admin/funding/accounting-summary (PROMPT 37)
+   * Retrieves comprehensive balance sheet connecting Platform Treasury with MLM Commission Liabilities.
+   */
+  public static async getAccountingSummary(
+    _req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const summary = await TreasuryCommissionService.getAccountingSummary();
+      sendSuccess(res, {
+        statusCode: 200,
+        message: 'Treasury & Commission accounting summary retrieved successfully',
+        data: summary,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/admin/funding/commissions/reserve-batch (PROMPT 37)
+   * Triggers batch funding & reserving from Platform Treasury to Member Wallets (FIFO).
+   */
+  public static async batchReserveCommissions(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const performedById = (req as any).user?.id;
+      const limit = req.body.limit ? parseInt(req.body.limit, 10) : 50;
+      const result = await TreasuryCommissionService.batchFundCommissions({
+        performedById,
+        limit,
+      });
+
+      sendSuccess(res, {
+        statusCode: 200,
+        message: `Batch commission reserving completed: ${result.fundedCount} funded, ${result.deferredCount} deferred`,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/admin/funding/commissions/:id/reserve (PROMPT 37)
+   * Funds and reserves a specific earned commission from Platform Treasury.
+   */
+  public static async reserveSingleCommission(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const performedById = (req as any).user?.id;
+      const commissionId = req.params.id;
+      const result = await TreasuryCommissionService.fundAndReserveCommission(commissionId, {
+        performedById,
+      });
+
+      sendSuccess(res, {
+        statusCode: 200,
+        message: result.isFunded
+          ? 'Commission successfully reserved from treasury and made available in member wallet'
+          : `Commission preserved in ${result.newStatus}: ${result.reason}`,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/admin/funding/payouts/:id/eligibility (PROMPT 37)
+   * Checks whether platform treasury has sufficient funds for payout according to accounting rules.
+   */
+  public static async checkPayoutEligibility(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const payoutId = req.params.id;
+      const result = await TreasuryCommissionService.checkPayoutEligibility(payoutId);
+      sendSuccess(res, {
+        statusCode: 200,
+        message: result.isEligible
+          ? 'Payout is eligible for platform disbursement'
+          : 'Payout disbursement blocked by accounting rules',
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/admin/funding/payouts/:id/disburse (PROMPT 37)
+   * Atomically disburses payout from Platform Treasury to member with immutable ledger entries.
+   */
+  public static async disbursePayout(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const adminUserId = (req as any).user?.id || 'admin';
+      const payoutId = req.params.id;
+      const { referenceNumber, adminNotes } = req.body;
+
+      const result = await TreasuryCommissionService.executePayout({
+        payoutId,
+        adminUserId,
+        referenceNumber,
+        adminNotes,
+      });
+
+      sendSuccess(res, {
+        statusCode: 200,
+        message: 'Payout successfully disbursed from platform treasury',
+        data: result,
       });
     } catch (error) {
       next(error);

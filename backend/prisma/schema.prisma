@@ -252,6 +252,17 @@ enum PayoutStatus {
   CANCELLED
 }
 
+enum WithdrawalStatus {
+  REQUESTED
+  UNDER_REVIEW
+  APPROVED
+  PROCESSING
+  PAID
+  FAILED
+  CANCELLED
+  REVERSED
+}
+
 enum TicketPriority {
   LOW
   MEDIUM
@@ -424,6 +435,7 @@ model DistributorProfile {
   commissions           Commission[]
   bonuses               Bonus[]
   payoutRequests        PayoutRequest[]
+  withdrawalRequests    WithdrawalRequest[]       @relation("DistributorWithdrawals")
   website               DistributorWebsite?
   trainingProgress      TrainingProgress[]
   enrollments           Enrollment[]
@@ -1142,6 +1154,40 @@ model PayoutRequest {
   @@index([status])
   @@index([requestedAt])
   @@map("payout_requests")
+}
+
+// 30b. WithdrawalRequest (Prompt 38: Member Withdrawal System)
+model WithdrawalRequest {
+  id                    String            @id @default(uuid())
+  memberId              String
+  amount                Decimal           @db.Decimal(12, 2)
+  fee                   Decimal           @default(0.00) @db.Decimal(12, 2)
+  netAmount             Decimal           @db.Decimal(12, 2)
+  status                WithdrawalStatus  @default(REQUESTED)
+  payoutProvider        String            @default("MANUAL_BANK_TRANSFER")
+  externalTransactionId String?
+  createdAt             DateTime          @default(now())
+  processedAt           DateTime?
+
+  // Extended audit and platform integration linkages
+  bankAccountId         String?
+  payoutRequestId       String?           @unique
+  walletTransactionId   String?           @unique
+  platformTransactionId String?
+  failureReason         String?
+  adminNotes            String?
+  metadata              Json?
+  idempotencyKey        String?           @unique
+  updatedAt             DateTime          @updatedAt
+
+  member                DistributorProfile @relation("DistributorWithdrawals", fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@index([memberId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([externalTransactionId])
+  @@index([idempotencyKey])
+  @@map("withdrawal_requests")
 }
 
 // 31. Rank

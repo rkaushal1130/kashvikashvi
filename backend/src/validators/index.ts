@@ -25,4 +25,6 @@ export * from './mlmTree.validators';
 export * from './sponsor.validators';
 export * from './commissionApi.validators';
 export * from './funding.validators';
+export * from './payout.validators';
+export * from './withdrawal.validators';
 

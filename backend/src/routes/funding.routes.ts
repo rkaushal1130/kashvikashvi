@@ -52,7 +52,12 @@ adminFundingRouter.post('/initiate', FundingController.createFundingRequest); //
 adminFundingRouter.get('/', FundingController.listTransactions);
 adminFundingRouter.get('/transactions', FundingController.listTransactions); // alias
 
-// 6. Reconcile Funding Transaction
+// 6. Reconcile Funding Transaction & Period (Prompt 40)
+adminFundingRouter.post('/reconcile/period', FundingController.reconcileFundingPeriod);
+adminFundingRouter.get('/reconcile/period', FundingController.reconcileFundingPeriod);
+adminFundingRouter.get('/discrepancies', FundingController.getDiscrepancies);
+adminFundingRouter.post('/:id/reconcile/resolve', FundingController.resolveDiscrepancy);
+adminFundingRouter.post('/discrepancies/:id/resolve', FundingController.resolveDiscrepancy);
 adminFundingRouter.post('/:id/reconcile', FundingController.reconcileFunding);
 adminFundingRouter.post('/transactions/:id/reconcile', FundingController.reconcileFunding); // alias
 
@@ -69,7 +74,17 @@ adminFundingRouter.get('/transactions/:id', FundingController.getTransactionById
 // 9. Treasury Ledger Reconciliation under Funding Router
 adminFundingRouter.get('/treasury/reconcile', FundingController.reconcileTreasury);
 
-// 10. ABSOLUTE FINANCIAL GUARD: Block any direct mutation of balances
+// 10. Treasury & MLM Commission Integration (Prompt 37)
+adminFundingRouter.get('/accounting-summary', FundingController.getAccountingSummary);
+adminFundingRouter.post('/commissions/reserve-batch', FundingController.batchReserveCommissions);
+adminFundingRouter.post('/commissions/:id/reserve', FundingController.reserveSingleCommission);
+adminFundingRouter.get('/payouts/:id/eligibility', FundingController.checkPayoutEligibility);
+adminFundingRouter.post('/payouts/:id/disburse', FundingController.disbursePayout);
+
+// 11. Administrative Treasury Adjustment (Prompt 39)
+adminFundingRouter.post('/adjust', FundingController.initiateAdjustment);
+
+// 12. ABSOLUTE FINANCIAL GUARD: Block any direct mutation of balances
 const blockDirectBalanceMutation = (_req: any, _res: any, next: any) => {
   next(
     AppError.forbidden(
@@ -84,7 +99,7 @@ adminFundingRouter.delete('/balance', blockDirectBalanceMutation);
 
 /**
  * ============================================================================
- * ADMIN PLATFORM TREASURY ROUTES (PROMPT 34)
+ * ADMIN PLATFORM TREASURY ROUTES (PROMPT 34 & PROMPT 37)
  * ============================================================================
  *
  * Base Route: /api/admin/treasury & /api/v1/admin/treasury
@@ -92,6 +107,8 @@ adminFundingRouter.delete('/balance', blockDirectBalanceMutation);
  * 8. GET /api/admin/treasury               -> Get treasury balance
  * 9. GET /api/admin/treasury/transactions  -> Get treasury ledger transactions
  *    GET /api/admin/treasury/reconcile     -> Reconcile ledger balance
+ *    GET /api/admin/treasury/accounting-summary -> Solvency & commission liabilities
+ *    POST /api/admin/treasury/adjust       -> Authorized administrative adjustment
  */
 export const adminTreasuryRouter = Router();
 
@@ -101,7 +118,12 @@ adminTreasuryRouter.use(authorizeRoles('SUPER_ADMIN', 'ADMIN'));
 adminTreasuryRouter.get('/', FundingController.getTreasuryBalance);
 adminTreasuryRouter.get('/transactions', FundingController.getTreasuryTransactions);
 adminTreasuryRouter.get('/reconcile', FundingController.reconcileTreasury);
+adminTreasuryRouter.get('/accounting-summary', FundingController.getAccountingSummary);
 
+// Authorized treasury adjustment
+adminTreasuryRouter.post('/adjust', FundingController.initiateAdjustment);
+
+// Absolute financial guard against direct arbitrary balance mutations
 adminTreasuryRouter.post('/', blockDirectBalanceMutation);
 adminTreasuryRouter.put('/', blockDirectBalanceMutation);
 adminTreasuryRouter.patch('/', blockDirectBalanceMutation);

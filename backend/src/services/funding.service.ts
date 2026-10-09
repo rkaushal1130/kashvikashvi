@@ -84,9 +84,13 @@ export class FundingService {
    */
   public static async registerFundingAccount(
     input: CreateFundingAccountInput,
+    adminIdOrTx?: string | Prisma.TransactionClient,
+    options?: { ipAddress?: string; userAgent?: string },
     tx?: Prisma.TransactionClient
   ): Promise<FundingAccountDTO> {
-    const db = tx || prisma;
+    const isTx = typeof adminIdOrTx === 'object' && adminIdOrTx !== null;
+    const db = (isTx ? (adminIdOrTx as Prisma.TransactionClient) : tx) || prisma;
+    const adminId = typeof adminIdOrTx === 'string' ? adminIdOrTx : undefined;
 
     if (!input.provider?.trim()) {
       throw AppError.badRequest('provider is required', 'PROVIDER_REQUIRED');
@@ -145,7 +149,30 @@ export class FundingService {
       },
     });
 
-    logger.info({ accountId: created.id, provider, providerAccountId }, 'Registered corporate funding account');
+    if (adminId) {
+      await db.auditLog.create({
+        data: {
+          userId: adminId,
+          action: 'FUNDING_ACCOUNT_CONNECTED',
+          entityType: 'FundingAccount',
+          entityId: created.id,
+          previousData: null,
+          newData: {
+            provider: created.provider,
+            providerAccountId: created.providerAccountId,
+            accountType: created.accountType,
+            accountName: created.accountName,
+            maskedAccountNumber: created.maskedAccountNumber,
+            currency: created.currency,
+            isPrimary: created.isPrimary,
+          },
+          ipAddress: options?.ipAddress || null,
+          userAgent: options?.userAgent || null,
+        },
+      });
+    }
+
+    logger.info({ accountId: created.id, provider, providerAccountId, adminId }, 'Registered corporate funding account');
 
     return this.formatAccount(created);
   }
@@ -213,9 +240,13 @@ export class FundingService {
   public static async disconnectFundingAccount(
     id: string,
     adminId: string,
+    optionsOrTx?: { reason?: string; ipAddress?: string; userAgent?: string } | Prisma.TransactionClient,
     tx?: Prisma.TransactionClient
   ): Promise<FundingAccountDTO> {
-    const db = tx || prisma;
+    const isTx = optionsOrTx && ('$executeRaw' in (optionsOrTx as any) || '$queryRaw' in (optionsOrTx as any));
+    const db = (isTx ? (optionsOrTx as Prisma.TransactionClient) : tx) || prisma;
+    const options = isTx ? undefined : (optionsOrTx as { reason?: string; ipAddress?: string; userAgent?: string } | undefined);
+
     const account = await db.fundingAccount.findUnique({
       where: { id: id.trim() },
     });
@@ -252,7 +283,17 @@ export class FundingService {
         action: 'FUNDING_ACCOUNT_DISCONNECTED',
         entityType: 'FundingAccount',
         entityId: account.id,
-        newData: { status: 'DISCONNECTED' },
+        previousData: {
+          status: account.status,
+          isPrimary: account.isPrimary,
+        },
+        newData: {
+          status: 'DISCONNECTED',
+          isPrimary: false,
+          reason: options?.reason || 'Administrative disconnect',
+        },
+        ipAddress: options?.ipAddress || null,
+        userAgent: options?.userAgent || null,
       },
     });
 

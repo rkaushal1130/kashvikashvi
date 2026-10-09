@@ -191,7 +191,7 @@ export class MockFundingProvider implements IFundingProvider {
         utrNumber: tx.utrNumber,
         settledAt: tx.createdAt,
         rawProviderStatus: tx.status,
-        discrepancyReason: isAmountValid ? undefined : `Amount mismatch. Expected: ${input.expectedAmount}, Got: ${tx.amount}`,
+        discrepancyReason: tx.failureReason || (isAmountValid ? undefined : `Amount mismatch. Expected: ${input.expectedAmount}, Got: ${tx.amount}`),
       };
     }
 
@@ -314,12 +314,75 @@ export class MockFundingProvider implements IFundingProvider {
     return {
       providerTransactionId,
       isMatched,
-      providerStatus: 'SUCCEEDED',
+      providerStatus: tx?.status || 'SUCCEEDED',
       expectedAmount,
       actualAmount,
       discrepancy,
       utrNumber: tx?.utrNumber || `UTR-${providerTransactionId}`,
       settledAt: tx?.createdAt || new Date(),
     };
+  }
+
+  public async fetchSettledTransactions(
+    startDate: Date,
+    endDate: Date
+  ): Promise<any[]> {
+    const list: any[] = [];
+    for (const tx of this.transactions.values()) {
+      if (tx.createdAt >= startDate && tx.createdAt <= endDate && tx.status === 'SUCCEEDED') {
+        list.push({
+          providerTransactionId: tx.providerTransactionId,
+          amount: tx.amount,
+          currency: tx.currency,
+          status: tx.status,
+          utrNumber: tx.utrNumber,
+          settledAt: tx.createdAt,
+        });
+      }
+    }
+    return list;
+  }
+
+  public addExternalTransaction(tx: {
+    providerTransactionId: string;
+    amount: number;
+    currency?: string;
+    status?: 'SUCCEEDED' | 'FAILED' | 'PENDING' | 'REVERSED';
+    utrNumber?: string;
+    createdAt?: Date;
+  }): void {
+    this.transactions.set(tx.providerTransactionId, {
+      providerTransactionId: tx.providerTransactionId,
+      providerAccountId: 'acc_external_mock',
+      amount: tx.amount,
+      currency: tx.currency || 'INR',
+      status: tx.status || 'SUCCEEDED',
+      utrNumber: tx.utrNumber || `UTR-${tx.providerTransactionId}`,
+      createdAt: tx.createdAt || new Date(),
+    });
+  }
+
+  public seedStatus(
+    providerTransactionId: string,
+    data: {
+      status?: 'SUCCEEDED' | 'FAILED' | 'PENDING' | 'REVERSED';
+      amount?: number;
+      currency?: string;
+      utrNumber?: string;
+      failureReason?: string;
+      createdAt?: Date;
+    }
+  ): void {
+    const existing = this.transactions.get(providerTransactionId);
+    this.transactions.set(providerTransactionId, {
+      providerTransactionId,
+      providerAccountId: existing?.providerAccountId || 'acc_external_mock',
+      amount: data.amount ?? existing?.amount ?? 1000,
+      currency: data.currency || existing?.currency || 'INR',
+      status: data.status || existing?.status || 'SUCCEEDED',
+      utrNumber: data.utrNumber || existing?.utrNumber || `UTR-${providerTransactionId}`,
+      failureReason: data.failureReason || existing?.failureReason,
+      createdAt: data.createdAt || existing?.createdAt || new Date(),
+    });
   }
 }

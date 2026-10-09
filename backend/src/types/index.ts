@@ -65,4 +65,6 @@ export * from './commissionDashboard.types';
 export * from './commissionReconciliation.types';
 export * from './platformTreasury.types';
 export * from './funding.types';
+export * from './treasuryCommission.types';
+export * from './withdrawal.types';
 

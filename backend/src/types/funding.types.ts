@@ -107,3 +107,99 @@ export function sanitizeFundingMetadata(data?: Record<string, any> | null): Reco
 
   return sanitized;
 }
+
+/**
+ * ============================================================================
+ * BANK FUNDING RECONCILIATION TYPES (PROMPT 40)
+ * ============================================================================
+ *
+ * Implements 3-way reconciliation types comparing:
+ * External Provider <-> FundingTransaction <-> Platform Treasury Ledger
+ */
+export type FundingDiscrepancyType =
+  | 'EXTERNAL_SUCCESS_INTERNAL_PENDING'
+  | 'EXTERNAL_SUCCESS_NO_INTERNAL_TX'
+  | 'INTERNAL_SUCCESS_EXTERNAL_FAILURE'
+  | 'AMOUNT_MISMATCH'
+  | 'CURRENCY_MISMATCH'
+  | 'DUPLICATE_PROVIDER_TRANSACTION'
+  | 'REVERSAL_NOT_REFLECTED_INTERNALLY';
+
+export interface FundingDiscrepancyDetail {
+  type: FundingDiscrepancyType;
+  description: string;
+  externalData?: {
+    status?: string;
+    amount?: number;
+    currency?: string;
+    providerTransactionId?: string;
+    utrNumber?: string;
+  };
+  internalData?: {
+    id?: string;
+    status?: string;
+    amount?: number;
+    currency?: string;
+    providerTransactionId?: string;
+  };
+  ledgerData?: {
+    hasCredit?: boolean;
+    hasDebit?: boolean;
+    creditAmount?: number;
+    debitAmount?: number;
+    ledgerTransactionNumber?: string;
+  };
+}
+
+export interface ReconcileTransactionResult {
+  transaction: FundingTransactionDTO;
+  isMatched: boolean;
+  status: FundingTransactionStatus;
+  discrepancies: FundingDiscrepancyDetail[];
+  providerStatus?: string;
+  externalAmount?: number;
+  internalAmount?: number;
+  ledgerAmount?: number;
+  ledgerMatched: boolean;
+  message: string;
+  reconciledAt: Date;
+}
+
+export interface ReconcileFundingPeriodResult {
+  period: {
+    startDate: Date;
+    endDate: Date;
+  };
+  provider?: string;
+  totalChecked: number;
+  matchedCount: number;
+  discrepancyCount: number;
+  discrepancies: Array<{
+    transactionId?: string;
+    providerTransactionId?: string;
+    discrepancy: FundingDiscrepancyDetail;
+  }>;
+  reconciledAt: Date;
+}
+
+export type FundingDiscrepancyResolutionAction =
+  | 'FORCE_SETTLE_CREDIT'
+  | 'REVERSE_DEBIT'
+  | 'MARK_FAILED'
+  | 'MARK_RESOLVED_NO_ACTION';
+
+export interface ResolveFundingDiscrepancyInput {
+  action: FundingDiscrepancyResolutionAction;
+  reason: string;
+  notes?: string;
+  correctionAmount?: number;
+}
+
+export interface ResolveDiscrepancyResult {
+  transaction: FundingTransactionDTO;
+  actionTaken: FundingDiscrepancyResolutionAction;
+  treasuryBalance?: number;
+  ledgerTransactionNumber?: string;
+  message: string;
+  resolvedAt: Date;
+}

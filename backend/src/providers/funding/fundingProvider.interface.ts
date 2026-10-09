@@ -143,6 +143,15 @@ export interface ReconciliationResult {
   settledAt?: Date;
 }
 
+export interface ProviderSettledTransaction {
+  providerTransactionId: string;
+  amount: number;
+  currency: string;
+  status: ProviderFundingStatus;
+  utrNumber?: string;
+  settledAt: Date;
+}
+
 /**
  * Standard Contract for all Corporate Banking / Funding Providers
  */
@@ -196,4 +205,12 @@ export interface IFundingProvider {
     providerTransactionId: string,
     expectedAmount: number
   ): Promise<ReconciliationResult>;
+
+  /**
+   * Optional: Fetch list of settled transactions within a date range for period reconciliation.
+   */
+  fetchSettledTransactions?(
+    startDate: Date,
+    endDate: Date
+  ): Promise<ProviderSettledTransaction[]>;
 }

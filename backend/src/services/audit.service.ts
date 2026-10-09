@@ -67,6 +67,34 @@ export class AuditService {
     },
   ];
 
+  /**
+   * Deeply sanitizes audit data by recursively scrubbing passwords, PINs, OTPs, CVVs,
+   * bearer tokens, secret keys, and payment credentials.
+   */
+  public static sanitizeAuditData(data: any): any {
+    if (!data || typeof data !== 'object') return data;
+    if (data instanceof Date) return data;
+    if (Array.isArray(data)) {
+      return data.map((item) => this.sanitizeAuditData(item));
+    }
+
+    const sensitivePattern = /password|pin|otp|cvv|secret|credential|auth_token|bearer|token|private_key|privatekey/i;
+    const sanitized: Record<string, any> = {};
+
+    for (const [key, value] of Object.entries(data)) {
+      if (sensitivePattern.test(key)) {
+        continue; // Strictly omit secret fields from immutable audit logs
+      }
+      if (typeof value === 'object' && value !== null) {
+        sanitized[key] = this.sanitizeAuditData(value);
+      } else {
+        sanitized[key] = value;
+      }
+    }
+
+    return sanitized;
+  }
+
   public static async recordLog(params: {
     userId?: string;
     action: string;
@@ -77,14 +105,17 @@ export class AuditService {
     ipAddress?: string;
     userAgent?: string;
   }): Promise<AuditLogEntry> {
+    const cleanOldValue = this.sanitizeAuditData(params.oldValue);
+    const cleanNewValue = this.sanitizeAuditData(params.newValue);
+
     const entry: AuditLogEntry = {
       id: `audit-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       userId: params.userId || null,
       action: params.action,
       entityType: params.entityType,
       entityId: params.entityId || null,
-      oldValue: params.oldValue || null,
-      newValue: params.newValue || null,
+      oldValue: cleanOldValue || null,
+      newValue: cleanNewValue || null,
       ipAddress: params.ipAddress || null,
       userAgent: params.userAgent || null,
       createdAt: new Date(),
@@ -97,8 +128,9 @@ export class AuditService {
             userId: params.userId,
             action: params.action,
             entityType: params.entityType,
-            previousData: params.oldValue ? (params.oldValue as any) : undefined,
-            newData: params.newValue ? (params.newValue as any) : undefined,
+            entityId: params.entityId,
+            previousData: cleanOldValue ? (cleanOldValue as any) : undefined,
+            newData: cleanNewValue ? (cleanNewValue as any) : undefined,
             ipAddress: params.ipAddress,
             userAgent: params.userAgent,
           },

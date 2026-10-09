@@ -44,6 +44,9 @@ export * from './commissionReconciliation.service';
 export * from './platformTreasury.service';
 export * from './funding.service';
 export * from './fundingWorkflow.service';
+export * from './fundingReconciliation.service';
+export * from './treasuryCommission.service';
+export * from './withdrawal.service';
 
 
 

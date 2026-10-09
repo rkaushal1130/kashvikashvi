@@ -261,7 +261,10 @@ export class PlatformTreasuryService {
               referenceType: input.referenceType,
               referenceId: input.referenceId,
               externalTransactionId: externalTxId,
+              reason: (input.metadata as any)?.reason || null,
             },
+            ipAddress: (input.metadata as any)?.ipAddress || null,
+            userAgent: (input.metadata as any)?.userAgent || null,
           },
         });
       }
@@ -407,7 +410,10 @@ export class PlatformTreasuryService {
               referenceType: input.referenceType,
               referenceId: input.referenceId,
               externalTransactionId: externalTxId,
+              reason: (input.metadata as any)?.reason || null,
             },
+            ipAddress: (input.metadata as any)?.ipAddress || null,
+            userAgent: (input.metadata as any)?.userAgent || null,
           },
         });
       }
@@ -431,6 +437,75 @@ export class PlatformTreasuryService {
     };
 
     return existingTx ? runner(existingTx) : prisma.$transaction(runner);
+  }
+
+  /**
+   * 4. adjustTreasury() (PROMPT 39)
+   * Authorized administrative adjustment of platform treasury.
+   * Creates an immutable PlatformWalletTransaction with type 'ADJUSTMENT',
+   * updates the balance, and records an immutable AuditLog entry with before/after states,
+   * reason, and IP metadata.
+   */
+  public static async adjustTreasury(
+    input: {
+      adminId: string;
+      type: 'CREDIT' | 'DEBIT';
+      amount: number | string | Prisma.Decimal;
+      reason: string;
+      referenceNumber?: string;
+      walletCode?: string;
+      ipAddress?: string;
+      userAgent?: string;
+    },
+    tx?: Prisma.TransactionClient
+  ): Promise<{
+    wallet: PlatformWalletDTO;
+    transaction: PlatformWalletTransactionDTO;
+  }> {
+    if (!input.reason || input.reason.trim().length < 5) {
+      throw AppError.badRequest(
+        'Adjustment reason is required (minimum 5 characters)',
+        'ADJUSTMENT_REASON_REQUIRED'
+      );
+    }
+
+    const description = `Administrative Adjustment (${input.type}): ${input.reason.trim()}`;
+    const metadata = {
+      reason: input.reason.trim(),
+      referenceNumber: input.referenceNumber?.trim() || null,
+      ipAddress: input.ipAddress || null,
+      userAgent: input.userAgent || null,
+    };
+
+    if (input.type === 'CREDIT') {
+      return this.creditTreasury(
+        {
+          amount: input.amount,
+          type: 'ADJUSTMENT',
+          referenceType: 'ADMIN_ADJUSTMENT',
+          referenceId: input.referenceNumber?.trim() || null,
+          walletCode: input.walletCode,
+          description,
+          performedById: input.adminId,
+          metadata,
+        },
+        tx
+      );
+    } else {
+      return this.debitTreasury(
+        {
+          amount: input.amount,
+          type: 'ADJUSTMENT',
+          referenceType: 'ADMIN_ADJUSTMENT',
+          referenceId: input.referenceNumber?.trim() || null,
+          walletCode: input.walletCode,
+          description,
+          performedById: input.adminId,
+          metadata,
+        },
+        tx
+      );
+    }
   }
 
   /**
