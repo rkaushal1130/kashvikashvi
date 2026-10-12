@@ -131,6 +131,16 @@ function AppContent() {
             }
           />
           <Route
+            path="/admin/funding-portal"
+            element={
+              <ProtectedRoute adminOnly>
+                <AdminLayout>
+                  <AdminFundingPortalPage />
+                </AdminLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/admin/funding"
             element={
               <ProtectedRoute adminOnly>

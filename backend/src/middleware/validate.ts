@@ -6,9 +6,11 @@ interface RequestValidationSchemas {
   body?: ZodTypeAny;
   query?: ZodTypeAny;
   params?: ZodTypeAny;
+  statusCode?: number;
 }
 
-export const validate = (schemas: RequestValidationSchemas) => {
+export const validate = (schemas: RequestValidationSchemas, defaultStatusCode = 422) => {
+  const statusCode = schemas.statusCode || defaultStatusCode;
   return async (req: Request, _res: Response, next: NextFunction): Promise<void> => {
     try {
       if (schemas.body) {
@@ -28,7 +30,11 @@ export const validate = (schemas: RequestValidationSchemas) => {
           message: err.message,
           code: err.code,
         }));
-        next(AppError.unprocessableEntity('Request validation failed', issues));
+        if (statusCode === 400) {
+          next(new AppError(issues[0]?.message || 'Request validation failed', 400, 'BAD_REQUEST', issues));
+        } else {
+          next(AppError.unprocessableEntity('Request validation failed', issues));
+        }
       } else {
         next(error);
       }

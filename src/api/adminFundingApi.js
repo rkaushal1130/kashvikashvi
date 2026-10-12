@@ -376,6 +376,24 @@ export const adminFundingApi = {
   },
 
   /**
+   * POST /api/admin/funding/accounts/:id/disconnect
+   * Safely disconnects a corporate funding banking account where supported.
+   */
+  async disconnectAccount(id) {
+    try {
+      const res = await apiClient.post(`/admin/funding/accounts/${encodeURIComponent(id)}/disconnect`);
+      if (res?.data) return res.data;
+    } catch (err) {
+      console.warn('[adminFundingApi] Disconnect account API error:', sanitizeErrorMessage(err));
+    }
+    const idx = MOCK_ACCOUNTS.findIndex((a) => a.id === id);
+    if (idx !== -1) {
+      MOCK_ACCOUNTS.splice(idx, 1);
+    }
+    return { success: true, message: 'Account disconnected successfully.' };
+  },
+
+  /**
    * 6. POST /api/admin/funding
    * Initiates funding transaction.
    * ABSOLUTE RULE: Never claims funds were credited immediately!

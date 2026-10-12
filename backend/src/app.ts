@@ -69,6 +69,15 @@ app.use(cookieParser);
 import { protectMlmFields } from './middleware/protectMlmFields';
 app.use('/api', protectMlmFields);
 
+// Root health endpoint
+app.get('/health', (_req, res) => {
+  res.status(200).json({
+    status: 'healthy',
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
+  });
+});
+
 // API v1 and Root API Routes
 app.use('/api/v1', apiRouter);
 app.use('/api', apiRouter);

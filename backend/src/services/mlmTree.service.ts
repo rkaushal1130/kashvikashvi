@@ -46,8 +46,14 @@ export class MlmTreeService {
    * 6. Prevent position collision (both LEFT & RIGHT occupied or target leg occupied)
    */
   public static async placeDistributor(input: PlaceDistributorInput) {
+    const parentId = (input.placementParentId || input.parentId)!;
+    const position = (input.placementPosition || input.position)!;
     const result = await TreePlacementService.placeDistributor({
-      ...input,
+      distributorId: input.distributorId,
+      placementParentId: parentId,
+      placementPosition: position,
+      sponsorId: input.sponsorId,
+      businessCenterId: input.businessCenterId,
       throwOnError: true,
     });
     return result.data;

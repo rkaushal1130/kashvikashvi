@@ -66,6 +66,14 @@ export default function AdminDashboard() {
         </div>
         <div className="admin-header-actions">
           <button
+            className="admin-btn primary"
+            onClick={() => navigate('/admin/funding-portal')}
+            title="Open Funding Portal"
+          >
+            <Landmark size={15} />
+            <span>Funding Portal</span>
+          </button>
+          <button
             className="admin-btn secondary"
             onClick={fetchDashboardMetrics}
             disabled={loading}
@@ -349,13 +357,13 @@ export default function AdminDashboard() {
 
         <div
           className="operation-card"
-          onClick={() => navigate('/admin/funding')}
+          onClick={() => navigate('/admin/funding-portal')}
         >
           <div className="op-icon blue">
             <Landmark size={20} />
           </div>
           <div className="op-text">
-            <h4>Corporate Funding Portal</h4>
+            <h4>Funding Portal</h4>
             <p>Monitor platform treasury float, connected bank rails, and initiate capital injections</p>
           </div>
           <ArrowRight size={16} className="op-arrow" />

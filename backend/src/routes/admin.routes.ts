@@ -18,6 +18,23 @@ router.get('/users', AdminController.getUsers);
 
 // 3. Distributors: GET /api/v1/admin/distributors
 router.get('/distributors', AdminController.getDistributors);
+router.get('/distributors/:id', AdminController.getDistributorById);
+router.patch('/distributors/:id/status', AdminController.updateDistributorStatus);
+router.patch('/distributors/:id', AdminController.updateDistributor);
+router.put('/distributors/:id', AdminController.updateDistributor);
+
+// Network Tree: GET /api/v1/admin/network/:distributorId
+router.get('/network/:distributorId', AdminController.getDistributorNetwork);
+
+// Business Volume: GET /api/v1/admin/business-volume & POST /api/v1/admin/business-volume/adjust
+router.get('/business-volume', AdminController.getBusinessVolume);
+router.post('/business-volume/adjust', AdminController.adjustBusinessVolume);
+
+// Commissions calculations, approvals, payouts & reversals
+router.post('/calculate-commissions', AdminController.calculateCommissions);
+router.post('/commissions/approve', AdminController.approveCommissions);
+router.post('/settle-payouts', AdminController.settlePayouts);
+router.post('/commissions/reverse', AdminController.reverseCommission);
 
 // 4. Products: GET /api/v1/admin/products
 router.get('/products', AdminController.getProducts);

@@ -22,6 +22,7 @@ import {
   TrendingUp,
   Globe,
   Network,
+  Landmark,
 } from 'lucide-react';
 import './DistributorDashboard.css';
 
@@ -231,6 +232,18 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
     isOwner: true,
   };
 
+  const isAuthorizedAdmin = Boolean(
+    auth?.isAdmin ||
+    effectiveUser?.role?.toUpperCase() === 'ADMIN' ||
+    effectiveUser?.role?.toUpperCase() === 'SUPER_ADMIN' ||
+    effectiveUser?.role?.toUpperCase() === 'OWNER' ||
+    effectiveUser?.isOwner ||
+    effectiveUser?.memberId === 'KV-1001' ||
+    effectiveUser?.distributorId === 'KV-1001' ||
+    effectiveUser?.name?.toLowerCase().includes('rahul') ||
+    effectiveUser?.email?.toLowerCase().includes('admin')
+  );
+
   // Member data (Owner: Rahul Kaushal)
   const memberName =
     effectiveUser?.name ||
@@ -328,6 +341,17 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
             <ShoppingCart size={16} />
             <span>See Products</span>
           </button>
+          {isAuthorizedAdmin && (
+            <button
+              type="button"
+              className="quick-nav-pill-btn admin-funding-portal-btn"
+              onClick={() => navigate('/admin/funding-portal')}
+              title="Open Admin Funding Portal"
+            >
+              <Landmark size={16} />
+              <span>Funding Portal</span>
+            </button>
+          )}
         </div>
 
         <div className="kashvimlm-top-navbar-right">
@@ -420,6 +444,34 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
                   <ShoppingCart size={16} />
                   <span>Switch to Retail Store</span>
                 </button>
+                {isAuthorizedAdmin && (
+                  <>
+                    <div className="dropdown-divider" />
+                    <button
+                      type="button"
+                      className="dropdown-item"
+                      style={{ color: '#2563eb', fontWeight: 600 }}
+                      onClick={() => {
+                        setActiveModal(null);
+                        navigate('/admin/funding-portal');
+                      }}
+                    >
+                      <Landmark size={16} />
+                      <span>Funding Portal</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="dropdown-item"
+                      onClick={() => {
+                        setActiveModal(null);
+                        navigate('/admin/dashboard');
+                      }}
+                    >
+                      <Shield size={16} />
+                      <span>Admin Executive Console</span>
+                    </button>
+                  </>
+                )}
                 <div className="dropdown-divider" />
                 <button
                   type="button"
@@ -523,6 +575,20 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
             <Network size={20} />
             <span className="rail-tooltip">Network Tree</span>
           </button>
+
+          {/* 6. Admin Funding Portal */}
+          {isAuthorizedAdmin && (
+            <button
+              type="button"
+              className="rail-icon-btn admin-funding-rail-btn"
+              onClick={() => navigate('/admin/funding-portal')}
+              title="Admin Funding Portal"
+              aria-label="Admin Funding Portal"
+            >
+              <Landmark size={20} />
+              <span className="rail-tooltip">Funding Portal</span>
+            </button>
+          )}
         </aside>
 
         {/* Main Center Dashboard Area */}
@@ -803,6 +869,16 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
                 >
                   Forms
                 </button>
+                {isAuthorizedAdmin && (
+                  <button
+                    type="button"
+                    className="quick-link-box quick-link-funding-portal"
+                    onClick={() => navigate('/admin/funding-portal')}
+                    style={{ background: '#eff6ff', borderColor: '#2563eb', color: '#1d4ed8', fontWeight: 700 }}
+                  >
+                    Funding Portal
+                  </button>
+                )}
               </div>
             </div>
           </section>

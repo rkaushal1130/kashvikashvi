@@ -127,6 +127,19 @@ body:has(.kashvimlm-portal-root) .footer,
   box-shadow: 0 2px 6px rgba(0, 80, 134, 0.25);
 }
 
+.admin-funding-portal-btn {
+  background: #eff6ff !important;
+  border-color: #2563eb !important;
+  color: #1d4ed8 !important;
+  font-weight: 700 !important;
+}
+
+.admin-funding-portal-btn:hover {
+  background: #2563eb !important;
+  border-color: #1d4ed8 !important;
+  color: #ffffff !important;
+}
+
 .kashvimlm-top-navbar-right {
   display: flex;
   align-items: center;

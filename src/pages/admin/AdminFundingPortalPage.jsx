@@ -220,6 +220,26 @@ export default function AdminFundingPortalPage() {
     return accounts.find((a) => a.id === selectedAccountId) || accounts[0] || null;
   }, [accounts, selectedAccountId]);
 
+  // Total Successfully Funded (Section 2.A)
+  const totalSuccessfullyFunded = useMemo(() => {
+    if (treasury?.totalFunded !== undefined && treasury.totalFunded !== null) {
+      return Number(treasury.totalFunded);
+    }
+    return transactions
+      .filter((t) => t.status === 'SUCCEEDED')
+      .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+  }, [treasury, transactions]);
+
+  // Total Payouts Disbursed (Section 2.A)
+  const totalPayouts = useMemo(() => {
+    if (treasury?.totalPayouts !== undefined && treasury.totalPayouts !== null) {
+      return Number(treasury.totalPayouts);
+    }
+    return treasuryLedger
+      .filter((t) => t.type === 'PAYOUT_DISBURSEMENT')
+      .reduce((sum, t) => sum + Math.abs(Number(t.amount || 0)), 0);
+  }, [treasury, treasuryLedger]);
+
   // Quick amount chip click
   const handleAmountChip = (val) => {
     setAmount(String(val));
@@ -296,7 +316,7 @@ export default function AdminFundingPortalPage() {
     });
   };
 
-  // Trigger Reconcile action with external provider
+  // Trigger Reconcile action with external provider (Section 2.F)
   const handleExecuteReconciliation = async () => {
     if (!reconModal.transaction) return;
     try {
@@ -311,7 +331,19 @@ export default function AdminFundingPortalPage() {
         reconciledResult: res,
       }));
 
-      setSuccessBanner(res.message || 'Reconciliation completed successfully.');
+      // If external status and internal status mismatch, flag for review (Section 2.F)
+      const isMismatch = Boolean(
+        res?.isDiscrepancy ||
+        res?.transaction?.status === 'RECONCILIATION_REQUIRED' ||
+        (res?.transaction?.status === 'FAILED' && reconModal.transaction.status === 'SUCCEEDED')
+      );
+
+      if (isMismatch) {
+        setErrorBanner(`⚠️ Reconciliation Discrepancy Flagged: External provider reports mismatch for transaction ${reconModal.transaction.id}. Flagged for administrative review. Financial records have not been silently altered.`);
+      } else {
+        setSuccessBanner(res.message || 'Reconciliation completed successfully.');
+      }
+
       await loadPortalData();
     } catch (err) {
       setErrorBanner(sanitizeErrorMessage(err));
@@ -354,7 +386,7 @@ export default function AdminFundingPortalPage() {
     }
   };
 
-  // Connect Account Form Submit
+  // Connect Account Form Submit (Section 2.B)
   const handleConnectAccount = async (e) => {
     e.preventDefault();
     if (!connectFormData.accountName || !connectFormData.maskedAccountNumber) {
@@ -387,6 +419,23 @@ export default function AdminFundingPortalPage() {
       setErrorBanner(sanitizeErrorMessage(err));
     } finally {
       setConnectingAccount(false);
+    }
+  };
+
+  // Disconnect Corporate Account (Section 2.B)
+  const handleDisconnectAccount = async (accId) => {
+    if (!accId) return;
+    if (!window.confirm('Are you sure you want to disconnect this corporate bank account? Automated banking rails will be disabled until reconnected.')) {
+      return;
+    }
+    try {
+      setErrorBanner(null);
+      await adminFundingApi.disconnectAccount(accId);
+      setSuccessBanner('Corporate bank account disconnected successfully.');
+      setSelectedAccountId('');
+      await loadPortalData();
+    } catch (err) {
+      setErrorBanner(sanitizeErrorMessage(err));
     }
   };
 
@@ -479,7 +528,7 @@ export default function AdminFundingPortalPage() {
             onClick={() => setConnectModal(true)}
           >
             <Building2 size={14} />
-            <span>Connect Account</span>
+            <span>Connect Bank Account</span>
           </button>
         </div>
       </div>
@@ -525,9 +574,9 @@ export default function AdminFundingPortalPage() {
         </div>
       )}
 
-      {/* 3. Top Grid: Treasury Balance Card + Connected Bank/Payment Account */}
+      {/* 3. Top Grid: Treasury Overview + Connected Bank Account (Section 2.A & 2.B) */}
       <div className="funding-top-grid">
-        {/* Card 1: Treasury Balance Card (Requirement 1) */}
+        {/* Card 1: Treasury Overview (Section 2.A) */}
         <div className="treasury-balance-card">
           <div className="treasury-card-header">
             <div className="treasury-title-wrap">
@@ -535,8 +584,8 @@ export default function AdminFundingPortalPage() {
                 <Wallet size={20} />
               </div>
               <div>
-                <h3 className="treasury-title">Platform Treasury Balance</h3>
-                <p className="treasury-subtitle">Master liquidity reserve backing platform payouts</p>
+                <h3 className="treasury-title">Platform Treasury Overview</h3>
+                <p className="treasury-subtitle">Master liquidity reserve backing platform commissions & payouts</p>
               </div>
             </div>
             <div className="solvency-badge">
@@ -559,10 +608,30 @@ export default function AdminFundingPortalPage() {
             <div className="treasury-balance-item">
               <span className="balance-item-label">
                 <Clock size={13} style={{ color: '#fbbf24' }} />
-                Pending Balance
+                Pending Funding
               </span>
               <span className="balance-item-value pending">
                 {formatCurrency(treasury?.pendingBalance, treasury?.currency)}
+              </span>
+            </div>
+
+            <div className="treasury-balance-item">
+              <span className="balance-item-label">
+                <ShieldCheck size={13} style={{ color: '#4ade80' }} />
+                Total Funded
+              </span>
+              <span className="balance-item-value funded">
+                {formatCurrency(totalSuccessfullyFunded, treasury?.currency)}
+              </span>
+            </div>
+
+            <div className="treasury-balance-item">
+              <span className="balance-item-label">
+                <CreditCard size={13} style={{ color: '#f472b6' }} />
+                Total Payouts
+              </span>
+              <span className="balance-item-value payouts">
+                {formatCurrency(totalPayouts, treasury?.currency)}
               </span>
             </div>
           </div>
@@ -579,7 +648,7 @@ export default function AdminFundingPortalPage() {
           </div>
         </div>
 
-        {/* Card 2: Connected Bank/Payment Account (Requirement 2) */}
+        {/* Card 2: Connected Bank Account (Section 2.B) */}
         <div className="connected-bank-card">
           <div className="bank-card-header">
             <div className="bank-header-title-wrap">
@@ -587,7 +656,7 @@ export default function AdminFundingPortalPage() {
                 <Building2 size={20} />
               </div>
               <div>
-                <h3 className="bank-card-title">Connected Corporate Account</h3>
+                <h3 className="bank-card-title">Corporate Bank Account</h3>
                 <p className="bank-card-subtitle">Regulated banking rail for treasury settlement</p>
               </div>
             </div>
@@ -630,16 +699,38 @@ export default function AdminFundingPortalPage() {
                 <span className="bank-detail-label">Connected Date</span>
                 <span className="bank-detail-val">{formatDate(activeAccount.connectedAt || activeAccount.createdAt)}</span>
               </div>
+
+              <div className="bank-detail-row" style={{ marginTop: '4px', paddingTop: '10px', borderTop: '1px solid #e2e8f0' }}>
+                <span className="bank-detail-label">Account Management</span>
+                <button
+                  type="button"
+                  className="admin-btn admin-btn-secondary admin-btn-sm"
+                  style={{ color: '#dc2626', borderColor: '#fecaca', background: '#fef2f2' }}
+                  onClick={() => handleDisconnectAccount(activeAccount.id)}
+                  title="Disconnect corporate bank account"
+                >
+                  <X size={13} />
+                  <span>Disconnect Account</span>
+                </button>
+              </div>
             </div>
           ) : (
-            <div style={{ textAlign: 'center', padding: '24px', color: '#64748b' }}>
-              <p>No corporate banking account connected yet.</p>
+            <div style={{ textAlign: 'center', padding: '20px 14px', color: '#64748b' }}>
+              <div style={{ background: '#fffbeb', border: '1px solid #fef3c7', padding: '12px', borderRadius: '8px', marginBottom: '14px', textAlign: 'left' }}>
+                <div style={{ fontWeight: 600, color: '#92400e', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                  <AlertTriangle size={15} />
+                  <span>Payment Provider Configuration Required</span>
+                </div>
+                <p style={{ fontSize: '12px', color: '#78350f', margin: 0, lineHeight: 1.45 }}>
+                  No corporate banking rail is active. Please connect your verified corporate account or ensure provider credentials (e.g. <code>RAZORPAYX_KEY_ID</code>, <code>RAZORPAYX_KEY_SECRET</code>) are configured.
+                </p>
+              </div>
               <button
                 className="admin-btn admin-btn-primary admin-btn-sm"
                 onClick={() => setConnectModal(true)}
-                style={{ marginTop: '10px' }}
               >
-                Connect Account Now
+                <Building2 size={13} />
+                <span>Connect Bank Account</span>
               </button>
             </div>
           )}
@@ -647,7 +738,7 @@ export default function AdminFundingPortalPage() {
           {/* Invariant Banner (Requirement 2: Never show sensitive banking credentials) */}
           <div className="security-invariant-banner">
             <Lock size={15} style={{ flexShrink: 0 }} />
-            <span>Zero-Trust Invariant: Sensitive banking credentials & API secrets are never stored or displayed.</span>
+            <span>Zero-Trust Invariant: Sensitive banking credentials, PINs & API secrets are never collected, stored, or displayed.</span>
           </div>
         </div>
       </div>
@@ -919,46 +1010,56 @@ export default function AdminFundingPortalPage() {
                 <thead>
                   <tr>
                     <th>Date</th>
-                    <th>Amount</th>
-                    <th>Status</th>
-                    <th>Provider</th>
                     <th>Transaction ID</th>
-                    <th>Admin</th>
+                    <th>Amount</th>
+                    <th>Currency</th>
+                    <th>Funding Account</th>
+                    <th>Status</th>
+                    <th>Initiated By</th>
                     <th style={{ textAlign: 'right' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {paginatedTransactions.length > 0 ? (
                     paginatedTransactions.map((tx) => (
-                      <tr key={tx.id}>
+                      <tr
+                        key={tx.id}
+                        style={{ cursor: 'pointer' }}
+                        onClick={() => handleOpenReconcile(tx)}
+                        title="Click to view transaction details, status history & provider reference"
+                      >
                         <td>{formatDate(tx.createdAt || tx.initiatedAt)}</td>
+                        <td className="code-font" style={{ fontSize: '12.5px', fontWeight: 600 }}>
+                          {tx.id}
+                        </td>
                         <td style={{ fontWeight: 700, color: '#0f172a' }}>
                           {formatCurrency(tx.amount, tx.currency)}
                         </td>
-                        <td>{renderStatusBadge(tx.status)}</td>
                         <td>
-                          <span className="admin-badge badge-approved" style={{ fontSize: '11px' }}>
-                            {tx.provider}
+                          <span className="admin-badge badge-neutral" style={{ fontSize: '11px' }}>
+                            {tx.currency || 'INR'}
                           </span>
                         </td>
-                        <td className="code-font" style={{ fontSize: '12.5px' }}>
-                          {tx.id}
+                        <td>
+                          <span style={{ fontSize: '12px', color: '#475569' }}>
+                            {tx.fundingAccount?.accountName || tx.fundingAccount?.maskedAccountNumber || tx.fundingAccountId || 'Corporate Treasury Float'}
+                          </span>
                         </td>
+                        <td>{renderStatusBadge(tx.status)}</td>
                         <td>
                           <span style={{ fontSize: '12.5px', color: '#334155' }}>
                             {tx.initiatedByAdmin?.fullName || tx.initiatedByAdmin?.email || 'Administrator'}
                           </span>
                         </td>
-                        <td style={{ textAlign: 'right' }}>
+                        <td style={{ textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
                           <div style={{ display: 'inline-flex', gap: '6px' }}>
-                            {/* Reconciliation / Details action (Requirement 7) */}
                             <button
                               className="admin-btn admin-btn-secondary admin-btn-sm"
                               onClick={() => handleOpenReconcile(tx)}
-                              title="Reconcile with external provider"
+                              title="View details & reconcile with external provider"
                             >
                               <ExternalLink size={13} />
-                              <span>Reconcile</span>
+                              <span>Details & Reconcile</span>
                             </button>
 
                             {/* Reverse action for Succeeded transactions */}
@@ -978,7 +1079,7 @@ export default function AdminFundingPortalPage() {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan={7} style={{ textAlign: 'center', padding: '36px', color: '#64748b' }}>
+                      <td colSpan={8} style={{ textAlign: 'center', padding: '36px', color: '#64748b' }}>
                         No funding transactions found matching your criteria.
                       </td>
                     </tr>

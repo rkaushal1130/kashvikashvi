@@ -22,6 +22,16 @@ router.patch(
   validate({ body: updateDistributorProfileSchema }),
   DistributorController.updateMe
 );
+router.put(
+  '/me',
+  authenticate,
+  validate({ body: updateDistributorProfileSchema }),
+  DistributorController.updateMe
+);
+router.get('/me/network', authenticate, DistributorController.getMeNetwork);
+router.get('/me/business-volume', authenticate, DistributorController.getMeBusinessVolume);
+router.get('/me/commissions', authenticate, DistributorController.getMeCommissions);
+router.get('/me/downline', authenticate, DistributorController.getMeDownline);
 
 // Distributor lookups by ID or code
 router.get('/:id', authenticate, DistributorController.getById);

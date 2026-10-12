@@ -35,6 +35,8 @@ export class AuthService {
     try {
       const defaultHash = await hashPassword('password123');
       const adminHash = await hashPassword('Admin@123');
+      const distHash = await hashPassword('Distributor@123');
+      const suspHash = await hashPassword('Suspended@123');
 
       const seedUsers = [
         {
@@ -64,6 +66,38 @@ export class AuthService {
             lifetimeGV: 50000,
             businessCenters: [
               { id: 'bc-1000', centerCode: 'KV-1000-BC1', centerNumber: 1, leftVolume: 10000, rightVolume: 12000 },
+            ],
+          },
+          wallet: { balance: 5000, pendingBalance: 0, currency: 'USD' },
+          createdAt: new Date().toISOString(),
+        },
+        {
+          id: 'usr-admin-example',
+          email: 'admin@example.com',
+          roleName: 'ADMIN',
+          role: 'ADMIN',
+          status: 'ACTIVE',
+          passwordHash: adminHash,
+          firstName: 'System',
+          lastName: 'Administrator',
+          name: 'System Administrator',
+          fullName: 'System Administrator',
+          displayName: 'System Administrator',
+          memberId: 'KV-1000',
+          distributorId: 'KV-1000',
+          phone: '+91 98765 00001',
+          distributorProfile: {
+            id: 'prof-admin-example',
+            distributorCode: 'KV-1000',
+            firstName: 'System',
+            lastName: 'Administrator',
+            displayName: 'System Administrator',
+            status: 'ACTIVE',
+            currentRank: { name: 'Master Director' },
+            lifetimePV: 10000,
+            lifetimeGV: 50000,
+            businessCenters: [
+              { id: 'bc-1000-ex', centerCode: 'KV-1000-BC1', centerNumber: 1, leftVolume: 10000, rightVolume: 12000 },
             ],
           },
           wallet: { balance: 5000, pendingBalance: 0, currency: 'USD' },
@@ -102,6 +136,109 @@ export class AuthService {
           wallet: { balance: 2500, pendingBalance: 0, currency: 'USD' },
           createdAt: new Date().toISOString(),
         },
+        {
+          id: 'usr-dist-seed',
+          email: 'distributor@example.com',
+          roleName: 'DISTRIBUTOR',
+          role: 'DISTRIBUTOR',
+          status: 'ACTIVE',
+          passwordHash: distHash,
+          firstName: 'Amit',
+          lastName: 'Patel',
+          name: 'Amit Patel',
+          fullName: 'Amit Patel',
+          displayName: 'Amit Patel',
+          memberId: 'KV-1002',
+          distributorId: 'KV-1002',
+          phone: '+91 98765 00002',
+          position: 'LEFT',
+          parentId: 'KV-1001',
+          sponsorId: 'KV-1001',
+          distributorProfile: {
+            id: 'prof-dist-seed',
+            distributorCode: 'KV-1002',
+            firstName: 'Amit',
+            lastName: 'Patel',
+            displayName: 'Amit Patel',
+            status: 'ACTIVE',
+            currentRank: { name: 'Silver Director' },
+            lifetimePV: 1200,
+            lifetimeGV: 8500,
+            sponsor: { distributorCode: 'KV-1001', firstName: 'Rahul', lastName: 'Kaushal' },
+            businessCenters: [
+              { id: 'bc-1002', centerCode: 'KV-1002-BC1', centerNumber: 1, leftVolume: 2400, rightVolume: 1950 },
+            ],
+          },
+          wallet: { balance: 1200, pendingBalance: 0, currency: 'USD' },
+          createdAt: new Date().toISOString(),
+        },
+        {
+          id: 'usr-rohit-seed',
+          email: 'rohit@example.com',
+          roleName: 'DISTRIBUTOR',
+          role: 'DISTRIBUTOR',
+          status: 'ACTIVE',
+          passwordHash: distHash,
+          firstName: 'Rohit',
+          lastName: 'Sharma',
+          name: 'Rohit Sharma',
+          fullName: 'Rohit Sharma',
+          displayName: 'Rohit Sharma',
+          memberId: 'KV-1003',
+          distributorId: 'KV-1003',
+          phone: '+91 98765 00003',
+          position: 'RIGHT',
+          parentId: 'KV-1001',
+          sponsorId: 'KV-1001',
+          distributorProfile: {
+            id: 'prof-rohit-seed',
+            distributorCode: 'KV-1003',
+            firstName: 'Rohit',
+            lastName: 'Sharma',
+            displayName: 'Rohit Sharma',
+            status: 'ACTIVE',
+            currentRank: { name: 'Gold Partner' },
+            lifetimePV: 1500,
+            lifetimeGV: 9500,
+            sponsor: { distributorCode: 'KV-1001', firstName: 'Rahul', lastName: 'Kaushal' },
+            businessCenters: [
+              { id: 'bc-1003', centerCode: 'KV-1003-BC1', centerNumber: 1, leftVolume: 2800, rightVolume: 2300 },
+            ],
+          },
+          wallet: { balance: 1500, pendingBalance: 0, currency: 'USD' },
+          createdAt: new Date().toISOString(),
+        },
+        {
+          id: 'usr-susp-seed',
+          email: 'suspended@example.com',
+          roleName: 'DISTRIBUTOR',
+          role: 'DISTRIBUTOR',
+          status: 'SUSPENDED',
+          passwordHash: suspHash,
+          firstName: 'Suspended',
+          lastName: 'User',
+          name: 'Suspended User',
+          fullName: 'Suspended User',
+          displayName: 'Suspended User',
+          memberId: 'KV-1008',
+          distributorId: 'KV-1008',
+          phone: '+91 98765 00008',
+          sponsorId: 'KV-1001',
+          distributorProfile: {
+            id: 'prof-susp-seed',
+            distributorCode: 'KV-1008',
+            firstName: 'Suspended',
+            lastName: 'User',
+            displayName: 'Suspended User',
+            status: 'SUSPENDED',
+            currentRank: { name: 'Business Center' },
+            lifetimePV: 0,
+            lifetimeGV: 0,
+            businessCenters: [],
+          },
+          wallet: { balance: 0, pendingBalance: 0, currency: 'USD' },
+          createdAt: new Date().toISOString(),
+        },
       ];
 
       for (const u of seedUsers) {
@@ -110,6 +247,20 @@ export class AuthService {
     } catch {
       // ignore
     }
+  }
+
+  public static async updateStatus(identifier: string, newStatus: string): Promise<any> {
+    await this.initSeedUsers();
+    const user = this.getInMemoryUser(identifier);
+    if (user) {
+      user.status = newStatus;
+      if (user.distributorProfile) {
+        user.distributorProfile.status = newStatus;
+      }
+      this.saveInMemoryUser(user);
+      return user;
+    }
+    return null;
   }
 
   /**

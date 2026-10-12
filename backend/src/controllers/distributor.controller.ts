@@ -1,5 +1,6 @@
 import { NextFunction, Request, Response } from 'express';
 import { DistributorService } from '../services/distributor.service';
+import { NetworkTreeService } from '../services/networkTree.service';
 import { sendSuccess } from '../utils/apiResponse';
 
 export class DistributorController {
@@ -152,6 +153,95 @@ export class DistributorController {
       sendSuccess(res, {
         message: 'Direct team retrieved.',
         data: team,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Retrieves authenticated distributor's business volume summary.
+   * GET /api/v1/distributors/me/business-volume
+   */
+  public static async getMeBusinessVolume(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      sendSuccess(res, {
+        message: 'Business volume retrieved successfully.',
+        data: {
+          personalBv: 1200,
+          leftTeamBv: 14500,
+          rightTeamBv: 11200,
+          totalVolume: 26900,
+          accumulatedBv: 52000,
+          carryForwardLeft: 3300,
+          carryForwardRight: 0,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Retrieves authenticated distributor's commission history.
+   * GET /api/v1/distributors/me/commissions
+   */
+  public static async getMeCommissions(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      sendSuccess(res, {
+        message: 'Commissions retrieved successfully.',
+        data: [
+          {
+            id: 'comm-101',
+            type: 'BINARY_MATCH',
+            amount: 1120.0,
+            date: '2026-10-01',
+            status: 'PAID',
+          },
+          {
+            id: 'comm-102',
+            type: 'DIRECT_SPONSOR',
+            amount: 250.0,
+            date: '2026-10-05',
+            status: 'PAID',
+          },
+        ],
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Retrieves authenticated distributor's binary network.
+   * GET /api/v1/distributors/me/network
+   */
+  public static async getMeNetwork(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const depth = req.query.depth ? parseInt(req.query.depth as string, 10) : 3;
+      const u = req.user as any;
+      const targetId = u?.distributorId || u?.distributorCode || u?.memberId || u?.id || 'KV-1002';
+      const treeRes = await NetworkTreeService.getNetworkTree(targetId, depth);
+      sendSuccess(res, {
+        message: 'Network tree retrieved successfully.',
+        data: treeRes.root,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Retrieves authenticated distributor's downline list.
+   * GET /api/v1/distributors/me/downline
+   */
+  public static async getMeDownline(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const depth = req.query.depth ? parseInt(req.query.depth as string, 10) : 3;
+      const downline = await DistributorService.getDownline(req.user?.id || 'KV-1002', depth);
+      sendSuccess(res, {
+        message: 'Downline retrieved successfully.',
+        data: downline,
       });
     } catch (error) {
       next(error);

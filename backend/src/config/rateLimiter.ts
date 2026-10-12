@@ -1,9 +1,9 @@
 import rateLimit from 'express-rate-limit';
-import { isTest } from './env';
+import { isTest, isDev } from './env';
 
 export const globalRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: isTest ? 10000 : 100,
+  max: isTest || isDev ? 10000 : 100,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   message: {
@@ -11,7 +11,7 @@ export const globalRateLimiter = rateLimit({
     message: 'Too many requests from this IP, please try again after 15 minutes',
     code: 'RATE_LIMIT_EXCEEDED',
   },
-  skip: () => isTest,
+  skip: () => isTest || isDev,
 });
 
 export const loginRateLimiter = rateLimit({

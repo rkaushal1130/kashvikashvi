@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { MlmTreeController } from '../controllers/mlmTree.controller';
-import { authenticate } from '../middleware/auth';
+import { authenticate, optionalAuth } from '../middleware/auth';
 import { authorizeRoles } from '../middleware/role';
 import { validate } from '../middleware/validate';
 import { getTreeQuerySchema, nextSlotQuerySchema, placeDistributorSchema } from '../validators/mlmTree.validators';
@@ -8,7 +8,7 @@ import { getTreeQuerySchema, nextSlotQuerySchema, placeDistributorSchema } from 
 const router = Router();
 
 // Place a distributor in the binary tree (Authentication required to prevent unauthorized modification)
-router.post('/place', authenticate, validate({ body: placeDistributorSchema }), MlmTreeController.place);
+router.post('/place', authenticate, validate({ body: placeDistributorSchema, statusCode: 400 }), MlmTreeController.place);
 
 // Retrieve visual binary tree by Node ID or Business Center ID
 router.get('/binary/:rootId', validate({ query: getTreeQuerySchema }), MlmTreeController.getBinaryTree);
@@ -35,6 +35,25 @@ router.put('/audit-logs/:id', authenticate, TreeAuditController.blockAuditMutati
 router.patch('/audit-logs/:id', authenticate, TreeAuditController.blockAuditMutation);
 router.delete('/audit-logs/:id', authenticate, TreeAuditController.blockAuditMutation);
 router.delete('/audit-logs', authenticate, TreeAuditController.blockAuditMutation);
+
+// Binary children and direct connections
+router.get('/children/:distributorId', optionalAuth, MlmTreeController.getChildren);
+router.get('/:distributorId/children', optionalAuth, MlmTreeController.getChildren);
+
+// Downline, stats, path, hierarchy
+router.get('/downline/:distributorId/left', optionalAuth, MlmTreeController.getLeftDownline);
+router.get('/downline/:distributorId/right', optionalAuth, MlmTreeController.getRightDownline);
+router.get('/downline/:distributorId', optionalAuth, MlmTreeController.getDownline);
+router.get('/stats/:distributorId', optionalAuth, MlmTreeController.getStats);
+router.get('/path/:distributorId', optionalAuth, MlmTreeController.getPath);
+router.get('/parent/:distributorId', optionalAuth, MlmTreeController.getParent);
+router.get('/sponsor/:distributorId', optionalAuth, MlmTreeController.getSponsor);
+
+// Tree operations
+router.post('/move', authenticate, MlmTreeController.moveDistributor);
+
+// Complete tree endpoint by distributor ID
+router.get('/:distributorId', optionalAuth, MlmTreeController.getCompleteTree);
 
 export const mlmTreeRouter = router;
 

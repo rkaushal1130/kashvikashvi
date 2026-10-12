@@ -34,7 +34,7 @@ export function AdminLayout({ children }) {
 
   const navItems = [
     { label: 'Admin Dashboard', path: '/admin/dashboard', icon: LayoutDashboard },
-    { label: 'Funding Portal', path: '/admin/funding', icon: Landmark },
+    { label: 'Funding Portal', path: '/admin/funding-portal', icon: Landmark },
     { label: 'Distributor Directory', path: '/admin/distributors', icon: Users },
     { label: 'Network Tree', path: '/admin/network', icon: Network },
     { label: 'Business Volume', path: '/admin/business-volume', icon: TrendingUp },
@@ -112,6 +112,8 @@ export function AdminLayout({ children }) {
                 const isActive =
                   location.pathname === item.path ||
                   (item.path === '/admin/dashboard' && location.pathname === '/admin') ||
+                  (item.path === '/admin/funding-portal' &&
+                    (location.pathname === '/admin/funding-portal' || location.pathname === '/admin/funding')) ||
                   (item.path === '/admin/network' &&
                     (location.pathname === '/admin/network-tree' ||
                       location.pathname.startsWith('/admin/network')));
