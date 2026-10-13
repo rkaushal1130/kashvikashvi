@@ -19,11 +19,27 @@ const prodLogs: Prisma.LogDefinition[] = [
   { emit: 'stdout', level: 'warn' },
 ];
 
-export const prisma =
-  global.prisma ||
-  new PrismaClient({
-    log: isDev ? devLogs : prodLogs,
-  });
+function createPrismaClient(): PrismaClient {
+  try {
+    return new PrismaClient({
+      log: isDev ? devLogs : prodLogs,
+    });
+  } catch (error) {
+    logger.error({ error }, 'Failed to initialize PrismaClient');
+    return new Proxy({} as PrismaClient, {
+      get: (_target, prop) => {
+        if (prop === '$connect' || prop === '$disconnect') {
+          return async () => {};
+        }
+        return () => {
+          throw new Error('Database is not initialized. Please ensure DATABASE_URL is configured in environment variables.');
+        };
+      },
+    });
+  }
+}
+
+export const prisma = global.prisma || createPrismaClient();
 
 if (!global.prisma) {
   global.prisma = prisma;

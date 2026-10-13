@@ -192,6 +192,26 @@ var init_logger = __esm({
 });
 
 // backend/src/config/database.ts
+function createPrismaClient() {
+  try {
+    return new import_client2.PrismaClient({
+      log: isDev ? devLogs : prodLogs
+    });
+  } catch (error) {
+    logger.error({ error }, "Failed to initialize PrismaClient");
+    return new Proxy({}, {
+      get: (_target, prop) => {
+        if (prop === "$connect" || prop === "$disconnect") {
+          return async () => {
+          };
+        }
+        return () => {
+          throw new Error("Database is not initialized. Please ensure DATABASE_URL is configured in environment variables.");
+        };
+      }
+    });
+  }
+}
 var import_client2, devLogs, prodLogs, prisma;
 var init_database = __esm({
   "backend/src/config/database.ts"() {
@@ -209,9 +229,7 @@ var init_database = __esm({
       { emit: "stdout", level: "error" },
       { emit: "stdout", level: "warn" }
     ];
-    prisma = global.prisma || new import_client2.PrismaClient({
-      log: isDev ? devLogs : prodLogs
-    });
+    prisma = global.prisma || createPrismaClient();
     if (!global.prisma) {
       global.prisma = prisma;
     }
