@@ -3,11 +3,15 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "workspaces": [
+    "backend"
+  ],
   "scripts": {
     "dev": "vite",
     "server": "npm run dev --prefix server",
     "server:dev": "npm run dev --prefix server",
-    "build": "vite build",
+    "build": "npm run prisma:generate --prefix backend && vite build",
+    "vercel-build": "npm install --prefix backend && npm run prisma:generate --prefix backend && vite build",
     "lint": "oxlint",
     "preview": "vite preview",
     "test:frontend": "node --test src/tests/frontend.test.js",

@@ -25,8 +25,11 @@ export const prisma =
     log: isDev ? devLogs : prodLogs,
   });
 
-if (isDev) {
+if (!global.prisma) {
   global.prisma = prisma;
+}
+
+if (isDev) {
 
   // Query event logging in development
   (prisma as any).$on?.('query', (e: any) => {

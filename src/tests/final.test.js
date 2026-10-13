@@ -1,8 +1,9 @@
 import { test, describe, before } from 'node:test';
 import assert from 'node:assert/strict';
 
-const API_BASE_URL = 'http://localhost:5000/api';
-const TREE_API_URL = 'http://localhost:5000/api/v1/tree';
+const PORT = process.env.PORT || 5001;
+const API_BASE_URL = process.env.VITE_API_URL || `http://localhost:${PORT}/api`;
+const TREE_API_URL = `http://localhost:${PORT}/api/v1/tree`;
 
 describe('PROMPT 10 — FINAL VERIFICATION & PRODUCTION READINESS TEST SUITE (15 CRITICAL SCENARIOS)', () => {
   let distributorToken = '';
@@ -12,8 +13,8 @@ describe('PROMPT 10 — FINAL VERIFICATION & PRODUCTION READINESS TEST SUITE (15
 
   before(async () => {
     // 1. Verify backend server is healthy
-    const healthRes = await fetch('http://localhost:5000/health');
-    assert.equal(healthRes.status, 200, 'Backend server must be online on port 5000');
+    const healthRes = await fetch(`http://localhost:${PORT}/api/v1/health`);
+    assert.equal(healthRes.status, 200, `Backend server must be online on port ${PORT}`);
 
     // 2. Login as primary distributor (KV-1002 / distributor@example.com)
     const distRes = await fetch(`${API_BASE_URL}/auth/login`, {

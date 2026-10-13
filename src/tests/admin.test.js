@@ -1,7 +1,8 @@
 import { test, describe, before } from 'node:test';
 import assert from 'node:assert/strict';
 
-const API_BASE_URL = 'http://localhost:5000/api';
+const PORT = process.env.PORT || 5001;
+const API_BASE_URL = process.env.VITE_API_URL || `http://localhost:${PORT}/api`;
 
 describe('PROMPT 8 — ADMIN PANEL & MLM SYSTEM MANAGEMENT TEST SUITE (20 TESTS)', () => {
   let adminToken = null;
@@ -11,8 +12,8 @@ describe('PROMPT 8 — ADMIN PANEL & MLM SYSTEM MANAGEMENT TEST SUITE (20 TESTS)
   before(async () => {
     // 1. Ensure backend is running
     try {
-      const healthRes = await fetch('http://localhost:5000/health');
-      assert.equal(healthRes.status, 200, 'Backend server must be online on port 5000');
+      const healthRes = await fetch(`http://localhost:${PORT}/api/v1/health`);
+      assert.equal(healthRes.status, 200, `Backend server must be online on port ${PORT}`);
     } catch (e) {
       assert.fail(`Backend server unreachable: ${e.message}`);
     }

@@ -1,7 +1,8 @@
 import { test, describe, before } from 'node:test';
 import assert from 'node:assert/strict';
 
-const API_BASE_URL = 'http://localhost:5000/api';
+const PORT = process.env.PORT || 5001;
+const API_BASE_URL = process.env.VITE_API_URL || `http://localhost:${PORT}/api`;
 
 describe('PROMPT 7 — FRONTEND & MLM BINARY NETWORK TREE TEST SUITE (17 TESTS)', () => {
   let distributorToken = null;
@@ -10,8 +11,8 @@ describe('PROMPT 7 — FRONTEND & MLM BINARY NETWORK TREE TEST SUITE (17 TESTS)'
   before(async () => {
     // Check backend health before test execution
     try {
-      const healthRes = await fetch('http://localhost:5000/health');
-      assert.equal(healthRes.status, 200, 'Backend server must be online on port 5000');
+      const healthRes = await fetch(`http://localhost:${PORT}/api/v1/health`);
+      assert.equal(healthRes.status, 200, `Backend server must be online on port ${PORT}`);
     } catch (e) {
       assert.fail(`Backend server unreachable: ${e.message}`);
     }
