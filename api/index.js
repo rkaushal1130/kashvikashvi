@@ -1,5 +1,10 @@
+"use strict";
+var __create = Object.create;
 var __defProp = Object.defineProperty;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getProtoOf = Object.getPrototypeOf;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
 var __esm = (fn, res, err) => function __init() {
   if (err) throw err[0];
   try {
@@ -12,38 +17,55 @@ var __export = (target, all) => {
   for (var name in all)
     __defProp(target, name, { get: all[name], enumerable: true });
 };
+var __copyProps = (to, from, except, desc) => {
+  if (from && typeof from === "object" || typeof from === "function") {
+    for (let key of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(to, key) && key !== except)
+        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+  }
+  return to;
+};
+var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+  // If the importer is in node compatibility mode or this is not an ESM
+  // file that has been converted to a CommonJS file using a Babel-
+  // compatible transform (i.e. "__esModule" has not been set), then set
+  // "default" to the CommonJS "module.exports" for node compatibility.
+  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+  mod
+));
+var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
 // backend/src/config/env.ts
-import dotenv from "dotenv";
-import path from "path";
-import { z } from "zod";
-var nodeEnv, envSchema, parseEnv, env, isDev, isProd, isTest;
+var import_dotenv, import_path, import_zod, nodeEnv, envSchema, parseEnv, env, isDev, isProd, isTest;
 var init_env = __esm({
   "backend/src/config/env.ts"() {
     "use strict";
+    import_dotenv = __toESM(require("dotenv"));
+    import_path = __toESM(require("path"));
+    import_zod = require("zod");
     nodeEnv = process.env.NODE_ENV || "development";
     if (nodeEnv === "test") {
-      dotenv.config({ path: path.resolve(process.cwd(), ".env.test") });
+      import_dotenv.default.config({ path: import_path.default.resolve(process.cwd(), ".env.test") });
     }
-    dotenv.config();
-    envSchema = z.object({
-      PORT: z.coerce.number().int().positive().default(5e3),
-      NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
-      FRONTEND_URL: z.string().default("http://localhost:5173"),
-      DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
-      JWT_ACCESS_SECRET: z.string().min(16, "JWT_ACCESS_SECRET must be at least 16 characters"),
-      JWT_REFRESH_SECRET: z.string().min(16, "JWT_REFRESH_SECRET must be at least 16 characters"),
-      JWT_ACCESS_EXPIRES_IN: z.string().default("15m"),
-      JWT_REFRESH_EXPIRES_IN: z.string().default("7d"),
-      FUNDING_PROVIDER: z.string().default("MOCK"),
-      FUNDING_PROVIDER_KEY_ID: z.string().optional(),
-      FUNDING_PROVIDER_KEY_SECRET: z.string().optional(),
-      FUNDING_PROVIDER_WEBHOOK_SECRET: z.string().optional(),
-      FUNDING_PROVIDER_ACCOUNT_NUMBER: z.string().optional(),
-      RAZORPAYX_KEY_ID: z.string().optional(),
-      RAZORPAYX_KEY_SECRET: z.string().optional(),
-      RAZORPAYX_WEBHOOK_SECRET: z.string().optional(),
-      RAZORPAYX_ACCOUNT_NUMBER: z.string().optional()
+    import_dotenv.default.config();
+    envSchema = import_zod.z.object({
+      PORT: import_zod.z.coerce.number().int().positive().default(5e3),
+      NODE_ENV: import_zod.z.enum(["development", "production", "test"]).default("development"),
+      FRONTEND_URL: import_zod.z.string().default("http://localhost:5173"),
+      DATABASE_URL: import_zod.z.string().min(1, "DATABASE_URL is required"),
+      JWT_ACCESS_SECRET: import_zod.z.string().min(16, "JWT_ACCESS_SECRET must be at least 16 characters"),
+      JWT_REFRESH_SECRET: import_zod.z.string().min(16, "JWT_REFRESH_SECRET must be at least 16 characters"),
+      JWT_ACCESS_EXPIRES_IN: import_zod.z.string().default("15m"),
+      JWT_REFRESH_EXPIRES_IN: import_zod.z.string().default("7d"),
+      FUNDING_PROVIDER: import_zod.z.string().default("MOCK"),
+      FUNDING_PROVIDER_KEY_ID: import_zod.z.string().optional(),
+      FUNDING_PROVIDER_KEY_SECRET: import_zod.z.string().optional(),
+      FUNDING_PROVIDER_WEBHOOK_SECRET: import_zod.z.string().optional(),
+      FUNDING_PROVIDER_ACCOUNT_NUMBER: import_zod.z.string().optional(),
+      RAZORPAYX_KEY_ID: import_zod.z.string().optional(),
+      RAZORPAYX_KEY_SECRET: import_zod.z.string().optional(),
+      RAZORPAYX_WEBHOOK_SECRET: import_zod.z.string().optional(),
+      RAZORPAYX_ACCOUNT_NUMBER: import_zod.z.string().optional()
     });
     parseEnv = () => {
       const result = envSchema.safeParse(process.env);
@@ -145,11 +167,11 @@ var init_appError = __esm({
 });
 
 // backend/src/config/logger.ts
-import pino from "pino";
-var loggerConfig, logger;
+var import_pino, loggerConfig, logger;
 var init_logger = __esm({
   "backend/src/config/logger.ts"() {
     "use strict";
+    import_pino = __toESM(require("pino"));
     init_env();
     loggerConfig = {
       level: isTest ? "silent" : isDev ? "debug" : "info",
@@ -163,18 +185,18 @@ var init_logger = __esm({
           }
         }
       },
-      timestamp: pino.stdTimeFunctions.isoTime
+      timestamp: import_pino.default.stdTimeFunctions.isoTime
     };
-    logger = pino(loggerConfig);
+    logger = (0, import_pino.default)(loggerConfig);
   }
 });
 
 // backend/src/config/database.ts
-import { PrismaClient } from "@prisma/client";
-var devLogs, prodLogs, prisma;
+var import_client2, devLogs, prodLogs, prisma;
 var init_database = __esm({
   "backend/src/config/database.ts"() {
     "use strict";
+    import_client2 = require("@prisma/client");
     init_env();
     init_logger();
     devLogs = [
@@ -187,7 +209,7 @@ var init_database = __esm({
       { emit: "stdout", level: "error" },
       { emit: "stdout", level: "warn" }
     ];
-    prisma = global.prisma || new PrismaClient({
+    prisma = global.prisma || new import_client2.PrismaClient({
       log: isDev ? devLogs : prodLogs
     });
     if (!global.prisma) {
@@ -1235,32 +1257,32 @@ var init_treeAudit_service = __esm({
 });
 
 // backend/src/utils/safeDecimal.ts
-import { Prisma as Prisma10 } from "@prisma/client";
-var SafeDecimal;
+var import_client10, SafeDecimal;
 var init_safeDecimal = __esm({
   "backend/src/utils/safeDecimal.ts"() {
     "use strict";
+    import_client10 = require("@prisma/client");
     SafeDecimal = class _SafeDecimal {
       /**
        * Converts any number, string, or Prisma.Decimal into a Prisma.Decimal instance
        */
       static toDecimal(val) {
-        if (val instanceof Prisma10.Decimal) {
+        if (val instanceof import_client10.Prisma.Decimal) {
           return val;
         }
         if (typeof val === "number") {
-          if (isNaN(val)) return new Prisma10.Decimal("0.00");
-          return new Prisma10.Decimal(val.toString());
+          if (isNaN(val)) return new import_client10.Prisma.Decimal("0.00");
+          return new import_client10.Prisma.Decimal(val.toString());
         }
         if (!val || typeof val !== "string") {
-          return new Prisma10.Decimal("0.00");
+          return new import_client10.Prisma.Decimal("0.00");
         }
         const trimmed = val.trim();
-        if (!trimmed) return new Prisma10.Decimal("0.00");
+        if (!trimmed) return new import_client10.Prisma.Decimal("0.00");
         try {
-          return new Prisma10.Decimal(trimmed);
+          return new import_client10.Prisma.Decimal(trimmed);
         } catch {
-          return new Prisma10.Decimal("0.00");
+          return new import_client10.Prisma.Decimal("0.00");
         }
       }
       /**
@@ -1268,13 +1290,13 @@ var init_safeDecimal = __esm({
        * Returns a standard JavaScript number.
        */
       static round(val, decimals = 2) {
-        return _SafeDecimal.toDecimal(val).toDecimalPlaces(decimals, Prisma10.Decimal.ROUND_HALF_UP).toNumber();
+        return _SafeDecimal.toDecimal(val).toDecimalPlaces(decimals, import_client10.Prisma.Decimal.ROUND_HALF_UP).toNumber();
       }
       /**
        * Round to specified decimal places returning a Prisma.Decimal instance.
        */
       static roundDecimal(val, decimals = 2) {
-        return _SafeDecimal.toDecimal(val).toDecimalPlaces(decimals, Prisma10.Decimal.ROUND_HALF_UP);
+        return _SafeDecimal.toDecimal(val).toDecimalPlaces(decimals, import_client10.Prisma.Decimal.ROUND_HALF_UP);
       }
       /**
        * Exact Safe Addition: a + b
@@ -1282,7 +1304,7 @@ var init_safeDecimal = __esm({
       static add(a, b, decimals = 2) {
         const decA = _SafeDecimal.toDecimal(a);
         const decB = _SafeDecimal.toDecimal(b);
-        return decA.add(decB).toDecimalPlaces(decimals, Prisma10.Decimal.ROUND_HALF_UP);
+        return decA.add(decB).toDecimalPlaces(decimals, import_client10.Prisma.Decimal.ROUND_HALF_UP);
       }
       /**
        * Exact Safe Subtraction: a - b
@@ -1290,7 +1312,7 @@ var init_safeDecimal = __esm({
       static sub(a, b, decimals = 2) {
         const decA = _SafeDecimal.toDecimal(a);
         const decB = _SafeDecimal.toDecimal(b);
-        return decA.sub(decB).toDecimalPlaces(decimals, Prisma10.Decimal.ROUND_HALF_UP);
+        return decA.sub(decB).toDecimalPlaces(decimals, import_client10.Prisma.Decimal.ROUND_HALF_UP);
       }
       /**
        * Exact Safe Multiplication: a * b
@@ -1298,7 +1320,7 @@ var init_safeDecimal = __esm({
       static mul(a, b, decimals = 2) {
         const decA = _SafeDecimal.toDecimal(a);
         const decB = _SafeDecimal.toDecimal(b);
-        return decA.mul(decB).toDecimalPlaces(decimals, Prisma10.Decimal.ROUND_HALF_UP);
+        return decA.mul(decB).toDecimalPlaces(decimals, import_client10.Prisma.Decimal.ROUND_HALF_UP);
       }
       /**
        * Exact Safe Division: a / b
@@ -1309,7 +1331,7 @@ var init_safeDecimal = __esm({
         if (decB.isZero()) {
           throw new Error("SafeDecimal: Division by zero");
         }
-        return decA.div(decB).toDecimalPlaces(decimals, Prisma10.Decimal.ROUND_HALF_UP);
+        return decA.div(decB).toDecimalPlaces(decimals, import_client10.Prisma.Decimal.ROUND_HALF_UP);
       }
       /**
        * Calculates commission amount from order BV and rate percentage:
@@ -1324,9 +1346,9 @@ var init_safeDecimal = __esm({
         const bv = _SafeDecimal.toDecimal(orderBV);
         const rate = _SafeDecimal.toDecimal(ratePercentage);
         if (bv.lessThanOrEqualTo(0) || rate.lessThanOrEqualTo(0)) {
-          return new Prisma10.Decimal("0.00");
+          return new import_client10.Prisma.Decimal("0.00");
         }
-        return bv.mul(rate).div(new Prisma10.Decimal(100)).toDecimalPlaces(decimals, Prisma10.Decimal.ROUND_HALF_UP);
+        return bv.mul(rate).div(new import_client10.Prisma.Decimal(100)).toDecimalPlaces(decimals, import_client10.Prisma.Decimal.ROUND_HALF_UP);
       }
       /**
        * Minimum of two decimal values
@@ -1372,11 +1394,11 @@ var init_commissionConfig_types = __esm({
 });
 
 // backend/src/services/commissionConfig.service.ts
-import { Prisma as Prisma11 } from "@prisma/client";
-var CommissionConfigService;
+var import_client11, CommissionConfigService;
 var init_commissionConfig_service = __esm({
   "backend/src/services/commissionConfig.service.ts"() {
     "use strict";
+    import_client11 = require("@prisma/client");
     init_database();
     init_logger();
     init_appError();
@@ -1444,7 +1466,7 @@ var init_commissionConfig_service = __esm({
                   updatedAt: rec.updatedAt
                 };
               }
-              const dec = new Prisma11.Decimal(def.percentage);
+              const dec = new import_client11.Prisma.Decimal(def.percentage);
               return {
                 levelNumber: def.levelNumber,
                 percentage: dec,
@@ -1462,7 +1484,7 @@ var init_commissionConfig_service = __esm({
           logger.warn({ err: err?.message }, "Failed to load commission levels from database; utilizing canonical defaults");
         }
         const defaultRates = CANONICAL_DEFAULT_RATES.map((def) => {
-          const dec = new Prisma11.Decimal(def.percentage);
+          const dec = new import_client11.Prisma.Decimal(def.percentage);
           return {
             levelNumber: def.levelNumber,
             percentage: dec,
@@ -1493,7 +1515,7 @@ var init_commissionConfig_service = __esm({
           return found;
         }
         const canonical = CANONICAL_DEFAULT_RATES.find((d) => d.levelNumber === levelNumber);
-        const dec = new Prisma11.Decimal(canonical ? canonical.percentage : "0.00");
+        const dec = new import_client11.Prisma.Decimal(canonical ? canonical.percentage : "0.00");
         return {
           levelNumber,
           percentage: dec,
@@ -1523,14 +1545,14 @@ var init_commissionConfig_service = __esm({
         for (const r of records) {
           levelsMap.set(r.levelNumber, r);
         }
-        let totalPct = new Prisma11.Decimal("0.00");
+        let totalPct = new import_client11.Prisma.Decimal("0.00");
         const checkedLevels = [];
         for (let lvl = 1; lvl <= 5; lvl++) {
           const rec = levelsMap.get(lvl);
           if (!rec) {
             errors.push(`Missing configuration for Commission Level ${lvl}`);
             const canonical = CANONICAL_DEFAULT_RATES.find((d) => d.levelNumber === lvl);
-            const dec2 = new Prisma11.Decimal(canonical ? canonical.percentage : "0.00");
+            const dec2 = new import_client11.Prisma.Decimal(canonical ? canonical.percentage : "0.00");
             checkedLevels.push({
               levelNumber: lvl,
               percentage: dec2,
@@ -1626,7 +1648,7 @@ var init_commissionConfig_service = __esm({
         const db = client || prisma;
         const results = [];
         for (const def of CANONICAL_DEFAULT_RATES) {
-          const dec = new Prisma11.Decimal(def.percentage);
+          const dec = new import_client11.Prisma.Decimal(def.percentage);
           const record = await db.commissionLevel.upsert({
             where: { levelNumber: def.levelNumber },
             update: {
@@ -1657,11 +1679,11 @@ var init_commissionConfig_service = __esm({
 });
 
 // backend/src/services/authoritativeBV.service.ts
-import { Prisma as Prisma12 } from "@prisma/client";
-var AuthoritativeBVService;
+var import_client12, AuthoritativeBVService;
 var init_authoritativeBV_service = __esm({
   "backend/src/services/authoritativeBV.service.ts"() {
     "use strict";
+    import_client12 = require("@prisma/client");
     init_database();
     init_logger();
     init_appError();
@@ -1675,8 +1697,8 @@ var init_authoritativeBV_service = __esm({
       static async calculateOrderCommissionableBV(items, client, isDistributor = true) {
         const db = client || prisma;
         const validatedItems = [];
-        let subtotal = new Prisma12.Decimal("0.00");
-        let totalBV = new Prisma12.Decimal("0.00");
+        let subtotal = new import_client12.Prisma.Decimal("0.00");
+        let totalBV = new import_client12.Prisma.Decimal("0.00");
         for (const item of items) {
           const product = await db.product.findUnique({
             where: { id: item.productId },
@@ -2731,11 +2753,11 @@ var init_commissionCalculation_types = __esm({
 });
 
 // backend/src/services/commissionCalculation.service.ts
-import { Prisma as Prisma13 } from "@prisma/client";
-var CommissionCalculationService;
+var import_client13, CommissionCalculationService;
 var init_commissionCalculation_service = __esm({
   "backend/src/services/commissionCalculation.service.ts"() {
     "use strict";
+    import_client13 = require("@prisma/client");
     init_database();
     init_logger();
     init_appError();
@@ -2762,7 +2784,7 @@ var init_commissionCalculation_service = __esm({
         if (bv.lessThanOrEqualTo(0) || pct.lessThanOrEqualTo(0)) {
           return 0;
         }
-        const calculatedAmount = bv.mul(pct).div(new Prisma13.Decimal(100));
+        const calculatedAmount = bv.mul(pct).div(new import_client13.Prisma.Decimal(100));
         return SafeDecimal.round(calculatedAmount, 2);
       }
       /**
@@ -3142,10 +3164,10 @@ var init_commissionCalculation_service = __esm({
                 distributorId: item.recipientId,
                 sourceDistributorId: breakdown?.memberId || order.distributorId || item.recipientId,
                 level: item.level,
-                ratePercentage: new Prisma13.Decimal(item.percentage),
-                orderBV: new Prisma13.Decimal(item.businessVolume),
-                commissionableBusinessVolume: new Prisma13.Decimal(item.businessVolume),
-                commissionAmount: new Prisma13.Decimal(item.commissionAmount),
+                ratePercentage: new import_client13.Prisma.Decimal(item.percentage),
+                orderBV: new import_client13.Prisma.Decimal(item.businessVolume),
+                commissionableBusinessVolume: new import_client13.Prisma.Decimal(item.businessVolume),
+                commissionAmount: new import_client13.Prisma.Decimal(item.commissionAmount),
                 status: "CALCULATED",
                 currency: "INR",
                 calculationDetails: {
@@ -3174,11 +3196,11 @@ var init_commissionCalculation_service = __esm({
 });
 
 // backend/src/services/matching.service.ts
-import { Prisma as Prisma15 } from "@prisma/client";
-var MATCHING_ENGINE_CONFIG, MatchingService;
+var import_client15, MATCHING_ENGINE_CONFIG, MatchingService;
 var init_matching_service = __esm({
   "backend/src/services/matching.service.ts"() {
     "use strict";
+    import_client15 = require("@prisma/client");
     init_database();
     init_logger();
     init_appError();
@@ -3665,8 +3687,8 @@ var init_matching_service = __esm({
             createdTx = await client.matchingTransaction?.create({
               data: {
                 memberId: cleanMemberId,
-                amount: new Prisma15.Decimal(numAmount),
-                balanceAfter: new Prisma15.Decimal(balanceAfter),
+                amount: new import_client15.Prisma.Decimal(numAmount),
+                balanceAfter: new import_client15.Prisma.Decimal(balanceAfter),
                 type,
                 source: cleanSource,
                 referenceId: cleanRefId,
@@ -3707,7 +3729,7 @@ var init_matching_service = __esm({
             await client.distributorProfile?.update({
               where: { id: cleanMemberId },
               data: {
-                currentMatching: new Prisma15.Decimal(balanceAfter)
+                currentMatching: new import_client15.Prisma.Decimal(balanceAfter)
               }
             });
           } catch {
@@ -3799,7 +3821,7 @@ var init_matching_service = __esm({
               await client.distributorProfile?.update({
                 where: { id: distId },
                 data: {
-                  currentMatching: new Prisma15.Decimal(recalculatedMatching)
+                  currentMatching: new import_client15.Prisma.Decimal(recalculatedMatching)
                 }
               });
               updated = true;
@@ -3931,9 +3953,9 @@ var init_matching_service = __esm({
                   sourceType,
                   sourceId: orderId || `PROP-${Date.now()}-${depthCount}`,
                   orderId: orderId || null,
-                  bv: new Prisma15.Decimal(numAmount),
-                  amount: new Prisma15.Decimal(numAmount),
-                  balanceAfter: new Prisma15.Decimal(currentLeg === "LEFT" ? newLeft : newRight),
+                  bv: new import_client15.Prisma.Decimal(numAmount),
+                  amount: new import_client15.Prisma.Decimal(numAmount),
+                  balanceAfter: new import_client15.Prisma.Decimal(currentLeg === "LEFT" ? newLeft : newRight),
                   position: currentLeg,
                   sourceDistributorId: sourceMember.id,
                   type: "ORDER_ACCRUAL",
@@ -4090,11 +4112,11 @@ __export(level_service_exports, {
   CANONICAL_LEVELS: () => CANONICAL_LEVELS,
   LevelService: () => LevelService
 });
-import { Prisma as Prisma16 } from "@prisma/client";
-var CANONICAL_LEVELS, LevelService;
+var import_client16, CANONICAL_LEVELS, LevelService;
 var init_level_service = __esm({
   "backend/src/services/level.service.ts"() {
     "use strict";
+    import_client16 = require("@prisma/client");
     init_database();
     init_logger();
     init_appError();
@@ -4187,20 +4209,20 @@ var init_level_service = __esm({
               update: {
                 name: lvl.name,
                 order: lvl.order,
-                requiredBB: new Prisma16.Decimal(lvl.requiredBB),
-                requiredLeftMatching: new Prisma16.Decimal(lvl.requiredLeftMatching),
-                requiredRightMatching: new Prisma16.Decimal(lvl.requiredRightMatching),
-                requiredMatching: new Prisma16.Decimal(lvl.requiredMatching ?? lvl.requiredLeftMatching),
+                requiredBB: new import_client16.Prisma.Decimal(lvl.requiredBB),
+                requiredLeftMatching: new import_client16.Prisma.Decimal(lvl.requiredLeftMatching),
+                requiredRightMatching: new import_client16.Prisma.Decimal(lvl.requiredRightMatching),
+                requiredMatching: new import_client16.Prisma.Decimal(lvl.requiredMatching ?? lvl.requiredLeftMatching),
                 isActive: true
               },
               create: {
                 code: lvl.code,
                 name: lvl.name,
                 order: lvl.order,
-                requiredBB: new Prisma16.Decimal(lvl.requiredBB),
-                requiredLeftMatching: new Prisma16.Decimal(lvl.requiredLeftMatching),
-                requiredRightMatching: new Prisma16.Decimal(lvl.requiredRightMatching),
-                requiredMatching: new Prisma16.Decimal(lvl.requiredMatching ?? lvl.requiredLeftMatching),
+                requiredBB: new import_client16.Prisma.Decimal(lvl.requiredBB),
+                requiredLeftMatching: new import_client16.Prisma.Decimal(lvl.requiredLeftMatching),
+                requiredRightMatching: new import_client16.Prisma.Decimal(lvl.requiredRightMatching),
+                requiredMatching: new import_client16.Prisma.Decimal(lvl.requiredMatching ?? lvl.requiredLeftMatching),
                 isActive: true
               }
             });
@@ -4263,10 +4285,10 @@ var init_level_service = __esm({
           where: { id: existing.id },
           data: {
             ...updates.name ? { name: updates.name } : {},
-            ...updates.requiredBB !== void 0 ? { requiredBB: new Prisma16.Decimal(updates.requiredBB) } : {},
-            ...updates.requiredLeftMatching !== void 0 ? { requiredLeftMatching: new Prisma16.Decimal(updates.requiredLeftMatching) } : {},
-            ...updates.requiredRightMatching !== void 0 ? { requiredRightMatching: new Prisma16.Decimal(updates.requiredRightMatching) } : {},
-            ...updates.requiredMatching !== void 0 ? { requiredMatching: new Prisma16.Decimal(updates.requiredMatching) } : {},
+            ...updates.requiredBB !== void 0 ? { requiredBB: new import_client16.Prisma.Decimal(updates.requiredBB) } : {},
+            ...updates.requiredLeftMatching !== void 0 ? { requiredLeftMatching: new import_client16.Prisma.Decimal(updates.requiredLeftMatching) } : {},
+            ...updates.requiredRightMatching !== void 0 ? { requiredRightMatching: new import_client16.Prisma.Decimal(updates.requiredRightMatching) } : {},
+            ...updates.requiredMatching !== void 0 ? { requiredMatching: new import_client16.Prisma.Decimal(updates.requiredMatching) } : {},
             ...updates.isActive !== void 0 ? { isActive: updates.isActive } : {}
           }
         });
@@ -4866,10 +4888,10 @@ var init_level_service = __esm({
                   code: targetPromotionLevel.code,
                   name: targetPromotionLevel.name,
                   order: targetPromotionLevel.order,
-                  requiredBB: new Prisma16.Decimal(targetPromotionLevel.requiredBB),
-                  requiredLeftMatching: new Prisma16.Decimal(targetPromotionLevel.requiredLeftMatching),
-                  requiredRightMatching: new Prisma16.Decimal(targetPromotionLevel.requiredRightMatching),
-                  requiredMatching: new Prisma16.Decimal(targetPromotionLevel.requiredMatching ?? targetPromotionLevel.requiredLeftMatching),
+                  requiredBB: new import_client16.Prisma.Decimal(targetPromotionLevel.requiredBB),
+                  requiredLeftMatching: new import_client16.Prisma.Decimal(targetPromotionLevel.requiredLeftMatching),
+                  requiredRightMatching: new import_client16.Prisma.Decimal(targetPromotionLevel.requiredRightMatching),
+                  requiredMatching: new import_client16.Prisma.Decimal(targetPromotionLevel.requiredMatching ?? targetPromotionLevel.requiredLeftMatching),
                   isActive: true
                 }
               });
@@ -4893,9 +4915,9 @@ var init_level_service = __esm({
                   rankCode: `RANK_${targetPromotionLevel.code}`,
                   name: targetPromotionLevel.name,
                   level: targetPromotionLevel.order,
-                  minPersonalBV: new Prisma16.Decimal(targetPromotionLevel.requiredBB),
-                  minGroupBV: new Prisma16.Decimal(targetPromotionLevel.requiredMatching ?? targetPromotionLevel.requiredLeftMatching),
-                  binaryWeeklyCap: new Prisma16.Decimal(targetPromotionLevel.binaryWeeklyCap ?? 1e3)
+                  minPersonalBV: new import_client16.Prisma.Decimal(targetPromotionLevel.requiredBB),
+                  minGroupBV: new import_client16.Prisma.Decimal(targetPromotionLevel.requiredMatching ?? targetPromotionLevel.requiredLeftMatching),
+                  binaryWeeklyCap: new import_client16.Prisma.Decimal(targetPromotionLevel.binaryWeeklyCap ?? 1e3)
                 }
               });
             }
@@ -4908,8 +4930,8 @@ var init_level_service = __esm({
               data: {
                 currentLevelId: dbLevel?.id || null,
                 currentRankId: dbRank?.id || null,
-                currentBB: new Prisma16.Decimal(evaluation.currentBB),
-                currentMatching: new Prisma16.Decimal(evaluation.currentMatching),
+                currentBB: new import_client16.Prisma.Decimal(evaluation.currentBB),
+                currentMatching: new import_client16.Prisma.Decimal(evaluation.currentMatching),
                 ...dbRank?.id ? { highestRankId: dbRank.id } : {}
               }
             });
@@ -4924,14 +4946,14 @@ var init_level_service = __esm({
             newLevelId: dbLevel?.id || `lvl-${newCode}`,
             previousLevelCode: prevCode,
             newLevelCode: newCode,
-            previousBB: new Prisma16.Decimal(Number(member.currentBB ?? 0)),
-            previousMatching: new Prisma16.Decimal(Number(member.currentMatching ?? 0)),
-            previousLeftMatching: new Prisma16.Decimal(Number(member.leftMatching ?? member.currentMatching ?? 0)),
-            previousRightMatching: new Prisma16.Decimal(Number(member.rightMatching ?? member.currentMatching ?? 0)),
-            qualifyingBB: new Prisma16.Decimal(evaluation.currentBB),
-            qualifyingLeftMatching: new Prisma16.Decimal(evaluation.currentLeftMatching),
-            qualifyingRightMatching: new Prisma16.Decimal(evaluation.currentRightMatching),
-            qualifyingMatching: new Prisma16.Decimal(evaluation.currentMatching),
+            previousBB: new import_client16.Prisma.Decimal(Number(member.currentBB ?? 0)),
+            previousMatching: new import_client16.Prisma.Decimal(Number(member.currentMatching ?? 0)),
+            previousLeftMatching: new import_client16.Prisma.Decimal(Number(member.leftMatching ?? member.currentMatching ?? 0)),
+            previousRightMatching: new import_client16.Prisma.Decimal(Number(member.rightMatching ?? member.currentMatching ?? 0)),
+            qualifyingBB: new import_client16.Prisma.Decimal(evaluation.currentBB),
+            qualifyingLeftMatching: new import_client16.Prisma.Decimal(evaluation.currentLeftMatching),
+            qualifyingRightMatching: new import_client16.Prisma.Decimal(evaluation.currentRightMatching),
+            qualifyingMatching: new import_client16.Prisma.Decimal(evaluation.currentMatching),
             reason: reason || "LEVEL_REQUIREMENTS_MET",
             source: source || "SYSTEM",
             createdAt: timestamp
@@ -4977,8 +4999,8 @@ var init_level_service = __esm({
                 data: {
                   distributorId: distId,
                   rankId: dbRank.id,
-                  personalBV: new Prisma16.Decimal(evaluation.currentBB),
-                  groupBV: new Prisma16.Decimal(evaluation.currentMatching),
+                  personalBV: new import_client16.Prisma.Decimal(evaluation.currentBB),
+                  groupBV: new import_client16.Prisma.Decimal(evaluation.currentMatching),
                   achievedAt: timestamp
                 }
               });
@@ -5042,7 +5064,7 @@ var init_level_service = __esm({
         });
         try {
           return await (tx ? runner(tx) : prisma.$transaction(runner, {
-            isolationLevel: Prisma16.TransactionIsolationLevel.Serializable
+            isolationLevel: import_client16.Prisma.TransactionIsolationLevel.Serializable
           }));
         } finally {
           releaseLock();
@@ -5282,11 +5304,11 @@ var binaryVolume_service_exports = {};
 __export(binaryVolume_service_exports, {
   BinaryVolumeService: () => BinaryVolumeService
 });
-import { Prisma as Prisma17 } from "@prisma/client";
-var BinaryVolumeService;
+var import_client17, BinaryVolumeService;
 var init_binaryVolume_service = __esm({
   "backend/src/services/binaryVolume.service.ts"() {
     "use strict";
+    import_client17 = require("@prisma/client");
     init_database();
     init_appError();
     BinaryVolumeService = class {
@@ -5810,8 +5832,8 @@ var init_binaryVolume_service = __esm({
             await db.businessCenter.update({
               where: { id: bcId },
               data: {
-                leftVolume: new Prisma17.Decimal(calculatedVolume),
-                accumulatedLeftVolume: new Prisma17.Decimal(calculatedVolume)
+                leftVolume: new import_client17.Prisma.Decimal(calculatedVolume),
+                accumulatedLeftVolume: new import_client17.Prisma.Decimal(calculatedVolume)
               }
             });
             updated = true;
@@ -5866,8 +5888,8 @@ var init_binaryVolume_service = __esm({
             await db.businessCenter.update({
               where: { id: bcId },
               data: {
-                rightVolume: new Prisma17.Decimal(calculatedVolume),
-                accumulatedRightVolume: new Prisma17.Decimal(calculatedVolume)
+                rightVolume: new import_client17.Prisma.Decimal(calculatedVolume),
+                accumulatedRightVolume: new import_client17.Prisma.Decimal(calculatedVolume)
               }
             });
             updated = true;
@@ -6055,10 +6077,10 @@ var init_binaryVolume_service = __esm({
             await db.businessCenter.update({
               where: { id: bcId },
               data: {
-                leftVolume: new Prisma17.Decimal(leftVolume),
-                rightVolume: new Prisma17.Decimal(rightVolume),
-                accumulatedLeftVolume: new Prisma17.Decimal(leftVolume),
-                accumulatedRightVolume: new Prisma17.Decimal(rightVolume)
+                leftVolume: new import_client17.Prisma.Decimal(leftVolume),
+                rightVolume: new import_client17.Prisma.Decimal(rightVolume),
+                accumulatedLeftVolume: new import_client17.Prisma.Decimal(leftVolume),
+                accumulatedRightVolume: new import_client17.Prisma.Decimal(rightVolume)
               }
             });
           }
@@ -6102,11 +6124,11 @@ var init_binaryVolume_service = __esm({
 });
 
 // backend/src/services/level/levelQualification.service.ts
-import { Prisma as Prisma18 } from "@prisma/client";
-var DEFAULT_MLM_LEVELS, LevelQualificationService;
+var import_client18, DEFAULT_MLM_LEVELS, LevelQualificationService;
 var init_levelQualification_service = __esm({
   "backend/src/services/level/levelQualification.service.ts"() {
     "use strict";
+    import_client18 = require("@prisma/client");
     init_database();
     init_logger();
     init_appError();
@@ -6203,10 +6225,10 @@ var init_levelQualification_service = __esm({
                 rankCode: lvl.code,
                 name: lvl.name,
                 level: lvl.level,
-                minPersonalBV: new Prisma18.Decimal(lvl.requiredBB),
-                minGroupBV: new Prisma18.Decimal(lvl.requiredMatching ?? lvl.requiredLeftMatching),
-                binaryWeeklyCap: new Prisma18.Decimal(lvl.binaryWeeklyCap || 0),
-                oneTimeBonus: new Prisma18.Decimal(lvl.oneTimeBonus || 0)
+                minPersonalBV: new import_client18.Prisma.Decimal(lvl.requiredBB),
+                minGroupBV: new import_client18.Prisma.Decimal(lvl.requiredMatching ?? lvl.requiredLeftMatching),
+                binaryWeeklyCap: new import_client18.Prisma.Decimal(lvl.binaryWeeklyCap || 0),
+                oneTimeBonus: new import_client18.Prisma.Decimal(lvl.oneTimeBonus || 0)
               }
             });
             logger.info({ levelCode: lvl.code, name: lvl.name }, "Initialized canonical MLM level in database");
@@ -6216,10 +6238,10 @@ var init_levelQualification_service = __esm({
               data: {
                 name: lvl.name,
                 rankCode: lvl.code,
-                minPersonalBV: new Prisma18.Decimal(lvl.requiredBB),
-                minGroupBV: new Prisma18.Decimal(lvl.requiredMatching ?? lvl.requiredLeftMatching),
-                binaryWeeklyCap: new Prisma18.Decimal(lvl.binaryWeeklyCap || 0),
-                oneTimeBonus: new Prisma18.Decimal(lvl.oneTimeBonus || 0)
+                minPersonalBV: new import_client18.Prisma.Decimal(lvl.requiredBB),
+                minGroupBV: new import_client18.Prisma.Decimal(lvl.requiredMatching ?? lvl.requiredLeftMatching),
+                binaryWeeklyCap: new import_client18.Prisma.Decimal(lvl.binaryWeeklyCap || 0),
+                oneTimeBonus: new import_client18.Prisma.Decimal(lvl.oneTimeBonus || 0)
               }
             });
           }
@@ -6315,10 +6337,10 @@ var init_levelQualification_service = __esm({
           where: { id: existing.id },
           data: {
             ...updates.name ? { name: updates.name } : {},
-            ...updates.requiredBB !== void 0 ? { requiredBB: new Prisma18.Decimal(updates.requiredBB) } : {},
-            ...updates.requiredLeftMatching !== void 0 ? { requiredLeftMatching: new Prisma18.Decimal(updates.requiredLeftMatching) } : {},
-            ...updates.requiredRightMatching !== void 0 ? { requiredRightMatching: new Prisma18.Decimal(updates.requiredRightMatching) } : {},
-            ...updates.requiredMatching !== void 0 ? { requiredMatching: new Prisma18.Decimal(updates.requiredMatching) } : {},
+            ...updates.requiredBB !== void 0 ? { requiredBB: new import_client18.Prisma.Decimal(updates.requiredBB) } : {},
+            ...updates.requiredLeftMatching !== void 0 ? { requiredLeftMatching: new import_client18.Prisma.Decimal(updates.requiredLeftMatching) } : {},
+            ...updates.requiredRightMatching !== void 0 ? { requiredRightMatching: new import_client18.Prisma.Decimal(updates.requiredRightMatching) } : {},
+            ...updates.requiredMatching !== void 0 ? { requiredMatching: new import_client18.Prisma.Decimal(updates.requiredMatching) } : {},
             ...updates.isActive !== void 0 ? { isActive: updates.isActive } : {}
           }
         });
@@ -6455,11 +6477,11 @@ var init_levelQualification_service = __esm({
 });
 
 // backend/src/services/level/levelPromotion.service.ts
-import { Prisma as Prisma19 } from "@prisma/client";
-var LevelPromotionService;
+var import_client19, LevelPromotionService;
 var init_levelPromotion_service = __esm({
   "backend/src/services/level/levelPromotion.service.ts"() {
     "use strict";
+    import_client19 = require("@prisma/client");
     init_database();
     init_logger();
     init_levelQualification_service();
@@ -6524,10 +6546,10 @@ var init_levelPromotion_service = __esm({
                 rankCode: targetLevel.code,
                 name: targetLevel.name,
                 level: targetLevel.level,
-                minPersonalBV: new Prisma19.Decimal(targetLevel.requiredBB),
-                minGroupBV: new Prisma19.Decimal(targetLevel.requiredMatching ?? targetLevel.requiredLeftMatching ?? 0),
-                binaryWeeklyCap: new Prisma19.Decimal(targetLevel.binaryWeeklyCap || 0),
-                oneTimeBonus: new Prisma19.Decimal(targetLevel.oneTimeBonus || 0)
+                minPersonalBV: new import_client19.Prisma.Decimal(targetLevel.requiredBB),
+                minGroupBV: new import_client19.Prisma.Decimal(targetLevel.requiredMatching ?? targetLevel.requiredLeftMatching ?? 0),
+                binaryWeeklyCap: new import_client19.Prisma.Decimal(targetLevel.binaryWeeklyCap || 0),
+                oneTimeBonus: new import_client19.Prisma.Decimal(targetLevel.oneTimeBonus || 0)
               }
             });
           }
@@ -6538,10 +6560,10 @@ var init_levelPromotion_service = __esm({
             data: {
               currentRankId: targetRank.id,
               currentLevelId: targetLevel.id || null,
-              currentBB: new Prisma19.Decimal(status.currentBB),
-              currentMatching: new Prisma19.Decimal(status.totalMatching ?? Math.min(status.leftMatching, status.rightMatching)),
+              currentBB: new import_client19.Prisma.Decimal(status.currentBB),
+              currentMatching: new import_client19.Prisma.Decimal(status.totalMatching ?? Math.min(status.leftMatching, status.rightMatching)),
               ...shouldUpdateHighest ? { highestRankId: targetRank.id } : {},
-              lifetimePV: new Prisma19.Decimal(status.currentBB)
+              lifetimePV: new import_client19.Prisma.Decimal(status.currentBB)
             }
           });
           const achievedAt = /* @__PURE__ */ new Date();
@@ -6549,8 +6571,8 @@ var init_levelPromotion_service = __esm({
             data: {
               distributorId,
               rankId: targetRank.id,
-              personalBV: new Prisma19.Decimal(status.currentBB),
-              groupBV: new Prisma19.Decimal(status.totalMatching ?? Math.min(status.leftMatching, status.rightMatching)),
+              personalBV: new import_client19.Prisma.Decimal(status.currentBB),
+              groupBV: new import_client19.Prisma.Decimal(status.totalMatching ?? Math.min(status.leftMatching, status.rightMatching)),
               achievedAt
             }
           });
@@ -6565,14 +6587,14 @@ var init_levelPromotion_service = __esm({
                   newLevelId: targetLevel.id,
                   previousLevelCode: prevCode,
                   newLevelCode: newCode,
-                  previousBB: new Prisma19.Decimal(status.currentBB),
-                  previousMatching: new Prisma19.Decimal(status.totalMatching ?? Math.min(status.leftMatching, status.rightMatching)),
-                  previousLeftMatching: new Prisma19.Decimal(status.leftMatching),
-                  previousRightMatching: new Prisma19.Decimal(status.rightMatching),
-                  qualifyingBB: new Prisma19.Decimal(status.currentBB),
-                  qualifyingMatching: new Prisma19.Decimal(status.totalMatching ?? Math.min(status.leftMatching, status.rightMatching)),
-                  qualifyingLeftMatching: new Prisma19.Decimal(status.leftMatching),
-                  qualifyingRightMatching: new Prisma19.Decimal(status.rightMatching),
+                  previousBB: new import_client19.Prisma.Decimal(status.currentBB),
+                  previousMatching: new import_client19.Prisma.Decimal(status.totalMatching ?? Math.min(status.leftMatching, status.rightMatching)),
+                  previousLeftMatching: new import_client19.Prisma.Decimal(status.leftMatching),
+                  previousRightMatching: new import_client19.Prisma.Decimal(status.rightMatching),
+                  qualifyingBB: new import_client19.Prisma.Decimal(status.currentBB),
+                  qualifyingMatching: new import_client19.Prisma.Decimal(status.totalMatching ?? Math.min(status.leftMatching, status.rightMatching)),
+                  qualifyingLeftMatching: new import_client19.Prisma.Decimal(status.leftMatching),
+                  qualifyingRightMatching: new import_client19.Prisma.Decimal(status.rightMatching),
                   reason: "LEVEL_REQUIREMENTS_MET",
                   source: "SYSTEM",
                   createdAt: achievedAt
@@ -6674,11 +6696,11 @@ var init_levelPromotion_service = __esm({
 });
 
 // backend/src/services/bb.service.ts
-import { Prisma as Prisma20 } from "@prisma/client";
-var BBService;
+var import_client20, BBService;
 var init_bb_service = __esm({
   "backend/src/services/bb.service.ts"() {
     "use strict";
+    import_client20 = require("@prisma/client");
     init_database();
     init_logger();
     init_appError();
@@ -6814,8 +6836,8 @@ var init_bb_service = __esm({
             createdTx = await client.bBTransaction?.create({
               data: {
                 memberId,
-                amount: new Prisma20.Decimal(creditAmount),
-                balanceAfter: new Prisma20.Decimal(balanceAfter),
+                amount: new import_client20.Prisma.Decimal(creditAmount),
+                balanceAfter: new import_client20.Prisma.Decimal(balanceAfter),
                 type,
                 source: source.trim(),
                 referenceId: referenceId.trim(),
@@ -6856,7 +6878,7 @@ var init_bb_service = __esm({
             await client.distributorProfile.update({
               where: { id: memberId },
               data: {
-                currentBB: new Prisma20.Decimal(balanceAfter),
+                currentBB: new import_client20.Prisma.Decimal(balanceAfter),
                 lifetimePV: { increment: creditAmount }
               }
             });
@@ -6868,9 +6890,9 @@ var init_bb_service = __esm({
                 distributorId: memberId,
                 sourceType: source === "ORDER" ? "ORDER" : "ADJUSTMENT",
                 sourceId: referenceId,
-                bv: new Prisma20.Decimal(creditAmount),
-                amount: new Prisma20.Decimal(creditAmount),
-                balanceAfter: new Prisma20.Decimal(balanceAfter),
+                bv: new import_client20.Prisma.Decimal(creditAmount),
+                amount: new import_client20.Prisma.Decimal(creditAmount),
+                balanceAfter: new import_client20.Prisma.Decimal(balanceAfter),
                 position: null,
                 // null denotes personal BB
                 type: "ORDER_ACCRUAL",
@@ -6959,8 +6981,8 @@ var init_bb_service = __esm({
             createdTx = await client.bBTransaction?.create({
               data: {
                 memberId,
-                amount: new Prisma20.Decimal(-debitAmount),
-                balanceAfter: new Prisma20.Decimal(balanceAfter),
+                amount: new import_client20.Prisma.Decimal(-debitAmount),
+                balanceAfter: new import_client20.Prisma.Decimal(balanceAfter),
                 type,
                 source: source.trim(),
                 referenceId: referenceId.trim(),
@@ -6984,7 +7006,7 @@ var init_bb_service = __esm({
             await client.distributorProfile.update({
               where: { id: memberId },
               data: {
-                currentBB: new Prisma20.Decimal(balanceAfter)
+                currentBB: new import_client20.Prisma.Decimal(balanceAfter)
               }
             });
           } catch {
@@ -7170,8 +7192,8 @@ var init_bb_service = __esm({
           await db.distributorProfile.update({
             where: { id: memberId },
             data: {
-              currentBB: new Prisma20.Decimal(recalculatedBB),
-              lifetimePV: new Prisma20.Decimal(recalculatedBB)
+              currentBB: new import_client20.Prisma.Decimal(recalculatedBB),
+              lifetimePV: new import_client20.Prisma.Decimal(recalculatedBB)
             }
           });
         } catch {
@@ -7269,8 +7291,8 @@ var init_bb_service = __esm({
           await db.distributorProfile.update({
             where: { id: distributorId },
             data: {
-              lifetimePV: new Prisma20.Decimal(authoritativeBB),
-              currentBB: new Prisma20.Decimal(authoritativeBB)
+              lifetimePV: new import_client20.Prisma.Decimal(authoritativeBB),
+              currentBB: new import_client20.Prisma.Decimal(authoritativeBB)
             }
           });
         } catch {
@@ -7307,11 +7329,11 @@ var init_bb_service2 = __esm({
 });
 
 // backend/src/services/commissionLedger.service.ts
-import { Prisma as Prisma22 } from "@prisma/client";
-var CommissionLedgerService;
+var import_client22, CommissionLedgerService;
 var init_commissionLedger_service = __esm({
   "backend/src/services/commissionLedger.service.ts"() {
     "use strict";
+    import_client22 = require("@prisma/client");
     init_database();
     init_logger();
     init_appError();
@@ -7902,10 +7924,10 @@ var init_commissionLedger_service = __esm({
               data: {
                 distributorId: recipientId,
                 userId,
-                availableBalance: new Prisma22.Decimal(0),
-                pendingBalance: new Prisma22.Decimal(0),
-                lifetimeEarned: new Prisma22.Decimal(0),
-                lifetimePaid: new Prisma22.Decimal(0),
+                availableBalance: new import_client22.Prisma.Decimal(0),
+                pendingBalance: new import_client22.Prisma.Decimal(0),
+                lifetimeEarned: new import_client22.Prisma.Decimal(0),
+                lifetimePaid: new import_client22.Prisma.Decimal(0),
                 currency: "INR",
                 isLocked: false
               }
@@ -7926,7 +7948,7 @@ var init_commissionLedger_service = __esm({
               status: "COMPLETED",
               amount: grossAmountDecimal,
               netAmount: grossAmountDecimal,
-              feeAmount: new Prisma22.Decimal(0),
+              feeAmount: new import_client22.Prisma.Decimal(0),
               balanceBefore,
               balanceAfter,
               referenceId: commTx.id,
@@ -8035,7 +8057,7 @@ var init_commissionLedger_service = __esm({
                 status: "COMPLETED",
                 amount: grossAmountDecimal,
                 netAmount: grossAmountDecimal.mul(-1),
-                feeAmount: new Prisma22.Decimal(0),
+                feeAmount: new import_client22.Prisma.Decimal(0),
                 balanceBefore,
                 balanceAfter,
                 referenceId: commTx.id,
@@ -8223,11 +8245,11 @@ var init_commissionLedger_service = __esm({
 });
 
 // backend/src/services/atomicCommissionPosting.service.ts
-import { Prisma as Prisma23 } from "@prisma/client";
-var AtomicCommissionPostingService;
+var import_client23, AtomicCommissionPostingService;
 var init_atomicCommissionPosting_service = __esm({
   "backend/src/services/atomicCommissionPosting.service.ts"() {
     "use strict";
+    import_client23 = require("@prisma/client");
     init_database();
     init_logger();
     init_appError();
@@ -8489,10 +8511,10 @@ var init_atomicCommissionPosting_service = __esm({
                 data: {
                   distributorId: recipientMemberId,
                   userId: targetUserId,
-                  availableBalance: new Prisma23.Decimal(0),
-                  pendingBalance: new Prisma23.Decimal(0),
-                  lifetimeEarned: new Prisma23.Decimal(0),
-                  lifetimePaid: new Prisma23.Decimal(0),
+                  availableBalance: new import_client23.Prisma.Decimal(0),
+                  pendingBalance: new import_client23.Prisma.Decimal(0),
+                  lifetimeEarned: new import_client23.Prisma.Decimal(0),
+                  lifetimePaid: new import_client23.Prisma.Decimal(0),
                   currency: "INR",
                   isLocked: false
                 }
@@ -8522,7 +8544,7 @@ var init_atomicCommissionPosting_service = __esm({
                 status: "COMPLETED",
                 amount: grossDecimal,
                 netAmount: grossDecimal,
-                feeAmount: new Prisma23.Decimal(0),
+                feeAmount: new import_client23.Prisma.Decimal(0),
                 balanceBefore,
                 balanceAfter,
                 referenceId: commTx.id,
@@ -8593,7 +8615,7 @@ var init_atomicCommissionPosting_service = __esm({
         }
         return prisma.$transaction(runner, {
           timeout: 3e4,
-          isolationLevel: Prisma23.TransactionIsolationLevel.ReadCommitted
+          isolationLevel: import_client23.Prisma.TransactionIsolationLevel.ReadCommitted
         });
       }
     };
@@ -9074,11 +9096,11 @@ var commissionReversal_service_exports = {};
 __export(commissionReversal_service_exports, {
   CommissionReversalService: () => CommissionReversalService
 });
-import { Prisma as Prisma24 } from "@prisma/client";
-var CommissionReversalService;
+var import_client24, CommissionReversalService;
 var init_commissionReversal_service = __esm({
   "backend/src/services/commissionReversal.service.ts"() {
     "use strict";
+    import_client24 = require("@prisma/client");
     init_database();
     init_logger();
     init_appError();
@@ -9252,17 +9274,17 @@ var init_commissionReversal_service = __esm({
                   data: {
                     distributorId: recipientId,
                     userId: targetUserId,
-                    availableBalance: new Prisma24.Decimal(0),
-                    pendingBalance: new Prisma24.Decimal(0),
-                    lifetimeEarned: new Prisma24.Decimal(0),
-                    lifetimePaid: new Prisma24.Decimal(0),
+                    availableBalance: new import_client24.Prisma.Decimal(0),
+                    pendingBalance: new import_client24.Prisma.Decimal(0),
+                    lifetimeEarned: new import_client24.Prisma.Decimal(0),
+                    lifetimePaid: new import_client24.Prisma.Decimal(0),
                     currency: "INR",
                     isLocked: false
                   }
                 });
               }
               balanceBefore = Number(wallet.availableBalance);
-              const reversalDecimal = new Prisma24.Decimal(effectiveReversalAmount);
+              const reversalDecimal = new import_client24.Prisma.Decimal(effectiveReversalAmount);
               if (balanceBefore >= effectiveReversalAmount) {
                 balanceAfter = SafeDecimal.round(balanceBefore - effectiveReversalAmount, 2);
                 recoveryStatus = "COMPLETED";
@@ -9276,9 +9298,9 @@ var init_commissionReversal_service = __esm({
                     status: "COMPLETED",
                     amount: reversalDecimal.negated(),
                     netAmount: reversalDecimal.negated(),
-                    feeAmount: new Prisma24.Decimal(0),
-                    balanceBefore: new Prisma24.Decimal(balanceBefore),
-                    balanceAfter: new Prisma24.Decimal(balanceAfter),
+                    feeAmount: new import_client24.Prisma.Decimal(0),
+                    balanceBefore: new import_client24.Prisma.Decimal(balanceBefore),
+                    balanceAfter: new import_client24.Prisma.Decimal(balanceAfter),
                     referenceId: originalId,
                     memberId: recipientId,
                     commissionTransactionId: originalId,
@@ -9291,7 +9313,7 @@ var init_commissionReversal_service = __esm({
                 await db.wallet.update({
                   where: { id: wallet.id },
                   data: {
-                    availableBalance: new Prisma24.Decimal(balanceAfter),
+                    availableBalance: new import_client24.Prisma.Decimal(balanceAfter),
                     lifetimeEarned: { decrement: reversalDecimal }
                   }
                 });
@@ -9309,9 +9331,9 @@ var init_commissionReversal_service = __esm({
                       status: "COMPLETED",
                       amount: reversalDecimal.negated(),
                       netAmount: reversalDecimal.negated(),
-                      feeAmount: new Prisma24.Decimal(0),
-                      balanceBefore: new Prisma24.Decimal(balanceBefore),
-                      balanceAfter: new Prisma24.Decimal(balanceAfter),
+                      feeAmount: new import_client24.Prisma.Decimal(0),
+                      balanceBefore: new import_client24.Prisma.Decimal(balanceBefore),
+                      balanceAfter: new import_client24.Prisma.Decimal(balanceAfter),
                       referenceId: originalId,
                       memberId: recipientId,
                       commissionTransactionId: originalId,
@@ -9324,7 +9346,7 @@ var init_commissionReversal_service = __esm({
                   await db.wallet.update({
                     where: { id: wallet.id },
                     data: {
-                      availableBalance: new Prisma24.Decimal(balanceAfter),
+                      availableBalance: new import_client24.Prisma.Decimal(balanceAfter),
                       lifetimeEarned: { decrement: reversalDecimal }
                     }
                   });
@@ -9334,7 +9356,7 @@ var init_commissionReversal_service = __esm({
                   balanceAfter = 0;
                   recoveryStatus = "PENDING_ADMIN_RECONCILIATION";
                   if (recoverableAmount > 0) {
-                    const partialRecDecimal = new Prisma24.Decimal(recoverableAmount);
+                    const partialRecDecimal = new import_client24.Prisma.Decimal(recoverableAmount);
                     const wtxNumber = CommissionLedgerService.generateWalletTransactionNumber();
                     const wtx = await db.walletTransaction.create({
                       data: {
@@ -9344,9 +9366,9 @@ var init_commissionReversal_service = __esm({
                         status: "COMPLETED",
                         amount: partialRecDecimal.negated(),
                         netAmount: partialRecDecimal.negated(),
-                        feeAmount: new Prisma24.Decimal(0),
-                        balanceBefore: new Prisma24.Decimal(balanceBefore),
-                        balanceAfter: new Prisma24.Decimal(0),
+                        feeAmount: new import_client24.Prisma.Decimal(0),
+                        balanceBefore: new import_client24.Prisma.Decimal(balanceBefore),
+                        balanceAfter: new import_client24.Prisma.Decimal(0),
                         referenceId: originalId,
                         memberId: recipientId,
                         commissionTransactionId: originalId,
@@ -9359,7 +9381,7 @@ var init_commissionReversal_service = __esm({
                     await db.wallet.update({
                       where: { id: wallet.id },
                       data: {
-                        availableBalance: new Prisma24.Decimal(0),
+                        availableBalance: new import_client24.Prisma.Decimal(0),
                         lifetimeEarned: { decrement: partialRecDecimal }
                       }
                     });
@@ -9385,11 +9407,11 @@ var init_commissionReversal_service = __esm({
                 refundId: options?.refundId || null,
                 recipientMemberId: commTx.recipientMemberId,
                 commissionLevel: commTx.commissionLevel,
-                reversedBV: new Prisma24.Decimal(reversedBV),
+                reversedBV: new import_client24.Prisma.Decimal(reversedBV),
                 originalAmount: commTx.grossCommissionAmount,
-                amount: new Prisma24.Decimal(compensatoryReversalAmount),
+                amount: new import_client24.Prisma.Decimal(compensatoryReversalAmount),
                 recoveryStatus,
-                unrecoveredAmount: new Prisma24.Decimal(unrecoveredAmount),
+                unrecoveredAmount: new import_client24.Prisma.Decimal(unrecoveredAmount),
                 walletTransactionId: walletTxId,
                 idempotencyKey,
                 reason,
@@ -9624,9 +9646,9 @@ var init_commissionReversal_service = __esm({
                     status: "COMPLETED",
                     amount: grossAmountDecimal.negated(),
                     netAmount: grossAmountDecimal.negated(),
-                    feeAmount: new Prisma24.Decimal(0),
-                    balanceBefore: new Prisma24.Decimal(balanceBefore),
-                    balanceAfter: new Prisma24.Decimal(balanceAfter),
+                    feeAmount: new import_client24.Prisma.Decimal(0),
+                    balanceBefore: new import_client24.Prisma.Decimal(balanceBefore),
+                    balanceAfter: new import_client24.Prisma.Decimal(balanceAfter),
                     referenceId: cleanId,
                     memberId: recipientId,
                     commissionTransactionId: cleanId,
@@ -9639,7 +9661,7 @@ var init_commissionReversal_service = __esm({
                 await db.wallet.update({
                   where: { id: wallet.id },
                   data: {
-                    availableBalance: new Prisma24.Decimal(balanceAfter),
+                    availableBalance: new import_client24.Prisma.Decimal(balanceAfter),
                     lifetimeEarned: { decrement: grossAmountDecimal }
                   }
                 });
@@ -9657,9 +9679,9 @@ var init_commissionReversal_service = __esm({
                       status: "COMPLETED",
                       amount: grossAmountDecimal.negated(),
                       netAmount: grossAmountDecimal.negated(),
-                      feeAmount: new Prisma24.Decimal(0),
-                      balanceBefore: new Prisma24.Decimal(balanceBefore),
-                      balanceAfter: new Prisma24.Decimal(balanceAfter),
+                      feeAmount: new import_client24.Prisma.Decimal(0),
+                      balanceBefore: new import_client24.Prisma.Decimal(balanceBefore),
+                      balanceAfter: new import_client24.Prisma.Decimal(balanceAfter),
                       referenceId: cleanId,
                       memberId: recipientId,
                       commissionTransactionId: cleanId,
@@ -9672,7 +9694,7 @@ var init_commissionReversal_service = __esm({
                   await db.wallet.update({
                     where: { id: wallet.id },
                     data: {
-                      availableBalance: new Prisma24.Decimal(balanceAfter),
+                      availableBalance: new import_client24.Prisma.Decimal(balanceAfter),
                       lifetimeEarned: { decrement: grossAmountDecimal }
                     }
                   });
@@ -9682,7 +9704,7 @@ var init_commissionReversal_service = __esm({
                   balanceAfter = 0;
                   recoveryStatus = "PENDING_ADMIN_RECONCILIATION";
                   if (recoverableAmount > 0) {
-                    const partialRecDecimal = new Prisma24.Decimal(recoverableAmount);
+                    const partialRecDecimal = new import_client24.Prisma.Decimal(recoverableAmount);
                     const wtxNumber = CommissionLedgerService.generateWalletTransactionNumber();
                     const wtx = await db.walletTransaction.create({
                       data: {
@@ -9692,9 +9714,9 @@ var init_commissionReversal_service = __esm({
                         status: "COMPLETED",
                         amount: partialRecDecimal.negated(),
                         netAmount: partialRecDecimal.negated(),
-                        feeAmount: new Prisma24.Decimal(0),
-                        balanceBefore: new Prisma24.Decimal(balanceBefore),
-                        balanceAfter: new Prisma24.Decimal(0),
+                        feeAmount: new import_client24.Prisma.Decimal(0),
+                        balanceBefore: new import_client24.Prisma.Decimal(balanceBefore),
+                        balanceAfter: new import_client24.Prisma.Decimal(0),
                         referenceId: cleanId,
                         memberId: recipientId,
                         commissionTransactionId: cleanId,
@@ -9707,7 +9729,7 @@ var init_commissionReversal_service = __esm({
                     await db.wallet.update({
                       where: { id: wallet.id },
                       data: {
-                        availableBalance: new Prisma24.Decimal(0),
+                        availableBalance: new import_client24.Prisma.Decimal(0),
                         lifetimeEarned: { decrement: partialRecDecimal }
                       }
                     });
@@ -9724,11 +9746,11 @@ var init_commissionReversal_service = __esm({
               refundId: options?.refundId || null,
               recipientMemberId: commTx.recipientMemberId,
               commissionLevel: commTx.commissionLevel,
-              reversedBV: new Prisma24.Decimal(reversedBV),
+              reversedBV: new import_client24.Prisma.Decimal(reversedBV),
               originalAmount: commTx.grossCommissionAmount,
-              amount: new Prisma24.Decimal(compensatoryReversalAmount),
+              amount: new import_client24.Prisma.Decimal(compensatoryReversalAmount),
               recoveryStatus,
-              unrecoveredAmount: new Prisma24.Decimal(unrecoveredAmount),
+              unrecoveredAmount: new import_client24.Prisma.Decimal(unrecoveredAmount),
               walletTransactionId: walletTxId,
               idempotencyKey,
               reason,
@@ -9784,11 +9806,11 @@ var init_commissionReversal_service = __esm({
 });
 
 // backend/src/services/platformTreasury.service.ts
-import { Prisma as Prisma28 } from "@prisma/client";
-var PlatformTreasuryService;
+var import_client28, PlatformTreasuryService;
 var init_platformTreasury_service = __esm({
   "backend/src/services/platformTreasury.service.ts"() {
     "use strict";
+    import_client28 = require("@prisma/client");
     init_database();
     init_logger();
     init_appError();
@@ -9859,8 +9881,8 @@ var init_platformTreasury_service = __esm({
             data: {
               walletCode,
               currency: this.DEFAULT_CURRENCY,
-              availableBalance: new Prisma28.Decimal("0.00"),
-              pendingBalance: new Prisma28.Decimal("0.00")
+              availableBalance: new import_client28.Prisma.Decimal("0.00"),
+              pendingBalance: new import_client28.Prisma.Decimal("0.00")
             }
           });
           logger.info({ walletId: wallet.id, walletCode }, "Initialized Platform Treasury Wallet");
@@ -9953,7 +9975,7 @@ var init_platformTreasury_service = __esm({
               idempotencyKey: input.idempotencyKey?.trim() || null,
               status: "COMPLETED",
               description: input.description.trim(),
-              metadata: input.metadata ? input.metadata : Prisma28.JsonNull,
+              metadata: input.metadata ? input.metadata : import_client28.Prisma.JsonNull,
               performedById: input.performedById?.trim() || null
             }
           });
@@ -10072,7 +10094,7 @@ var init_platformTreasury_service = __esm({
               idempotencyKey: input.idempotencyKey?.trim() || null,
               status: "COMPLETED",
               description: input.description.trim(),
-              metadata: input.metadata ? input.metadata : Prisma28.JsonNull,
+              metadata: input.metadata ? input.metadata : import_client28.Prisma.JsonNull,
               performedById: input.performedById?.trim() || null
             }
           });
@@ -10243,9 +10265,9 @@ var init_platformTreasury_service = __esm({
           orderBy: { createdAt: "asc" }
         });
         const discrepancies = [];
-        let calculatedLedgerBalance = new Prisma28.Decimal("0.00");
-        let totalCredits = new Prisma28.Decimal("0.00");
-        let totalDebits = new Prisma28.Decimal("0.00");
+        let calculatedLedgerBalance = new import_client28.Prisma.Decimal("0.00");
+        let totalCredits = new import_client28.Prisma.Decimal("0.00");
+        let totalDebits = new import_client28.Prisma.Decimal("0.00");
         let previousBalanceAfter = null;
         const CREDIT_TYPES = ["FUNDING", "REFUND", "RECONCILIATION"];
         const DEBIT_TYPES = [
@@ -10254,9 +10276,9 @@ var init_platformTreasury_service = __esm({
           "PAYOUT"
         ];
         for (const t of transactions) {
-          const amount = new Prisma28.Decimal(t.amount);
-          const balanceBefore = new Prisma28.Decimal(t.balanceBefore);
-          const balanceAfter = new Prisma28.Decimal(t.balanceAfter);
+          const amount = new import_client28.Prisma.Decimal(t.amount);
+          const balanceBefore = new import_client28.Prisma.Decimal(t.balanceBefore);
+          const balanceAfter = new import_client28.Prisma.Decimal(t.balanceAfter);
           if (previousBalanceAfter !== null && !balanceBefore.equals(previousBalanceAfter)) {
             discrepancies.push({
               type: "BALANCE_MISMATCH",
@@ -10292,7 +10314,7 @@ var init_platformTreasury_service = __esm({
         }
         const calculatedBalanceNum = SafeDecimal.round(calculatedLedgerBalance, 2);
         const discrepancy = SafeDecimal.round(
-          new Prisma28.Decimal(currentBalance).sub(calculatedLedgerBalance),
+          new import_client28.Prisma.Decimal(currentBalance).sub(calculatedLedgerBalance),
           2
         );
         if (discrepancy !== 0) {
@@ -10356,11 +10378,11 @@ var init_fundingProvider_interface = __esm({
 });
 
 // backend/src/providers/funding/mockFundingProvider.ts
-import crypto from "crypto";
-var MockFundingProvider;
+var import_crypto5, MockFundingProvider;
 var init_mockFundingProvider = __esm({
   "backend/src/providers/funding/mockFundingProvider.ts"() {
     "use strict";
+    import_crypto5 = __toESM(require("crypto"));
     init_logger();
     init_appError();
     MockFundingProvider = class {
@@ -10523,12 +10545,12 @@ var init_mockFundingProvider = __esm({
       }
       async handleWebhook(payload, signature, _headers) {
         const payloadString = typeof payload === "string" ? payload : payload.toString("utf-8");
-        const computedSignature = crypto.createHmac("sha256", this.webhookSecret).update(payloadString).digest("hex");
+        const computedSignature = import_crypto5.default.createHmac("sha256", this.webhookSecret).update(payloadString).digest("hex");
         let isValid = false;
         try {
           const sigBuf = Buffer.from(signature, "hex");
           const compBuf = Buffer.from(computedSignature, "hex");
-          isValid = sigBuf.length === compBuf.length && crypto.timingSafeEqual(sigBuf, compBuf);
+          isValid = sigBuf.length === compBuf.length && import_crypto5.default.timingSafeEqual(sigBuf, compBuf);
         } catch {
           isValid = false;
         }
@@ -10631,11 +10653,11 @@ var init_mockFundingProvider = __esm({
 });
 
 // backend/src/providers/funding/razorpayXFundingProvider.ts
-import crypto2 from "crypto";
-var RazorpayXFundingProvider;
+var import_crypto6, RazorpayXFundingProvider;
 var init_razorpayXFundingProvider = __esm({
   "backend/src/providers/funding/razorpayXFundingProvider.ts"() {
     "use strict";
+    import_crypto6 = __toESM(require("crypto"));
     init_logger();
     init_appError();
     RazorpayXFundingProvider = class {
@@ -10745,12 +10767,12 @@ var init_razorpayXFundingProvider = __esm({
           };
         }
         const payloadString = typeof payload === "string" ? payload : payload.toString("utf-8");
-        const expectedSignature = crypto2.createHmac("sha256", this.config.webhookSecret).update(payloadString).digest("hex");
+        const expectedSignature = import_crypto6.default.createHmac("sha256", this.config.webhookSecret).update(payloadString).digest("hex");
         let isValid = false;
         try {
           const sigBuf = Buffer.from(signature, "hex");
           const expBuf = Buffer.from(expectedSignature, "hex");
-          isValid = sigBuf.length === expBuf.length && crypto2.timingSafeEqual(sigBuf, expBuf);
+          isValid = sigBuf.length === expBuf.length && import_crypto6.default.timingSafeEqual(sigBuf, expBuf);
         } catch {
           isValid = false;
         }
@@ -10875,11 +10897,11 @@ var init_funding = __esm({
 });
 
 // backend/src/services/funding.service.ts
-import { Prisma as Prisma31 } from "@prisma/client";
-var FundingService;
+var import_client32, FundingService;
 var init_funding_service = __esm({
   "backend/src/services/funding.service.ts"() {
     "use strict";
+    import_client32 = require("@prisma/client");
     init_database();
     init_logger();
     init_appError();
@@ -10987,7 +11009,7 @@ var init_funding_service = __esm({
             currency: (input.currency || "INR").trim().toUpperCase(),
             status: "ACTIVE",
             isPrimary: Boolean(input.isPrimary),
-            metadata: sanitizedMeta ? sanitizedMeta : Prisma31.JsonNull
+            metadata: sanitizedMeta ? sanitizedMeta : import_client32.Prisma.JsonNull
           }
         });
         if (adminId) {
@@ -10997,7 +11019,7 @@ var init_funding_service = __esm({
               action: "FUNDING_ACCOUNT_CONNECTED",
               entityType: "FundingAccount",
               entityId: created.id,
-              previousData: Prisma31.DbNull,
+              previousData: import_client32.Prisma.DbNull,
               newData: {
                 provider: created.provider,
                 providerAccountId: created.providerAccountId,
@@ -11190,7 +11212,7 @@ var init_funding_service = __esm({
             provider,
             providerTransactionId: providerTxId,
             idempotencyKey,
-            metadata: sanitizedMeta ? sanitizedMeta : Prisma31.JsonNull,
+            metadata: sanitizedMeta ? sanitizedMeta : import_client32.Prisma.JsonNull,
             initiatedAt: /* @__PURE__ */ new Date()
           },
           include: {
@@ -11234,11 +11256,11 @@ var fundingWebhook_service_exports = {};
 __export(fundingWebhook_service_exports, {
   FundingWebhookService: () => FundingWebhookService
 });
-import crypto3 from "crypto";
-var FundingWebhookService;
+var import_crypto7, FundingWebhookService;
 var init_fundingWebhook_service = __esm({
   "backend/src/services/fundingWebhook.service.ts"() {
     "use strict";
+    import_crypto7 = __toESM(require("crypto"));
     init_database();
     init_logger();
     init_funding();
@@ -11275,7 +11297,7 @@ var init_fundingWebhook_service = __esm({
             "INVALID_WEBHOOK_SIGNATURE"
           );
         }
-        const payloadHash = crypto3.createHash("sha256").update(rawPayloadString).digest("hex");
+        const payloadHash = import_crypto7.default.createHash("sha256").update(rawPayloadString).digest("hex");
         const parsedEvent = this.parseProviderEvent(rawPayloadString, signatureVerification, providerName);
         const { externalEventId, eventType, providerTransactionId, utrNumber } = parsedEvent;
         logger.info(
@@ -11680,7 +11702,7 @@ var init_fundingWebhook_service = __esm({
           parsed = {};
         }
         const eventType = signatureResult.eventType || parsed.event || parsed.type || parsed.eventType || "funding.event";
-        const externalEventId = parsed.id || parsed.event_id || parsed.eventId || parsed.data?.event_id || signatureResult.rawEvent?.id || `${providerName}_EVT_${crypto3.createHash("md5").update(rawPayloadString).digest("hex")}`;
+        const externalEventId = parsed.id || parsed.event_id || parsed.eventId || parsed.data?.event_id || signatureResult.rawEvent?.id || `${providerName}_EVT_${import_crypto7.default.createHash("md5").update(rawPayloadString).digest("hex")}`;
         const paymentEntity = parsed.payload?.payment?.entity || parsed.data?.payment || parsed.data?.entity || parsed.data || parsed;
         const providerTransactionId = signatureResult.providerTransactionId || paymentEntity?.id || parsed.data?.payment?.id || parsed.order_id || parsed.payment_id;
         const utrNumber = signatureResult.utrNumber || paymentEntity?.acquirer_data?.rrn || paymentEntity?.acquirer_data?.bank_transaction_id || parsed.utr || parsed.rrn;
@@ -11717,11 +11739,11 @@ var fundingReconciliation_service_exports = {};
 __export(fundingReconciliation_service_exports, {
   FundingReconciliationService: () => FundingReconciliationService
 });
-import { Prisma as Prisma32 } from "@prisma/client";
-var FundingReconciliationService;
+var import_client33, FundingReconciliationService;
 var init_fundingReconciliation_service = __esm({
   "backend/src/services/fundingReconciliation.service.ts"() {
     "use strict";
+    import_client33 = require("@prisma/client");
     init_database();
     init_logger();
     init_appError();
@@ -12173,7 +12195,7 @@ var init_fundingReconciliation_service = __esm({
                       data: {
                         fundingAccountId: account.id,
                         initiatedByAdminId: options?.adminId || "00000000-0000-0000-0000-000000000000",
-                        amount: new Prisma32.Decimal(ext.amount),
+                        amount: new import_client33.Prisma.Decimal(ext.amount),
                         currency: ext.currency || "INR",
                         status: "RECONCILIATION_REQUIRED",
                         provider: pName,
@@ -12213,7 +12235,7 @@ var init_fundingReconciliation_service = __esm({
               action: "FUNDING_PERIOD_RECONCILIATION_EXECUTED",
               entityType: "FundingTransaction",
               entityId: `PERIOD_${start.toISOString()}_${end.toISOString()}`,
-              previousData: Prisma32.DbNull,
+              previousData: import_client33.Prisma.DbNull,
               newData: {
                 startDate: start.toISOString(),
                 endDate: end.toISOString(),
@@ -12500,11 +12522,11 @@ var fundingWorkflow_service_exports = {};
 __export(fundingWorkflow_service_exports, {
   FundingWorkflowService: () => FundingWorkflowService
 });
-import { Prisma as Prisma33 } from "@prisma/client";
-var FundingWorkflowService;
+var import_client34, FundingWorkflowService;
 var init_fundingWorkflow_service = __esm({
   "backend/src/services/fundingWorkflow.service.ts"() {
     "use strict";
+    import_client34 = require("@prisma/client");
     init_database();
     init_logger();
     init_appError();
@@ -12609,7 +12631,7 @@ var init_fundingWorkflow_service = __esm({
             action: "FUNDING_TRANSACTION_INITIATED",
             entityType: "FundingTransaction",
             entityId: createdTx.id,
-            previousData: Prisma33.DbNull,
+            previousData: import_client34.Prisma.DbNull,
             newData: {
               amount: amountDecimal.toNumber(),
               currency: createdTx.currency,
@@ -13010,15 +13032,20 @@ var init_fundingWorkflow_service = __esm({
 });
 
 // backend/src/app.ts
+var app_exports = {};
+__export(app_exports, {
+  default: () => app_default
+});
+module.exports = __toCommonJS(app_exports);
+var import_express36 = __toESM(require("express"));
+var import_cors = __toESM(require("cors"));
+var import_helmet = __toESM(require("helmet"));
 init_env();
-import express from "express";
-import cors from "cors";
-import helmet from "helmet";
 
 // backend/src/config/rateLimiter.ts
+var import_express_rate_limit = __toESM(require("express-rate-limit"));
 init_env();
-import rateLimit from "express-rate-limit";
-var globalRateLimiter = rateLimit({
+var globalRateLimiter = (0, import_express_rate_limit.default)({
   windowMs: 15 * 60 * 1e3,
   // 15 minutes
   max: isTest || isDev ? 1e4 : 100,
@@ -13031,7 +13058,7 @@ var globalRateLimiter = rateLimit({
   },
   skip: () => isTest || isDev
 });
-var loginRateLimiter = rateLimit({
+var loginRateLimiter = (0, import_express_rate_limit.default)({
   windowMs: 15 * 60 * 1e3,
   // 15 minutes
   max: isTest ? 1e4 : 10,
@@ -13045,7 +13072,7 @@ var loginRateLimiter = rateLimit({
   },
   skip: () => isTest
 });
-var registerRateLimiter = rateLimit({
+var registerRateLimiter = (0, import_express_rate_limit.default)({
   windowMs: 60 * 60 * 1e3,
   // 1 hour
   max: isTest ? 1e4 : 10,
@@ -13059,7 +13086,7 @@ var registerRateLimiter = rateLimit({
   },
   skip: () => isTest
 });
-var passwordResetRateLimiter = rateLimit({
+var passwordResetRateLimiter = (0, import_express_rate_limit.default)({
   windowMs: 15 * 60 * 1e3,
   // 15 minutes
   max: isTest ? 1e4 : 5,
@@ -13073,7 +13100,7 @@ var passwordResetRateLimiter = rateLimit({
   },
   skip: () => isTest
 });
-var treeRateLimiter = rateLimit({
+var treeRateLimiter = (0, import_express_rate_limit.default)({
   windowMs: 15 * 60 * 1e3,
   // 15 minutes
   max: isTest ? 1e4 : 120,
@@ -13089,33 +13116,33 @@ var treeRateLimiter = rateLimit({
 });
 
 // backend/src/middleware/auth.ts
+var import_jsonwebtoken2 = require("jsonwebtoken");
 init_appError();
-import { JsonWebTokenError, TokenExpiredError } from "jsonwebtoken";
 
 // backend/src/utils/jwt.ts
+var import_crypto = require("crypto");
+var import_jsonwebtoken = __toESM(require("jsonwebtoken"));
 init_env();
-import { createHash } from "crypto";
-import jwt from "jsonwebtoken";
 function signAccessToken(payload) {
   const options = {
     expiresIn: env.JWT_ACCESS_EXPIRES_IN
   };
-  return jwt.sign(payload, env.JWT_ACCESS_SECRET, options);
+  return import_jsonwebtoken.default.sign(payload, env.JWT_ACCESS_SECRET, options);
 }
 function signRefreshToken(payload) {
   const options = {
     expiresIn: env.JWT_REFRESH_EXPIRES_IN
   };
-  return jwt.sign(payload, env.JWT_REFRESH_SECRET, options);
+  return import_jsonwebtoken.default.sign(payload, env.JWT_REFRESH_SECRET, options);
 }
 function verifyAccessToken(token) {
-  return jwt.verify(token, env.JWT_ACCESS_SECRET);
+  return import_jsonwebtoken.default.verify(token, env.JWT_ACCESS_SECRET);
 }
 function verifyRefreshToken(token) {
-  return jwt.verify(token, env.JWT_REFRESH_SECRET);
+  return import_jsonwebtoken.default.verify(token, env.JWT_REFRESH_SECRET);
 }
 function hashToken(token) {
-  return createHash("sha256").update(token).digest("hex");
+  return (0, import_crypto.createHash)("sha256").update(token).digest("hex");
 }
 
 // backend/src/middleware/auth.ts
@@ -13158,12 +13185,12 @@ var authenticate = (req, _res, next) => {
     };
     return next();
   } catch (error) {
-    if (error instanceof TokenExpiredError) {
+    if (error instanceof import_jsonwebtoken2.TokenExpiredError) {
       return next(
         AppError.unauthorized("Authentication token has expired", "AUTH_TOKEN_EXPIRED")
       );
     }
-    if (error instanceof JsonWebTokenError) {
+    if (error instanceof import_jsonwebtoken2.JsonWebTokenError) {
       return next(
         AppError.unauthorized("Invalid authentication token", "AUTH_INVALID_TOKEN")
       );
@@ -13194,11 +13221,11 @@ var optionalAuth = (req, _res, next) => {
 };
 
 // backend/src/middleware/errorHandler.ts
+var import_client = require("@prisma/client");
+var import_zod2 = require("zod");
+var import_jsonwebtoken3 = require("jsonwebtoken");
 init_env();
 init_logger();
-import { Prisma } from "@prisma/client";
-import { ZodError } from "zod";
-import { JsonWebTokenError as JsonWebTokenError2, TokenExpiredError as TokenExpiredError2 } from "jsonwebtoken";
 
 // backend/src/utils/apiResponse.ts
 function sendSuccess(res, options = {}) {
@@ -13234,7 +13261,7 @@ var errorHandler = (err, req, res, _next) => {
     message = err.message;
     code = err.code;
     errors = err.errors;
-  } else if (err instanceof ZodError) {
+  } else if (err instanceof import_zod2.ZodError) {
     statusCode = 422;
     message = "Validation failed";
     code = "VALIDATION_ERROR";
@@ -13242,15 +13269,15 @@ var errorHandler = (err, req, res, _next) => {
       field: e.path.join("."),
       message: e.message
     }));
-  } else if (err instanceof TokenExpiredError2) {
+  } else if (err instanceof import_jsonwebtoken3.TokenExpiredError) {
     statusCode = 401;
     message = "Authentication token expired";
     code = "AUTH_TOKEN_EXPIRED";
-  } else if (err instanceof JsonWebTokenError2) {
+  } else if (err instanceof import_jsonwebtoken3.JsonWebTokenError) {
     statusCode = 401;
     message = "Invalid authentication token";
     code = "AUTH_INVALID_TOKEN";
-  } else if (err instanceof Prisma.PrismaClientKnownRequestError) {
+  } else if (err instanceof import_client.Prisma.PrismaClientKnownRequestError) {
     switch (err.code) {
       case "P2002": {
         statusCode = 409;
@@ -13315,16 +13342,16 @@ var notFoundHandler = (req, _res, next) => {
 };
 
 // backend/src/middleware/requestLogger.ts
+var import_crypto2 = require("crypto");
+var import_pino_http = __toESM(require("pino-http"));
 init_env();
 init_logger();
-import { randomUUID } from "crypto";
-import pinoHttp from "pino-http";
-var requestLogger = pinoHttp({
+var requestLogger = (0, import_pino_http.default)({
   logger,
   autoLogging: !isTest,
   genReqId: (req) => {
     const existingId = req.headers["x-request-id"];
-    return existingId || randomUUID();
+    return existingId || (0, import_crypto2.randomUUID)();
   },
   customLogLevel: (req, res, err) => {
     if (res.statusCode >= 500 || err) return "error";
@@ -13364,8 +13391,8 @@ var authorizeRoles = (...allowedRoles) => {
 };
 
 // backend/src/middleware/validate.ts
+var import_zod3 = require("zod");
 init_appError();
-import { ZodError as ZodError2 } from "zod";
 var validate = (schemas, defaultStatusCode = 422) => {
   const statusCode = schemas.statusCode || defaultStatusCode;
   return async (req, _res, next) => {
@@ -13381,7 +13408,7 @@ var validate = (schemas, defaultStatusCode = 422) => {
       }
       next();
     } catch (error) {
-      if (error instanceof ZodError2) {
+      if (error instanceof import_zod3.ZodError) {
         const issues = error.errors.map((err) => ({
           field: err.path.join("."),
           message: err.message,
@@ -13441,21 +13468,21 @@ var protectMlmFields = (req, _res, next) => {
 };
 
 // backend/src/routes/index.ts
-import { Router as Router35 } from "express";
+var import_express35 = require("express");
 
 // backend/src/routes/auth.routes.ts
-import { Router } from "express";
+var import_express = require("express");
 
 // backend/src/services/auth.service.ts
+var import_crypto3 = require("crypto");
 init_database();
 init_logger();
 init_appError();
-import { randomBytes, randomUUID as randomUUID2 } from "crypto";
 
 // backend/src/utils/password.ts
-import argon2 from "argon2";
+var import_argon2 = __toESM(require("argon2"));
 var ARGON2_CONFIG = {
-  type: argon2.argon2id,
+  type: import_argon2.default.argon2id,
   memoryCost: 65536,
   // 64 MB
   timeCost: 3,
@@ -13468,14 +13495,14 @@ async function hashPassword(password) {
   if (password.length > 1024) {
     throw new Error("Password exceeds maximum permissible length of 1024 characters.");
   }
-  return await argon2.hash(password, ARGON2_CONFIG);
+  return await import_argon2.default.hash(password, ARGON2_CONFIG);
 }
 async function comparePassword(password, passwordHash) {
   if (typeof password !== "string" || typeof passwordHash !== "string" || password.length === 0 || passwordHash.length === 0) {
     return false;
   }
   try {
-    return await argon2.verify(passwordHash, password);
+    return await import_argon2.default.verify(passwordHash, password);
   } catch {
     return false;
   }
@@ -13852,7 +13879,7 @@ var AuthService = class {
       );
     }
     const passwordHash = await hashPassword(input.password);
-    const userId = randomUUID2();
+    const userId = (0, import_crypto3.randomUUID)();
     const uniqueSuffix = Math.floor(1e4 + Math.random() * 9e4);
     const generatedUserId = `USR-${uniqueSuffix}`;
     const role = input.role || "DISTRIBUTOR";
@@ -13895,7 +13922,7 @@ var AuthService = class {
       sponsorId: sponsorDistCode,
       sponsorProfileId,
       distributorProfile: {
-        id: randomUUID2(),
+        id: (0, import_crypto3.randomUUID)(),
         distributorCode,
         firstName,
         lastName,
@@ -13931,7 +13958,7 @@ var AuthService = class {
         sponsoredDistributors: [],
         businessCenters: [
           {
-            id: randomUUID2(),
+            id: (0, import_crypto3.randomUUID)(),
             centerCode: `${distributorCode}-BC1`,
             centerNumber: 1,
             leftVolume: 0,
@@ -13971,8 +13998,8 @@ var AuthService = class {
     });
     const refreshToken = signRefreshToken({
       sub: userId,
-      sessionId: randomUUID2(),
-      family: randomUUID2()
+      sessionId: (0, import_crypto3.randomUUID)(),
+      family: (0, import_crypto3.randomUUID)()
     });
     const tokens = {
       accessToken,
@@ -14313,8 +14340,8 @@ var AuthService = class {
     });
     const refreshToken = signRefreshToken({
       sub: user.id,
-      sessionId: randomUUID2(),
-      family: randomUUID2()
+      sessionId: (0, import_crypto3.randomUUID)(),
+      family: (0, import_crypto3.randomUUID)()
     });
     const tokens = {
       accessToken,
@@ -14512,8 +14539,8 @@ var AuthService = class {
     });
     const newRefreshToken = signRefreshToken({
       sub: userId,
-      sessionId: randomUUID2(),
-      family: payload.family || randomUUID2()
+      sessionId: (0, import_crypto3.randomUUID)(),
+      family: payload.family || (0, import_crypto3.randomUUID)()
     });
     return {
       tokens: {
@@ -14564,7 +14591,7 @@ var AuthService = class {
         where: { id: session.id },
         data: { isRevoked: true }
       });
-      const newSessionId = randomUUID2();
+      const newSessionId = (0, import_crypto3.randomUUID)();
       const newRefreshToken = signRefreshToken({
         sub: user.id,
         sessionId: newSessionId,
@@ -14724,7 +14751,7 @@ var AuthService = class {
         message: "If this email exists in our system, password reset instructions have been sent."
       };
     }
-    const rawToken = randomBytes(32).toString("hex");
+    const rawToken = (0, import_crypto3.randomBytes)(32).toString("hex");
     const tokenHash = hashToken(rawToken);
     const expiresAt = new Date(Date.now() + 60 * 60 * 1e3);
     await prisma.passwordResetToken.updateMany({
@@ -14785,8 +14812,8 @@ var AuthService = class {
    * Helper to create a new session and sign access/refresh token pair.
    */
   static async createSession(userId, email, role, status, metadata, txClient = prisma) {
-    const sessionId = randomUUID2();
-    const family = randomUUID2();
+    const sessionId = (0, import_crypto3.randomUUID)();
+    const family = (0, import_crypto3.randomUUID)();
     const accessToken = signAccessToken({
       sub: userId,
       email,
@@ -15029,25 +15056,25 @@ var AuthController = class {
 };
 
 // backend/src/validators/auth.validators.ts
-import { z as z2 } from "zod";
-var registerSchema = z2.object({
-  email: z2.preprocess(
+var import_zod4 = require("zod");
+var registerSchema = import_zod4.z.object({
+  email: import_zod4.z.preprocess(
     (val) => typeof val === "string" ? val.trim().toLowerCase() : val,
-    z2.string().email("Please enter a valid email address")
+    import_zod4.z.string().email("Please enter a valid email address")
   ),
-  password: z2.string().min(8, "Password must be at least 8 characters"),
-  role: z2.enum(["DISTRIBUTOR", "CUSTOMER"]).default("DISTRIBUTOR").optional(),
-  firstName: z2.string().trim().optional(),
-  lastName: z2.string().trim().optional(),
-  fullName: z2.string().trim().optional(),
-  name: z2.string().trim().optional(),
-  phone: z2.string().trim().optional(),
-  username: z2.string().trim().optional(),
-  referralCode: z2.string().trim().optional(),
-  sponsorCode: z2.string().trim().optional(),
-  sponsorId: z2.string().trim().optional(),
-  placementPosition: z2.string().trim().optional(),
-  confirmPassword: z2.string().trim().optional()
+  password: import_zod4.z.string().min(8, "Password must be at least 8 characters"),
+  role: import_zod4.z.enum(["DISTRIBUTOR", "CUSTOMER"]).default("DISTRIBUTOR").optional(),
+  firstName: import_zod4.z.string().trim().optional(),
+  lastName: import_zod4.z.string().trim().optional(),
+  fullName: import_zod4.z.string().trim().optional(),
+  name: import_zod4.z.string().trim().optional(),
+  phone: import_zod4.z.string().trim().optional(),
+  username: import_zod4.z.string().trim().optional(),
+  referralCode: import_zod4.z.string().trim().optional(),
+  sponsorCode: import_zod4.z.string().trim().optional(),
+  sponsorId: import_zod4.z.string().trim().optional(),
+  placementPosition: import_zod4.z.string().trim().optional(),
+  confirmPassword: import_zod4.z.string().trim().optional()
 }).refine(
   (data) => {
     if (data.confirmPassword && data.password !== data.confirmPassword) {
@@ -15060,36 +15087,36 @@ var registerSchema = z2.object({
     path: ["confirmPassword"]
   }
 );
-var loginSchema = z2.object({
-  email: z2.preprocess(
+var loginSchema = import_zod4.z.object({
+  email: import_zod4.z.preprocess(
     (val) => typeof val === "string" ? val.trim().toLowerCase() : val,
-    z2.string().optional()
+    import_zod4.z.string().optional()
   ),
-  username: z2.string().trim().optional(),
-  identifier: z2.string().trim().optional(),
-  password: z2.string().min(1, "Password is required"),
-  rememberMe: z2.boolean().optional(),
-  sponsorId: z2.string().optional()
+  username: import_zod4.z.string().trim().optional(),
+  identifier: import_zod4.z.string().trim().optional(),
+  password: import_zod4.z.string().min(1, "Password is required"),
+  rememberMe: import_zod4.z.boolean().optional(),
+  sponsorId: import_zod4.z.string().optional()
 }).refine((data) => Boolean(data.email || data.username || data.identifier), {
   message: "Please provide your email or username",
   path: ["identifier"]
 });
-var refreshTokenSchema = z2.object({
-  refreshToken: z2.string().optional()
+var refreshTokenSchema = import_zod4.z.object({
+  refreshToken: import_zod4.z.string().optional()
 });
-var logoutSchema = z2.object({
-  refreshToken: z2.string().optional()
+var logoutSchema = import_zod4.z.object({
+  refreshToken: import_zod4.z.string().optional()
 });
-var forgotPasswordSchema = z2.object({
-  email: z2.string().email("Please enter a valid email address").toLowerCase().trim()
+var forgotPasswordSchema = import_zod4.z.object({
+  email: import_zod4.z.string().email("Please enter a valid email address").toLowerCase().trim()
 });
-var resetPasswordSchema = z2.object({
-  token: z2.string().min(1, "Reset token is required").trim(),
-  newPassword: z2.string().min(8, "Password must be at least 8 characters").regex(/[A-Z]/, "Password must contain at least one uppercase letter").regex(/[a-z]/, "Password must contain at least one lowercase letter").regex(/[0-9]/, "Password must contain at least one number")
+var resetPasswordSchema = import_zod4.z.object({
+  token: import_zod4.z.string().min(1, "Reset token is required").trim(),
+  newPassword: import_zod4.z.string().min(8, "Password must be at least 8 characters").regex(/[A-Z]/, "Password must contain at least one uppercase letter").regex(/[a-z]/, "Password must contain at least one lowercase letter").regex(/[0-9]/, "Password must contain at least one number")
 });
 
 // backend/src/routes/auth.routes.ts
-var router = Router();
+var router = (0, import_express.Router)();
 router.post(
   "/register",
   registerRateLimiter,
@@ -15132,22 +15159,22 @@ router.post(
 var authRouter = router;
 
 // backend/src/routes/dashboard.routes.ts
-import { Router as Router2 } from "express";
+var import_express2 = require("express");
 
 // backend/src/services/dashboard.service.ts
 init_database();
 
 // backend/src/services/commission.service.ts
+var import_client5 = require("@prisma/client");
 init_database();
 init_logger();
 init_appError();
-import { Prisma as Prisma5 } from "@prisma/client";
 
 // backend/src/services/bv.service.ts
+var import_client3 = require("@prisma/client");
 init_database();
 init_logger();
 init_appError();
-import { Prisma as Prisma3 } from "@prisma/client";
 var BVService = class {
   /**
    * Formats a raw Prisma BVLedger record into a numeric JSON representation.
@@ -15220,8 +15247,8 @@ var BVService = class {
         orderBy: { createdAt: "desc" },
         select: { balanceAfter: true }
       });
-      const previousBalance = lastEntry ? new Prisma3.Decimal(lastEntry.balanceAfter) : new Prisma3.Decimal(0);
-      const creditDecimal = new Prisma3.Decimal(creditAmount);
+      const previousBalance = lastEntry ? new import_client3.Prisma.Decimal(lastEntry.balanceAfter) : new import_client3.Prisma.Decimal(0);
+      const creditDecimal = new import_client3.Prisma.Decimal(creditAmount);
       const balanceAfter = previousBalance.add(creditDecimal);
       let txType = "ORDER_ACCRUAL";
       if (sourceType === "ADJUSTMENT" || sourceType === "REVERSAL") {
@@ -15307,8 +15334,8 @@ var BVService = class {
         orderBy: { createdAt: "desc" },
         select: { balanceAfter: true }
       });
-      const previousBalance = lastEntry ? new Prisma3.Decimal(lastEntry.balanceAfter) : new Prisma3.Decimal(0);
-      const debitDecimal = new Prisma3.Decimal(debitAmount);
+      const previousBalance = lastEntry ? new import_client3.Prisma.Decimal(lastEntry.balanceAfter) : new import_client3.Prisma.Decimal(0);
+      const debitDecimal = new import_client3.Prisma.Decimal(debitAmount);
       const negativeBv = debitDecimal.negated();
       const balanceAfter = previousBalance.sub(debitDecimal);
       let txType = "COMMISSION_DEDUCTION";
@@ -15535,7 +15562,7 @@ var BVService = class {
           `Transaction ${originalTransactionId} has already been reversed by entry ${existingReversal.id}`
         );
       }
-      const originalBv = new Prisma3.Decimal(original.bv);
+      const originalBv = new import_client3.Prisma.Decimal(original.bv);
       const compensatingDelta = originalBv.negated();
       const lastEntry = await client.bVLedger.findFirst({
         where: {
@@ -15545,7 +15572,7 @@ var BVService = class {
         orderBy: { createdAt: "desc" },
         select: { balanceAfter: true }
       });
-      const previousBalance = lastEntry ? new Prisma3.Decimal(lastEntry.balanceAfter) : new Prisma3.Decimal(0);
+      const previousBalance = lastEntry ? new import_client3.Prisma.Decimal(lastEntry.balanceAfter) : new import_client3.Prisma.Decimal(0);
       const balanceAfter = previousBalance.add(compensatingDelta);
       const reversalEntry = await client.bVLedger.create({
         data: {
@@ -15618,10 +15645,10 @@ var BVService = class {
 };
 
 // backend/src/services/wallet.service.ts
+var import_client4 = require("@prisma/client");
 init_database();
 init_logger();
 init_appError();
-import { Prisma as Prisma4 } from "@prisma/client";
 var WalletService = class {
   /**
    * Formats a raw Wallet model instance into consistent response DTO.
@@ -15700,13 +15727,13 @@ var WalletService = class {
           data: {
             distributorId: distributor.id,
             userId: distributor.userId,
-            availableBalance: new Prisma4.Decimal(0),
-            balance: new Prisma4.Decimal(0),
-            pendingBalance: new Prisma4.Decimal(0),
-            lifetimeEarned: new Prisma4.Decimal(0),
-            totalEarned: new Prisma4.Decimal(0),
-            lifetimePaid: new Prisma4.Decimal(0),
-            totalWithdrawn: new Prisma4.Decimal(0),
+            availableBalance: new import_client4.Prisma.Decimal(0),
+            balance: new import_client4.Prisma.Decimal(0),
+            pendingBalance: new import_client4.Prisma.Decimal(0),
+            lifetimeEarned: new import_client4.Prisma.Decimal(0),
+            totalEarned: new import_client4.Prisma.Decimal(0),
+            lifetimePaid: new import_client4.Prisma.Decimal(0),
+            totalWithdrawn: new import_client4.Prisma.Decimal(0),
             currency: "USD",
             isLocked: false
           }
@@ -15734,13 +15761,13 @@ var WalletService = class {
         data: {
           userId,
           distributorId: distributor ? distributor.id : null,
-          availableBalance: new Prisma4.Decimal(0),
-          balance: new Prisma4.Decimal(0),
-          pendingBalance: new Prisma4.Decimal(0),
-          lifetimeEarned: new Prisma4.Decimal(0),
-          totalEarned: new Prisma4.Decimal(0),
-          lifetimePaid: new Prisma4.Decimal(0),
-          totalWithdrawn: new Prisma4.Decimal(0),
+          availableBalance: new import_client4.Prisma.Decimal(0),
+          balance: new import_client4.Prisma.Decimal(0),
+          pendingBalance: new import_client4.Prisma.Decimal(0),
+          lifetimeEarned: new import_client4.Prisma.Decimal(0),
+          totalEarned: new import_client4.Prisma.Decimal(0),
+          lifetimePaid: new import_client4.Prisma.Decimal(0),
+          totalWithdrawn: new import_client4.Prisma.Decimal(0),
           currency: "USD",
           isLocked: false
         }
@@ -15832,13 +15859,13 @@ var WalletService = class {
             data: {
               distributorId: distributor.id,
               userId: distributor.userId,
-              availableBalance: new Prisma4.Decimal(0),
-              balance: new Prisma4.Decimal(0),
-              pendingBalance: new Prisma4.Decimal(0),
-              lifetimeEarned: new Prisma4.Decimal(0),
-              totalEarned: new Prisma4.Decimal(0),
-              lifetimePaid: new Prisma4.Decimal(0),
-              totalWithdrawn: new Prisma4.Decimal(0),
+              availableBalance: new import_client4.Prisma.Decimal(0),
+              balance: new import_client4.Prisma.Decimal(0),
+              pendingBalance: new import_client4.Prisma.Decimal(0),
+              lifetimeEarned: new import_client4.Prisma.Decimal(0),
+              totalEarned: new import_client4.Prisma.Decimal(0),
+              lifetimePaid: new import_client4.Prisma.Decimal(0),
+              totalWithdrawn: new import_client4.Prisma.Decimal(0),
               currency: "USD",
               isLocked: false
             }
@@ -15851,11 +15878,11 @@ var WalletService = class {
           "WALLET_LOCKED"
         );
       }
-      const balanceBefore = new Prisma4.Decimal(wallet.availableBalance ?? wallet.balance ?? 0);
-      const amount = new Prisma4.Decimal(input.amount);
+      const balanceBefore = new import_client4.Prisma.Decimal(wallet.availableBalance ?? wallet.balance ?? 0);
+      const amount = new import_client4.Prisma.Decimal(input.amount);
       let balanceAfter;
-      let earnedDelta = new Prisma4.Decimal(0);
-      let paidDelta = new Prisma4.Decimal(0);
+      let earnedDelta = new import_client4.Prisma.Decimal(0);
+      let paidDelta = new import_client4.Prisma.Decimal(0);
       if (input.type === "CREDIT" || input.type === "ADJUSTMENT") {
         balanceAfter = balanceBefore.add(amount);
         earnedDelta = amount;
@@ -15879,7 +15906,7 @@ var WalletService = class {
           type: input.type,
           status: "COMPLETED",
           amount,
-          feeAmount: new Prisma4.Decimal(0),
+          feeAmount: new import_client4.Prisma.Decimal(0),
           netAmount: amount,
           balanceBefore,
           balanceAfter,
@@ -15986,13 +16013,13 @@ var WalletService = class {
             data: {
               userId,
               distributorId: distId,
-              availableBalance: new Prisma4.Decimal(0),
-              balance: new Prisma4.Decimal(0),
-              pendingBalance: new Prisma4.Decimal(0),
-              lifetimeEarned: new Prisma4.Decimal(0),
-              totalEarned: new Prisma4.Decimal(0),
-              lifetimePaid: new Prisma4.Decimal(0),
-              totalWithdrawn: new Prisma4.Decimal(0),
+              availableBalance: new import_client4.Prisma.Decimal(0),
+              balance: new import_client4.Prisma.Decimal(0),
+              pendingBalance: new import_client4.Prisma.Decimal(0),
+              lifetimeEarned: new import_client4.Prisma.Decimal(0),
+              totalEarned: new import_client4.Prisma.Decimal(0),
+              lifetimePaid: new import_client4.Prisma.Decimal(0),
+              totalWithdrawn: new import_client4.Prisma.Decimal(0),
               currency: "USD",
               isLocked: false
             }
@@ -16003,7 +16030,7 @@ var WalletService = class {
             data: { distributorId: distId }
           });
         }
-        const balanceBefore = new Prisma4.Decimal(wallet.availableBalance ?? wallet.balance ?? 0);
+        const balanceBefore = new import_client4.Prisma.Decimal(wallet.availableBalance ?? wallet.balance ?? 0);
         const balanceAfter = balanceBefore.add(comm.amount);
         await tx.wallet.update({
           where: { id: wallet.id },
@@ -16022,7 +16049,7 @@ var WalletService = class {
             type: "COMMISSION",
             status: "COMPLETED",
             amount: comm.amount,
-            feeAmount: new Prisma4.Decimal(0),
+            feeAmount: new import_client4.Prisma.Decimal(0),
             netAmount: comm.amount,
             balanceBefore,
             balanceAfter,
@@ -16260,10 +16287,10 @@ var CommissionService = class {
             periodId,
             ruleId: rule.id,
             type: "BASE",
-            amount: new Prisma5.Decimal(commissionAmount),
+            amount: new import_client5.Prisma.Decimal(commissionAmount),
             status: "CALCULATED",
-            leftVolumeMatched: new Prisma5.Decimal(matchedVolume),
-            rightVolumeMatched: new Prisma5.Decimal(matchedVolume),
+            leftVolumeMatched: new import_client5.Prisma.Decimal(matchedVolume),
+            rightVolumeMatched: new import_client5.Prisma.Decimal(matchedVolume),
             details: {
               percentage,
               leftBV,
@@ -16340,7 +16367,7 @@ var CommissionService = class {
         periodId: period?.id || null,
         ruleId: rule.id,
         type: "PC_ORDER",
-        amount: new Prisma5.Decimal(bonusAmount),
+        amount: new import_client5.Prisma.Decimal(bonusAmount),
         status: "CALCULATED",
         sourceOrderId: order.id,
         sourceDistributorId: order.distributorId || null,
@@ -16412,7 +16439,7 @@ var CommissionService = class {
         distributorId,
         ruleId: rule.id,
         type: "MILESTONE",
-        amount: new Prisma5.Decimal(bonusAmount),
+        amount: new import_client5.Prisma.Decimal(bonusAmount),
         status: "CALCULATED",
         details: {
           milestoneKey,
@@ -16476,7 +16503,7 @@ var CommissionService = class {
             periodId,
             ruleId: rule.id,
             type: "FRONTLINE",
-            amount: new Prisma5.Decimal(bonusAmount),
+            amount: new import_client5.Prisma.Decimal(bonusAmount),
             status: "CALCULATED",
             sourceDistributorId: frontline.id,
             details: {
@@ -16547,10 +16574,10 @@ var CommissionService = class {
             periodId,
             ruleId: rule.id,
             type: "BINARY",
-            amount: new Prisma5.Decimal(calculatedPayout),
+            amount: new import_client5.Prisma.Decimal(calculatedPayout),
             status: "CALCULATED",
-            leftVolumeMatched: new Prisma5.Decimal(matchedVolume),
-            rightVolumeMatched: new Prisma5.Decimal(matchedVolume),
+            leftVolumeMatched: new import_client5.Prisma.Decimal(matchedVolume),
+            rightVolumeMatched: new import_client5.Prisma.Decimal(matchedVolume),
             details: {
               leftBV,
               rightBV,
@@ -16593,7 +16620,7 @@ var CommissionService = class {
         periodId: periodId || null,
         ruleId: rule.id,
         type: "RANK",
-        amount: new Prisma5.Decimal(bonusAmount),
+        amount: new import_client5.Prisma.Decimal(bonusAmount),
         status: "CALCULATED",
         details: {
           rankCode: normalizedRank,
@@ -16658,7 +16685,7 @@ var CommissionService = class {
     await db.commissionPeriod.update({
       where: { id: period.id },
       data: {
-        totalCommissionsCalculated: new Prisma5.Decimal(totalAmount)
+        totalCommissionsCalculated: new import_client5.Prisma.Decimal(totalAmount)
       }
     });
     const activeDistributorsCount = await db.distributorProfile.count({
@@ -16814,16 +16841,16 @@ init_database();
 init_appError();
 
 // backend/src/services/mlmTree.service.ts
+var import_client7 = require("@prisma/client");
 init_database();
 init_logger();
 init_appError();
-import { Prisma as Prisma7 } from "@prisma/client";
 
 // backend/src/services/treePlacement.service.ts
+var import_client6 = require("@prisma/client");
 init_database();
 init_logger();
 init_appError();
-import { Prisma as Prisma6 } from "@prisma/client";
 function getPlacementStatusCode(code) {
   switch (code) {
     case "PLACEMENT_PARENT_NOT_FOUND":
@@ -17304,7 +17331,7 @@ var TreePlacementService = class {
         data: placedNode
       };
     } catch (err) {
-      if (err instanceof Prisma6.PrismaClientKnownRequestError && err.code === "P2002") {
+      if (err instanceof import_client6.Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
         if (throwOnError) {
           throw new AppError("Position already occupied.", 409, "POSITION_ALREADY_OCCUPIED");
         }
@@ -18260,8 +18287,8 @@ var MlmTreeService = class {
                   centerNumber: 1,
                   centerCode: "DST-A-BC1",
                   status: "ACTIVE",
-                  leftVolume: new Prisma7.Decimal("1500.00"),
-                  rightVolume: new Prisma7.Decimal("1800.00")
+                  leftVolume: new import_client7.Prisma.Decimal("1500.00"),
+                  rightVolume: new import_client7.Prisma.Decimal("1800.00")
                 }
               }
             }
@@ -18302,8 +18329,8 @@ var MlmTreeService = class {
                   centerNumber: 1,
                   centerCode: "DST-B-BC1",
                   status: "ACTIVE",
-                  leftVolume: new Prisma7.Decimal("800.00"),
-                  rightVolume: new Prisma7.Decimal("700.00")
+                  leftVolume: new import_client7.Prisma.Decimal("800.00"),
+                  rightVolume: new import_client7.Prisma.Decimal("700.00")
                 }
               }
             }
@@ -18354,8 +18381,8 @@ var MlmTreeService = class {
                   centerNumber: 1,
                   centerCode: "DST-C-BC1",
                   status: "ACTIVE",
-                  leftVolume: new Prisma7.Decimal("400.00"),
-                  rightVolume: new Prisma7.Decimal("300.00")
+                  leftVolume: new import_client7.Prisma.Decimal("400.00"),
+                  rightVolume: new import_client7.Prisma.Decimal("300.00")
                 }
               }
             }
@@ -18406,8 +18433,8 @@ var MlmTreeService = class {
                   centerNumber: 1,
                   centerCode: "DST-D-BC1",
                   status: "ACTIVE",
-                  leftVolume: new Prisma7.Decimal("900.00"),
-                  rightVolume: new Prisma7.Decimal("900.00")
+                  leftVolume: new import_client7.Prisma.Decimal("900.00"),
+                  rightVolume: new import_client7.Prisma.Decimal("900.00")
                 }
               }
             }
@@ -18458,8 +18485,8 @@ var MlmTreeService = class {
                   centerNumber: 1,
                   centerCode: "DST-E-BC1",
                   status: "ACTIVE",
-                  leftVolume: new Prisma7.Decimal("500.00"),
-                  rightVolume: new Prisma7.Decimal("400.00")
+                  leftVolume: new import_client7.Prisma.Decimal("500.00"),
+                  rightVolume: new import_client7.Prisma.Decimal("400.00")
                 }
               }
             }
@@ -19877,7 +19904,7 @@ var DashboardController = class {
 };
 
 // backend/src/routes/dashboard.routes.ts
-var router2 = Router2();
+var router2 = (0, import_express2.Router)();
 var optionalAuth2 = (req, _res, next) => {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith("Bearer ")) {
@@ -19899,7 +19926,7 @@ router2.get("/", optionalAuth2, DashboardController.getDashboard);
 var dashboardRouter = router2;
 
 // backend/src/routes/distributor.routes.ts
-import { Router as Router3 } from "express";
+var import_express3 = require("express");
 
 // backend/src/services/networkTree.service.ts
 init_database();
@@ -21093,19 +21120,19 @@ var DistributorController = class {
 };
 
 // backend/src/validators/distributor.validators.ts
-import { z as z3 } from "zod";
-var updateDistributorProfileSchema = z3.object({
-  name: z3.string().trim().optional(),
-  firstName: z3.string().min(1, "First name cannot be empty").trim().optional(),
-  lastName: z3.string().min(1, "Last name cannot be empty").trim().optional(),
-  displayName: z3.string().trim().optional(),
-  phone: z3.string().trim().optional(),
-  dateOfBirth: z3.coerce.date().optional(),
-  gender: z3.enum(["MALE", "FEMALE", "OTHER", "NOT_SPECIFIED"]).optional()
+var import_zod5 = require("zod");
+var updateDistributorProfileSchema = import_zod5.z.object({
+  name: import_zod5.z.string().trim().optional(),
+  firstName: import_zod5.z.string().min(1, "First name cannot be empty").trim().optional(),
+  lastName: import_zod5.z.string().min(1, "Last name cannot be empty").trim().optional(),
+  displayName: import_zod5.z.string().trim().optional(),
+  phone: import_zod5.z.string().trim().optional(),
+  dateOfBirth: import_zod5.z.coerce.date().optional(),
+  gender: import_zod5.z.enum(["MALE", "FEMALE", "OTHER", "NOT_SPECIFIED"]).optional()
 }).passthrough();
 
 // backend/src/routes/distributor.routes.ts
-var router3 = Router3();
+var router3 = (0, import_express3.Router)();
 router3.get("/me/referral-link", optionalAuth, DistributorController.getMeReferralLink);
 router3.get("/:id/referral-link", DistributorController.getReferralLinkById);
 router3.get("/me", authenticate, DistributorController.getMe);
@@ -21133,14 +21160,14 @@ router3.get("/:id/team", authenticate, DistributorController.getTeam);
 var distributorRouter = router3;
 
 // backend/src/routes/enrollment.routes.ts
-import { Router as Router4 } from "express";
+var import_express4 = require("express");
 
 // backend/src/services/enrollment.service.ts
+var import_crypto4 = require("crypto");
+var import_client8 = require("@prisma/client");
 init_database();
 init_logger();
 init_appError();
-import { randomUUID as randomUUID3 } from "crypto";
-import { CenterStatus, Prisma as Prisma8 } from "@prisma/client";
 
 // backend/src/utils/masking.ts
 function maskAccountNumber(accountNumber) {
@@ -21304,7 +21331,7 @@ var EnrollmentService = class _EnrollmentService {
         "ENROLLMENT_SELF_SPONSOR_FORBIDDEN"
       );
     }
-    const id = randomUUID3();
+    const id = (0, import_crypto4.randomUUID)();
     const enrollmentNumber = `ENR-${Math.floor(1e5 + Math.random() * 9e5)}`;
     const now = /* @__PURE__ */ new Date();
     const fallbackRecord = {
@@ -21814,8 +21841,8 @@ var EnrollmentService = class _EnrollmentService {
             data: {
               selectedPackage: input.productPackage,
               starterKitId: input.starterKitId || null,
-              packagePrice: new Prisma8.Decimal(input.price),
-              packageBV: new Prisma8.Decimal(input.bv),
+              packagePrice: new import_client8.Prisma.Decimal(input.price),
+              packageBV: new import_client8.Prisma.Decimal(input.bv),
               currentStep: Math.max(enrollment.currentStep, 5)
             },
             include: {
@@ -22278,7 +22305,7 @@ var EnrollmentService = class _EnrollmentService {
             distributorId: distributorProfile.id,
             centerNumber: 1,
             centerCode: `${distributorCode}-BC1`,
-            status: CenterStatus.ACTIVE
+            status: import_client8.CenterStatus.ACTIVE
           }
         });
         binaryNode = await tx.mLMNode.create({
@@ -22310,8 +22337,8 @@ var EnrollmentService = class _EnrollmentService {
             status: "PENDING_REVIEW"
           }
         });
-        const pkgPrice = enrollment.packagePrice || new Prisma8.Decimal("249.99");
-        const pkgBV = enrollment.packageBV || new Prisma8.Decimal("200.00");
+        const pkgPrice = enrollment.packagePrice || new import_client8.Prisma.Decimal("249.99");
+        const pkgBV = enrollment.packageBV || new import_client8.Prisma.Decimal("200.00");
         const orderNumber = `ORD-${Math.floor(1e5 + Math.random() * 9e5)}`;
         let product = await tx.product.findFirst({
           where: {
@@ -22333,9 +22360,9 @@ var EnrollmentService = class _EnrollmentService {
               billingAddressId: billingAddress.id,
               status: "CONFIRMED",
               subtotal: pkgPrice,
-              taxAmount: new Prisma8.Decimal("0.00"),
-              shippingAmount: new Prisma8.Decimal("0.00"),
-              discountAmount: new Prisma8.Decimal("0.00"),
+              taxAmount: new import_client8.Prisma.Decimal("0.00"),
+              shippingAmount: new import_client8.Prisma.Decimal("0.00"),
+              discountAmount: new import_client8.Prisma.Decimal("0.00"),
               totalAmount: pkgPrice,
               totalBV: pkgBV,
               items: {
@@ -22703,7 +22730,7 @@ var EnrollmentService = class _EnrollmentService {
             distributorId: distributor.id,
             centerNumber: 1,
             centerCode: `${newDistributorId}-BC1`,
-            status: CenterStatus.ACTIVE
+            status: import_client8.CenterStatus.ACTIVE
           }
         });
         const mlmNode = await tx.mLMNode.create({
@@ -22939,23 +22966,23 @@ var EnrollmentController = class {
 };
 
 // backend/src/validators/enrollment.validators.ts
-import { z as z4 } from "zod";
-var enrollmentTypeEnum = z4.enum(["DISTRIBUTOR", "CUSTOMER"]);
-var placementPositionEnum = z4.enum(["LEFT", "RIGHT"]);
-var enrollmentIdParamSchema = z4.object({
-  id: z4.string().uuid("Enrollment ID must be a valid UUID")
+var import_zod6 = require("zod");
+var enrollmentTypeEnum = import_zod6.z.enum(["DISTRIBUTOR", "CUSTOMER"]);
+var placementPositionEnum = import_zod6.z.enum(["LEFT", "RIGHT"]);
+var enrollmentIdParamSchema = import_zod6.z.object({
+  id: import_zod6.z.string().uuid("Enrollment ID must be a valid UUID")
 });
-var createEnrollmentSchema = z4.object({
-  sponsorId: z4.string().min(1, "Sponsor ID or code is required").trim(),
-  prospectEmail: z4.string().email("Please enter a valid prospect email").toLowerCase().trim(),
-  prospectPhone: z4.string().trim().optional(),
+var createEnrollmentSchema = import_zod6.z.object({
+  sponsorId: import_zod6.z.string().min(1, "Sponsor ID or code is required").trim(),
+  prospectEmail: import_zod6.z.string().email("Please enter a valid prospect email").toLowerCase().trim(),
+  prospectPhone: import_zod6.z.string().trim().optional(),
   enrollmentType: enrollmentTypeEnum.default("DISTRIBUTOR")
 });
-var step1PersonalInfoSchema = z4.object({
-  legalName: z4.string().min(2, "Legal name must be at least 2 characters").max(100).trim(),
-  email: z4.string().email("Please enter a valid email address").toLowerCase().trim(),
-  mobile: z4.string().min(7, "Mobile number must be at least 7 digits").max(20, "Mobile number is too long").regex(/^[0-9+\-()\s]+$/, "Mobile number contains invalid characters").trim(),
-  dateOfBirth: z4.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date of birth must be in YYYY-MM-DD format").refine((dob) => {
+var step1PersonalInfoSchema = import_zod6.z.object({
+  legalName: import_zod6.z.string().min(2, "Legal name must be at least 2 characters").max(100).trim(),
+  email: import_zod6.z.string().email("Please enter a valid email address").toLowerCase().trim(),
+  mobile: import_zod6.z.string().min(7, "Mobile number must be at least 7 digits").max(20, "Mobile number is too long").regex(/^[0-9+\-()\s]+$/, "Mobile number contains invalid characters").trim(),
+  dateOfBirth: import_zod6.z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date of birth must be in YYYY-MM-DD format").refine((dob) => {
     const date = new Date(dob);
     if (isNaN(date.getTime())) return false;
     const ageDifMs = Date.now() - date.getTime();
@@ -22964,71 +22991,71 @@ var step1PersonalInfoSchema = z4.object({
     return age >= 18;
   }, "Prospect must be at least 18 years old")
 });
-var step2AddressSchema = z4.object({
-  address: z4.string().min(3, "Street address must be at least 3 characters").max(200).trim(),
-  apartment: z4.string().max(50).trim().optional(),
-  city: z4.string().min(2, "City is required").max(100).trim(),
-  state: z4.string().min(2, "State / Province is required").max(100).trim(),
-  country: z4.string().min(2, "Country is required").max(100).trim(),
-  postalCode: z4.string().min(3, "Postal code / PIN is required").max(20).trim()
+var step2AddressSchema = import_zod6.z.object({
+  address: import_zod6.z.string().min(3, "Street address must be at least 3 characters").max(200).trim(),
+  apartment: import_zod6.z.string().max(50).trim().optional(),
+  city: import_zod6.z.string().min(2, "City is required").max(100).trim(),
+  state: import_zod6.z.string().min(2, "State / Province is required").max(100).trim(),
+  country: import_zod6.z.string().min(2, "Country is required").max(100).trim(),
+  postalCode: import_zod6.z.string().min(3, "Postal code / PIN is required").max(20).trim()
 });
-var step3TreePlacementSchema = z4.object({
-  sponsor: z4.string().min(1, "Sponsor ID or distributor code is required").trim(),
-  businessCenter: z4.string().trim().optional(),
-  placementParent: z4.string().min(1, "Placement parent ID or distributor code is required").trim(),
+var step3TreePlacementSchema = import_zod6.z.object({
+  sponsor: import_zod6.z.string().min(1, "Sponsor ID or distributor code is required").trim(),
+  businessCenter: import_zod6.z.string().trim().optional(),
+  placementParent: import_zod6.z.string().min(1, "Placement parent ID or distributor code is required").trim(),
   placementPosition: placementPositionEnum
 });
-var step4StarterKitSchema = z4.object({
-  starterKitId: z4.string().trim().optional(),
-  productPackage: z4.string().min(2, "Product/package name is required").trim(),
-  price: z4.coerce.number().positive("Price must be greater than zero"),
-  bv: z4.coerce.number().min(0, "BV must be 0 or greater")
+var step4StarterKitSchema = import_zod6.z.object({
+  starterKitId: import_zod6.z.string().trim().optional(),
+  productPackage: import_zod6.z.string().min(2, "Product/package name is required").trim(),
+  price: import_zod6.z.coerce.number().positive("Price must be greater than zero"),
+  bv: import_zod6.z.coerce.number().min(0, "BV must be 0 or greater")
 });
-var step5BankSecuritySchema = z4.object({
-  accountHolder: z4.string().min(2, "Account holder name is required").max(100).trim(),
-  bankName: z4.string().min(2, "Bank name is required").max(100).trim(),
-  accountNumber: z4.string().min(4, "Account number must be at least 4 digits").max(35, "Account number cannot exceed 35 digits").regex(/^[0-9A-Za-z]+$/, "Account number must contain only letters and digits").trim(),
-  ifsc: z4.string().min(4, "IFSC / routing code is required").max(25, "IFSC / routing code is too long").trim(),
-  securityPin: z4.string().regex(/^\d{4,6}$/, "Security PIN must be a 4 to 6 digit numeric code")
+var step5BankSecuritySchema = import_zod6.z.object({
+  accountHolder: import_zod6.z.string().min(2, "Account holder name is required").max(100).trim(),
+  bankName: import_zod6.z.string().min(2, "Bank name is required").max(100).trim(),
+  accountNumber: import_zod6.z.string().min(4, "Account number must be at least 4 digits").max(35, "Account number cannot exceed 35 digits").regex(/^[0-9A-Za-z]+$/, "Account number must contain only letters and digits").trim(),
+  ifsc: import_zod6.z.string().min(4, "IFSC / routing code is required").max(25, "IFSC / routing code is too long").trim(),
+  securityPin: import_zod6.z.string().regex(/^\d{4,6}$/, "Security PIN must be a 4 to 6 digit numeric code")
 });
-var updateEnrollmentSchema = z4.object({
-  prospectPhone: z4.string().trim().optional(),
-  legalName: z4.string().min(2).max(100).trim().optional(),
-  selectedPackage: z4.string().trim().optional(),
-  rejectionReason: z4.string().trim().optional()
+var updateEnrollmentSchema = import_zod6.z.object({
+  prospectPhone: import_zod6.z.string().trim().optional(),
+  legalName: import_zod6.z.string().min(2).max(100).trim().optional(),
+  selectedPackage: import_zod6.z.string().trim().optional(),
+  rejectionReason: import_zod6.z.string().trim().optional()
 });
-var completeEnrollmentSchema = z4.object({
-  fullName: z4.string().min(2, "Full name must be at least 2 characters").trim(),
-  email: z4.string().email("Please enter a valid email address").toLowerCase().trim(),
-  phone: z4.string().min(7, "Phone number must be at least 7 digits").trim(),
-  dob: z4.string().optional(),
-  gender: z4.string().optional(),
-  panNumber: z4.string().optional(),
-  address: z4.string().min(3, "Address is required").trim(),
-  city: z4.string().min(2, "City is required").trim(),
-  state: z4.string().min(2, "State is required").trim(),
-  pincode: z4.string().min(3, "Pincode is required").trim(),
-  country: z4.string().default("India"),
-  sponsorId: z4.string().min(1, "Sponsor ID is required").trim(),
-  placementParentId: z4.string().trim().optional(),
-  placementPosition: z4.preprocess(
+var completeEnrollmentSchema = import_zod6.z.object({
+  fullName: import_zod6.z.string().min(2, "Full name must be at least 2 characters").trim(),
+  email: import_zod6.z.string().email("Please enter a valid email address").toLowerCase().trim(),
+  phone: import_zod6.z.string().min(7, "Phone number must be at least 7 digits").trim(),
+  dob: import_zod6.z.string().optional(),
+  gender: import_zod6.z.string().optional(),
+  panNumber: import_zod6.z.string().optional(),
+  address: import_zod6.z.string().min(3, "Address is required").trim(),
+  city: import_zod6.z.string().min(2, "City is required").trim(),
+  state: import_zod6.z.string().min(2, "State is required").trim(),
+  pincode: import_zod6.z.string().min(3, "Pincode is required").trim(),
+  country: import_zod6.z.string().default("India"),
+  sponsorId: import_zod6.z.string().min(1, "Sponsor ID is required").trim(),
+  placementParentId: import_zod6.z.string().trim().optional(),
+  placementPosition: import_zod6.z.preprocess(
     (val) => typeof val === "string" ? val.toUpperCase().trim() : val,
-    z4.enum(["LEFT", "RIGHT"])
+    import_zod6.z.enum(["LEFT", "RIGHT"])
   ),
-  businessCenter: z4.string().trim().optional(),
-  enrollmentType: z4.enum(["DISTRIBUTOR", "CUSTOMER"]).default("DISTRIBUTOR"),
-  starterKitId: z4.string().trim().optional(),
-  productPackage: z4.string().default("Starter Pack"),
-  price: z4.coerce.number().default(0),
-  bv: z4.coerce.number().default(0),
-  bankName: z4.string().optional(),
-  accountNumber: z4.string().optional(),
-  ifscCode: z4.string().optional(),
-  password: z4.string().min(6, "Password must be at least 6 characters")
+  businessCenter: import_zod6.z.string().trim().optional(),
+  enrollmentType: import_zod6.z.enum(["DISTRIBUTOR", "CUSTOMER"]).default("DISTRIBUTOR"),
+  starterKitId: import_zod6.z.string().trim().optional(),
+  productPackage: import_zod6.z.string().default("Starter Pack"),
+  price: import_zod6.z.coerce.number().default(0),
+  bv: import_zod6.z.coerce.number().default(0),
+  bankName: import_zod6.z.string().optional(),
+  accountNumber: import_zod6.z.string().optional(),
+  ifscCode: import_zod6.z.string().optional(),
+  password: import_zod6.z.string().min(6, "Password must be at least 6 characters")
 });
 
 // backend/src/routes/enrollment.routes.ts
-var router4 = Router4();
+var router4 = (0, import_express4.Router)();
 router4.post(
   "/complete",
   validate({ body: completeEnrollmentSchema }),
@@ -23082,7 +23109,7 @@ router4.post(
 var enrollmentRouter = router4;
 
 // backend/src/routes/health.routes.ts
-import { Router as Router5 } from "express";
+var import_express5 = require("express");
 
 // backend/src/controllers/health.controller.ts
 var HealthController = class {
@@ -23095,12 +23122,12 @@ var HealthController = class {
 };
 
 // backend/src/routes/health.routes.ts
-var router5 = Router5();
+var router5 = (0, import_express5.Router)();
 router5.get("/", HealthController.getHealth);
 var healthRouter = router5;
 
 // backend/src/routes/mlmTree.routes.ts
-import { Router as Router6 } from "express";
+var import_express6 = require("express");
 
 // backend/src/controllers/mlmTree.controller.ts
 var MlmTreeController = class _MlmTreeController {
@@ -23448,16 +23475,16 @@ var MlmTreeController = class _MlmTreeController {
 };
 
 // backend/src/validators/mlmTree.validators.ts
-import { z as z5 } from "zod";
-var placementPositionEnum2 = z5.enum(["LEFT", "RIGHT"], {
+var import_zod7 = require("zod");
+var placementPositionEnum2 = import_zod7.z.enum(["LEFT", "RIGHT"], {
   errorMap: () => ({ message: "Position must be strictly LEFT or RIGHT" })
 });
-var placeDistributorSchema = z5.object({
-  distributorId: z5.string().min(1, "distributorId is required"),
-  businessCenterId: z5.string().optional(),
-  sponsorId: z5.string().optional(),
-  placementParentId: z5.string().optional(),
-  parentId: z5.string().optional(),
+var placeDistributorSchema = import_zod7.z.object({
+  distributorId: import_zod7.z.string().min(1, "distributorId is required"),
+  businessCenterId: import_zod7.z.string().optional(),
+  sponsorId: import_zod7.z.string().optional(),
+  placementParentId: import_zod7.z.string().optional(),
+  parentId: import_zod7.z.string().optional(),
   placementPosition: placementPositionEnum2.optional(),
   position: placementPositionEnum2.optional()
 }).refine((data) => Boolean(data.placementParentId || data.parentId), {
@@ -23476,11 +23503,11 @@ var placeDistributorSchema = z5.object({
     path: ["parentId"]
   }
 );
-var getTreeQuerySchema = z5.object({
-  depth: z5.coerce.number().int().min(1).max(10).default(3)
+var getTreeQuerySchema = import_zod7.z.object({
+  depth: import_zod7.z.coerce.number().int().min(1).max(10).default(3)
 });
-var nextSlotQuerySchema = z5.object({
-  preferredLeg: z5.enum(["LEFT", "RIGHT", "BALANCED"]).default("BALANCED")
+var nextSlotQuerySchema = import_zod7.z.object({
+  preferredLeg: import_zod7.z.enum(["LEFT", "RIGHT", "BALANCED"]).default("BALANCED")
 });
 
 // backend/src/controllers/treeAudit.controller.ts
@@ -23618,8 +23645,8 @@ var TreeAuditController = class {
 };
 
 // backend/src/validators/treeAudit.validators.ts
-import { z as z6 } from "zod";
-var treeAuditActionEnum = z6.enum([
+var import_zod8 = require("zod");
+var treeAuditActionEnum = import_zod8.z.enum([
   "DISTRIBUTOR_CREATED",
   "SPONSOR_ASSIGNED",
   "TREE_MEMBER_PLACED",
@@ -23627,35 +23654,35 @@ var treeAuditActionEnum = z6.enum([
   "TREE_MEMBER_REMOVED",
   "TREE_POSITION_CHANGED"
 ]);
-var adminChangePlacementSchema = z6.object({
-  memberId: z6.string({ required_error: "Member ID is required." }).min(1, "Member ID cannot be empty."),
-  reason: z6.string({ required_error: "Reason is required when changing placement." }).min(3, "Reason must be at least 3 characters explaining the change."),
-  oldParent: z6.string({ required_error: "Old Parent identifier is required." }).min(1, "Old Parent cannot be empty."),
-  oldPosition: z6.enum(["LEFT", "RIGHT"], {
+var adminChangePlacementSchema = import_zod8.z.object({
+  memberId: import_zod8.z.string({ required_error: "Member ID is required." }).min(1, "Member ID cannot be empty."),
+  reason: import_zod8.z.string({ required_error: "Reason is required when changing placement." }).min(3, "Reason must be at least 3 characters explaining the change."),
+  oldParent: import_zod8.z.string({ required_error: "Old Parent identifier is required." }).min(1, "Old Parent cannot be empty."),
+  oldPosition: import_zod8.z.enum(["LEFT", "RIGHT"], {
     required_error: "Old Position must be LEFT or RIGHT."
   }),
-  newParent: z6.string({ required_error: "New Parent identifier is required." }).min(1, "New Parent cannot be empty."),
-  newPosition: z6.enum(["LEFT", "RIGHT"], {
+  newParent: import_zod8.z.string({ required_error: "New Parent identifier is required." }).min(1, "New Parent cannot be empty."),
+  newPosition: import_zod8.z.enum(["LEFT", "RIGHT"], {
     required_error: "New Position must be LEFT or RIGHT."
   }),
-  adminId: z6.string().optional()
+  adminId: import_zod8.z.string().optional()
 });
-var adminRemoveMemberSchema = z6.object({
-  memberId: z6.string({ required_error: "Member ID is required." }).min(1, "Member ID cannot be empty."),
-  reason: z6.string({ required_error: "Reason is required to remove a member." }).min(3, "Reason must be at least 3 characters."),
-  adminId: z6.string().optional()
+var adminRemoveMemberSchema = import_zod8.z.object({
+  memberId: import_zod8.z.string({ required_error: "Member ID is required." }).min(1, "Member ID cannot be empty."),
+  reason: import_zod8.z.string({ required_error: "Reason is required to remove a member." }).min(3, "Reason must be at least 3 characters."),
+  adminId: import_zod8.z.string().optional()
 });
-var getTreeAuditLogsQuerySchema = z6.object({
-  memberId: z6.string().optional(),
+var getTreeAuditLogsQuerySchema = import_zod8.z.object({
+  memberId: import_zod8.z.string().optional(),
   action: treeAuditActionEnum.optional(),
-  actorId: z6.string().optional(),
-  adminId: z6.string().optional(),
-  limit: z6.coerce.number().min(1).max(100).default(50).optional(),
-  offset: z6.coerce.number().min(0).default(0).optional()
+  actorId: import_zod8.z.string().optional(),
+  adminId: import_zod8.z.string().optional(),
+  limit: import_zod8.z.coerce.number().min(1).max(100).default(50).optional(),
+  offset: import_zod8.z.coerce.number().min(0).default(0).optional()
 });
 
 // backend/src/routes/mlmTree.routes.ts
-var router6 = Router6();
+var router6 = (0, import_express6.Router)();
 router6.post("/place", authenticate, validate({ body: placeDistributorSchema, statusCode: 400 }), MlmTreeController.place);
 router6.get("/binary/:rootId", validate({ query: getTreeQuerySchema }), MlmTreeController.getBinaryTree);
 router6.get("/sponsor/:distributorId", validate({ query: getTreeQuerySchema }), MlmTreeController.getSponsorTree);
@@ -23682,54 +23709,54 @@ router6.get("/:distributorId", optionalAuth, MlmTreeController.getCompleteTree);
 var mlmTreeRouter = router6;
 
 // backend/src/routes/bv.routes.ts
-import { Router as Router7 } from "express";
+var import_express7 = require("express");
 
 // backend/src/validators/bv.validators.ts
-import { z as z7 } from "zod";
-var bvSourceTypeEnum = z7.enum([
+var import_zod9 = require("zod");
+var bvSourceTypeEnum = import_zod9.z.enum([
   "ORDER",
   "ORDER_REFUND",
   "ADJUSTMENT",
   "BONUS",
   "REVERSAL"
 ]);
-var placementLegEnum = z7.enum(["LEFT", "RIGHT"]);
-var creditBVSchema = z7.object({
-  distributorId: z7.string().uuid("distributorId must be a valid UUID"),
-  businessCenterId: z7.string().uuid("businessCenterId must be a valid UUID").optional(),
+var placementLegEnum = import_zod9.z.enum(["LEFT", "RIGHT"]);
+var creditBVSchema = import_zod9.z.object({
+  distributorId: import_zod9.z.string().uuid("distributorId must be a valid UUID"),
+  businessCenterId: import_zod9.z.string().uuid("businessCenterId must be a valid UUID").optional(),
   sourceType: bvSourceTypeEnum.default("ORDER"),
-  sourceId: z7.string().trim().min(1, "Transaction reference (sourceId) is required"),
-  bv: z7.coerce.number().positive("BV credit amount must be greater than zero"),
+  sourceId: import_zod9.z.string().trim().min(1, "Transaction reference (sourceId) is required"),
+  bv: import_zod9.z.coerce.number().positive("BV credit amount must be greater than zero"),
   position: placementLegEnum.nullable().optional(),
-  sourceDistributorId: z7.string().uuid().optional(),
-  description: z7.string().trim().optional(),
-  commissionPeriodId: z7.string().optional()
+  sourceDistributorId: import_zod9.z.string().uuid().optional(),
+  description: import_zod9.z.string().trim().optional(),
+  commissionPeriodId: import_zod9.z.string().optional()
 });
-var debitBVSchema = z7.object({
-  distributorId: z7.string().uuid("distributorId must be a valid UUID"),
-  businessCenterId: z7.string().uuid("businessCenterId must be a valid UUID").optional(),
-  sourceType: z7.enum(["ORDER_REFUND", "ADJUSTMENT", "REVERSAL"]).default("ADJUSTMENT"),
-  sourceId: z7.string().trim().min(1, "Transaction reference (sourceId) is required"),
-  bv: z7.coerce.number().positive("BV debit amount must be greater than zero"),
+var debitBVSchema = import_zod9.z.object({
+  distributorId: import_zod9.z.string().uuid("distributorId must be a valid UUID"),
+  businessCenterId: import_zod9.z.string().uuid("businessCenterId must be a valid UUID").optional(),
+  sourceType: import_zod9.z.enum(["ORDER_REFUND", "ADJUSTMENT", "REVERSAL"]).default("ADJUSTMENT"),
+  sourceId: import_zod9.z.string().trim().min(1, "Transaction reference (sourceId) is required"),
+  bv: import_zod9.z.coerce.number().positive("BV debit amount must be greater than zero"),
   position: placementLegEnum.nullable().optional(),
-  description: z7.string().trim().optional(),
-  commissionPeriodId: z7.string().optional()
+  description: import_zod9.z.string().trim().optional(),
+  commissionPeriodId: import_zod9.z.string().optional()
 });
-var reverseBVTransactionSchema = z7.object({
-  originalTransactionId: z7.string().uuid("originalTransactionId must be a valid UUID"),
-  reason: z7.string().trim().min(3, "Reversal reason is required"),
-  referenceId: z7.string().trim().min(1, "Reversal reference ID is required")
+var reverseBVTransactionSchema = import_zod9.z.object({
+  originalTransactionId: import_zod9.z.string().uuid("originalTransactionId must be a valid UUID"),
+  reason: import_zod9.z.string().trim().min(3, "Reversal reason is required"),
+  referenceId: import_zod9.z.string().trim().min(1, "Reversal reference ID is required")
 });
-var bvLedgerQuerySchema = z7.object({
+var bvLedgerQuerySchema = import_zod9.z.object({
   sourceType: bvSourceTypeEnum.optional(),
   position: placementLegEnum.optional(),
-  businessCenterId: z7.string().uuid().optional(),
-  commissionPeriodId: z7.string().optional(),
-  page: z7.coerce.number().int().min(1).default(1),
-  limit: z7.coerce.number().int().min(1).max(100).default(20)
+  businessCenterId: import_zod9.z.string().uuid().optional(),
+  commissionPeriodId: import_zod9.z.string().optional(),
+  page: import_zod9.z.coerce.number().int().min(1).default(1),
+  limit: import_zod9.z.coerce.number().int().min(1).max(100).default(20)
 });
-var periodParamSchema = z7.object({
-  periodId: z7.string().min(1, "Period ID or Code is required").trim()
+var periodParamSchema = import_zod9.z.object({
+  periodId: import_zod9.z.string().min(1, "Period ID or Code is required").trim()
 });
 
 // backend/src/controllers/bv.controller.ts
@@ -23950,7 +23977,7 @@ var BVController = class {
 };
 
 // backend/src/routes/bv.routes.ts
-var router7 = Router7();
+var router7 = (0, import_express7.Router)();
 router7.use(authenticate);
 router7.get("/balance", BVController.getMyBalance);
 router7.get(
@@ -24007,7 +24034,7 @@ router7.post(
 var bvRouter = router7;
 
 // backend/src/routes/cart.routes.ts
-import { Router as Router8 } from "express";
+var import_express8 = require("express");
 
 // backend/src/services/cart.service.ts
 init_database();
@@ -24318,20 +24345,20 @@ var CartController = class {
 };
 
 // backend/src/validators/cart.validators.ts
-import { z as z8 } from "zod";
-var addToCartSchema = z8.object({
-  productId: z8.string().uuid("Product ID must be a valid UUID"),
-  quantity: z8.coerce.number().int().min(1, "Quantity must be at least 1").default(1)
+var import_zod10 = require("zod");
+var addToCartSchema = import_zod10.z.object({
+  productId: import_zod10.z.string().uuid("Product ID must be a valid UUID"),
+  quantity: import_zod10.z.coerce.number().int().min(1, "Quantity must be at least 1").default(1)
 });
-var updateCartItemSchema = z8.object({
-  quantity: z8.coerce.number().int().min(0, "Quantity cannot be negative")
+var updateCartItemSchema = import_zod10.z.object({
+  quantity: import_zod10.z.coerce.number().int().min(0, "Quantity cannot be negative")
 });
-var cartItemIdParamSchema = z8.object({
-  id: z8.string().uuid("Cart item ID must be a valid UUID")
+var cartItemIdParamSchema = import_zod10.z.object({
+  id: import_zod10.z.string().uuid("Cart item ID must be a valid UUID")
 });
 
 // backend/src/routes/cart.routes.ts
-var router8 = Router8();
+var router8 = (0, import_express8.Router)();
 router8.use(authenticate);
 router8.get("/", CartController.getCart);
 router8.post(
@@ -24353,13 +24380,13 @@ router8.delete("/", CartController.clearCart);
 var cartRouter = router8;
 
 // backend/src/routes/category.routes.ts
-import { Router as Router9 } from "express";
+var import_express9 = require("express");
 
 // backend/src/services/product.service.ts
+var import_client9 = require("@prisma/client");
 init_database();
 init_logger();
 init_appError();
-import { Prisma as Prisma9 } from "@prisma/client";
 function slugify(text) {
   return text.toLowerCase().trim().replace(/[^\w\s-]/g, "").replace(/[\s_-]+/g, "-").replace(/^-+|-+$/g, "");
 }
@@ -24607,14 +24634,14 @@ var ProductService = class _ProductService {
     }
     if (minPrice !== void 0 || maxPrice !== void 0) {
       where.wholesalePrice = {
-        ...minPrice !== void 0 && { gte: new Prisma9.Decimal(minPrice) },
-        ...maxPrice !== void 0 && { lte: new Prisma9.Decimal(maxPrice) }
+        ...minPrice !== void 0 && { gte: new import_client9.Prisma.Decimal(minPrice) },
+        ...maxPrice !== void 0 && { lte: new import_client9.Prisma.Decimal(maxPrice) }
       };
     }
     if (minBV !== void 0 || maxBV !== void 0) {
       where.bv = {
-        ...minBV !== void 0 && { gte: new Prisma9.Decimal(minBV) },
-        ...maxBV !== void 0 && { lte: new Prisma9.Decimal(maxBV) }
+        ...minBV !== void 0 && { gte: new import_client9.Prisma.Decimal(minBV) },
+        ...maxBV !== void 0 && { lte: new import_client9.Prisma.Decimal(maxBV) }
       };
     }
     if (stock) {
@@ -24824,9 +24851,9 @@ var ProductService = class _ProductService {
     if (productStatus === "ACTIVE" && input.stock === 0) {
       productStatus = "OUT_OF_STOCK";
     }
-    const wholesaleDecimal = new Prisma9.Decimal(input.wholesalePrice);
-    const mrpDecimal = new Prisma9.Decimal(input.mrp);
-    const bvDecimal = new Prisma9.Decimal(input.bv);
+    const wholesaleDecimal = new import_client9.Prisma.Decimal(input.wholesalePrice);
+    const mrpDecimal = new import_client9.Prisma.Decimal(input.mrp);
+    const bvDecimal = new import_client9.Prisma.Decimal(input.bv);
     const imageRecords = (input.images || []).map((img, index) => {
       if (typeof img === "string") {
         return {
@@ -24987,9 +25014,9 @@ var ProductService = class _ProductService {
           data: imageRecords.map((r) => ({ ...r, productId: id }))
         });
       }
-      const wholesaleDecimal = input.wholesalePrice !== void 0 ? new Prisma9.Decimal(input.wholesalePrice) : existing.wholesalePrice;
-      const mrpDecimal = input.mrp !== void 0 ? new Prisma9.Decimal(input.mrp) : existing.mrp;
-      const bvDecimal = input.bv !== void 0 ? new Prisma9.Decimal(input.bv) : existing.bv;
+      const wholesaleDecimal = input.wholesalePrice !== void 0 ? new import_client9.Prisma.Decimal(input.wholesalePrice) : existing.wholesalePrice;
+      const mrpDecimal = input.mrp !== void 0 ? new import_client9.Prisma.Decimal(input.mrp) : existing.mrp;
+      const bvDecimal = input.bv !== void 0 ? new import_client9.Prisma.Decimal(input.bv) : existing.bv;
       let status = input.status || existing.status;
       if (status === "ACTIVE" && newStock === 0) {
         status = "OUT_OF_STOCK";
@@ -25235,20 +25262,21 @@ var ProductController = class {
 };
 
 // backend/src/routes/category.routes.ts
-var router9 = Router9();
+var router9 = (0, import_express9.Router)();
 router9.get("/", ProductController.getCategories);
 var categoryRouter = router9;
 
 // backend/src/routes/order.routes.ts
-import { Router as Router10 } from "express";
+var import_express10 = require("express");
 
 // backend/src/services/order.service.ts
+var import_client25 = require("@prisma/client");
 init_database();
 init_logger();
 init_appError();
-import { Prisma as Prisma25 } from "@prisma/client";
 
 // backend/src/services/levelCommission.service.ts
+var import_client14 = require("@prisma/client");
 init_database();
 init_logger();
 init_appError();
@@ -25257,7 +25285,6 @@ init_commissionConfig_service();
 init_authoritativeBV_service();
 init_sponsorUpline_service();
 init_commissionCalculation_service();
-import { Prisma as Prisma14 } from "@prisma/client";
 var LevelCommissionService = class {
   /**
    * Commission Calculation Engine delegations (Prompt 16)
@@ -25594,16 +25621,16 @@ var LevelCommissionService = class {
             data: {
               distributorId: distId,
               userId,
-              availableBalance: new Prisma14.Decimal(0),
-              pendingBalance: new Prisma14.Decimal(0),
-              lifetimeEarned: new Prisma14.Decimal(0),
-              lifetimePaid: new Prisma14.Decimal(0),
+              availableBalance: new import_client14.Prisma.Decimal(0),
+              pendingBalance: new import_client14.Prisma.Decimal(0),
+              lifetimeEarned: new import_client14.Prisma.Decimal(0),
+              lifetimePaid: new import_client14.Prisma.Decimal(0),
               currency: comm.currency || "INR",
               isLocked: false
             }
           });
         }
-        const balanceBefore = new Prisma14.Decimal(wallet.availableBalance);
+        const balanceBefore = new import_client14.Prisma.Decimal(wallet.availableBalance);
         const balanceAfter = balanceBefore.add(comm.commissionAmount);
         const walletTxNumber = `WTX-LCM-${Date.now().toString().slice(-6)}-${Math.floor(1e3 + Math.random() * 9e3)}`;
         const walletTx = await db.walletTransaction.create({
@@ -25702,7 +25729,7 @@ var LevelCommissionService = class {
             where: { distributorId: comm.distributorId }
           });
           if (wallet) {
-            const balanceBefore = new Prisma14.Decimal(wallet.availableBalance);
+            const balanceBefore = new import_client14.Prisma.Decimal(wallet.availableBalance);
             const balanceAfter = balanceBefore.sub(comm.commissionAmount);
             const txNumber = `WTX-REV-${Date.now().toString().slice(-6)}-${Math.floor(1e3 + Math.random() * 9e3)}`;
             const clawbackTx = await db.walletTransaction.create({
@@ -25711,8 +25738,8 @@ var LevelCommissionService = class {
                 transactionNumber: txNumber,
                 type: "REFUND",
                 status: "COMPLETED",
-                amount: new Prisma14.Decimal(-commAmount),
-                netAmount: new Prisma14.Decimal(-commAmount),
+                amount: new import_client14.Prisma.Decimal(-commAmount),
+                netAmount: new import_client14.Prisma.Decimal(-commAmount),
                 balanceBefore,
                 balanceAfter,
                 referenceId: comm.id,
@@ -26048,13 +26075,13 @@ var LevelRecalculationService = class {
 init_level_service();
 
 // backend/src/services/levelPromotionEvent.service.ts
+var import_client21 = require("@prisma/client");
 init_database();
 init_logger();
 init_appError();
 init_level_service();
 init_matching_service();
 init_bb_service();
-import { Prisma as Prisma21 } from "@prisma/client";
 
 // backend/src/services/rankQualificationEngine.service.ts
 init_level_service();
@@ -26125,8 +26152,8 @@ var OrderService = class {
     const primaryBc = user.distributorProfile?.businessCenters[0];
     const createdOrder = await prisma.$transaction(async (tx) => {
       const validatedItems = [];
-      let orderSubtotal = new Prisma25.Decimal(0);
-      let orderTotalBV = new Prisma25.Decimal(0);
+      let orderSubtotal = new import_client25.Prisma.Decimal(0);
+      let orderTotalBV = new import_client25.Prisma.Decimal(0);
       for (const item of itemsToProcess) {
         const product = await tx.product.findUnique({
           where: { id: item.productId },
@@ -26161,10 +26188,10 @@ var OrderService = class {
           });
         }
         const unitPriceNum = isDistributor ? Number(product.wholesalePrice ?? product.distributorPrice ?? product.mrp) : Number(product.mrp ?? product.retailPrice ?? product.wholesalePrice);
-        const unitPrice = new Prisma25.Decimal(unitPriceNum.toFixed(2));
+        const unitPrice = new import_client25.Prisma.Decimal(unitPriceNum.toFixed(2));
         const totalPrice = unitPrice.mul(item.quantity);
         const unitBVNum = Number(product.bv ?? 0);
-        const unitBV = new Prisma25.Decimal(unitBVNum.toFixed(2));
+        const unitBV = new import_client25.Prisma.Decimal(unitBVNum.toFixed(2));
         const totalBV = unitBV.mul(item.quantity);
         orderSubtotal = orderSubtotal.add(totalPrice);
         orderTotalBV = orderTotalBV.add(totalBV);
@@ -26225,9 +26252,9 @@ var OrderService = class {
           customerId,
           status: orderStatus,
           subtotal: orderSubtotal,
-          taxAmount: new Prisma25.Decimal(0),
-          shippingAmount: new Prisma25.Decimal(0),
-          discountAmount: new Prisma25.Decimal(0),
+          taxAmount: new import_client25.Prisma.Decimal(0),
+          shippingAmount: new import_client25.Prisma.Decimal(0),
+          discountAmount: new import_client25.Prisma.Decimal(0),
           totalAmount: orderSubtotal,
           totalBV: orderTotalBV,
           commissionableBusinessVolume: orderTotalBV,
@@ -26906,8 +26933,8 @@ var OrderController = class {
 };
 
 // backend/src/validators/order.validators.ts
-import { z as z9 } from "zod";
-var orderStatusEnum = z9.enum([
+var import_zod11 = require("zod");
+var orderStatusEnum = import_zod11.z.enum([
   "PENDING",
   "PAYMENT_PENDING",
   "PAID",
@@ -26918,7 +26945,7 @@ var orderStatusEnum = z9.enum([
   "CANCELLED",
   "REFUNDED"
 ]);
-var paymentMethodEnum = z9.enum([
+var paymentMethodEnum = import_zod11.z.enum([
   "CREDIT_CARD",
   "DEBIT_CARD",
   "WALLET",
@@ -26926,56 +26953,56 @@ var paymentMethodEnum = z9.enum([
   "CRYPTO",
   "UPI"
 ]);
-var orderItemInputSchema = z9.object({
-  productId: z9.string().uuid("Product ID must be a valid UUID"),
-  quantity: z9.coerce.number().int().min(1, "Quantity must be at least 1")
+var orderItemInputSchema = import_zod11.z.object({
+  productId: import_zod11.z.string().uuid("Product ID must be a valid UUID"),
+  quantity: import_zod11.z.coerce.number().int().min(1, "Quantity must be at least 1")
 });
-var inlineAddressSchema = z9.object({
-  recipientName: z9.string().min(2, "Recipient name must be at least 2 characters").trim(),
-  phone: z9.string().trim().optional(),
-  streetAddress: z9.string().min(3, "Street address must be at least 3 characters").trim(),
-  apartment: z9.string().trim().optional(),
-  city: z9.string().min(2, "City is required").trim(),
-  state: z9.string().min(2, "State is required").trim(),
-  postalCode: z9.string().min(3, "Postal code is required").trim(),
-  country: z9.string().trim().default("USA")
+var inlineAddressSchema = import_zod11.z.object({
+  recipientName: import_zod11.z.string().min(2, "Recipient name must be at least 2 characters").trim(),
+  phone: import_zod11.z.string().trim().optional(),
+  streetAddress: import_zod11.z.string().min(3, "Street address must be at least 3 characters").trim(),
+  apartment: import_zod11.z.string().trim().optional(),
+  city: import_zod11.z.string().min(2, "City is required").trim(),
+  state: import_zod11.z.string().min(2, "State is required").trim(),
+  postalCode: import_zod11.z.string().min(3, "Postal code is required").trim(),
+  country: import_zod11.z.string().trim().default("USA")
 });
-var createOrderSchema = z9.object({
-  items: z9.array(orderItemInputSchema).min(1).optional(),
-  fromCart: z9.boolean().default(false),
-  shippingAddressId: z9.string().uuid().optional(),
-  billingAddressId: z9.string().uuid().optional(),
+var createOrderSchema = import_zod11.z.object({
+  items: import_zod11.z.array(orderItemInputSchema).min(1).optional(),
+  fromCart: import_zod11.z.boolean().default(false),
+  shippingAddressId: import_zod11.z.string().uuid().optional(),
+  billingAddressId: import_zod11.z.string().uuid().optional(),
   shippingAddress: inlineAddressSchema.optional(),
   billingAddress: inlineAddressSchema.optional(),
   paymentMethod: paymentMethodEnum.default("CREDIT_CARD"),
   // Optional flag to simulate immediate payment confirmation (e.g. from payment gateway or wallet)
-  markPaid: z9.boolean().default(false)
+  markPaid: import_zod11.z.boolean().default(false)
 });
-var orderQuerySchema = z9.object({
+var orderQuerySchema = import_zod11.z.object({
   status: orderStatusEnum.optional(),
-  page: z9.coerce.number().int().min(1).default(1),
-  limit: z9.coerce.number().int().min(1).max(100).default(20),
-  dateFrom: z9.string().datetime().optional(),
-  dateTo: z9.string().datetime().optional()
+  page: import_zod11.z.coerce.number().int().min(1).default(1),
+  limit: import_zod11.z.coerce.number().int().min(1).max(100).default(20),
+  dateFrom: import_zod11.z.string().datetime().optional(),
+  dateTo: import_zod11.z.string().datetime().optional()
 });
-var orderIdParamSchema = z9.object({
-  id: z9.string().min(1, "Order ID or Order Number is required").trim()
+var orderIdParamSchema = import_zod11.z.object({
+  id: import_zod11.z.string().min(1, "Order ID or Order Number is required").trim()
 });
-var adminAdjustOrderBVSchema = z9.object({
-  commissionableBusinessVolume: z9.union([z9.number(), z9.string()]).refine((val) => {
+var adminAdjustOrderBVSchema = import_zod11.z.object({
+  commissionableBusinessVolume: import_zod11.z.union([import_zod11.z.number(), import_zod11.z.string()]).refine((val) => {
     const num = Number(val);
     return !isNaN(num) && num >= 0;
   }, {
     message: "Commissionable Business Volume must be a non-negative number"
   }),
-  reason: z9.string().min(3, "Adjustment reason is required").trim()
+  reason: import_zod11.z.string().min(3, "Adjustment reason is required").trim()
 });
-var updateOrderStatusSchema = z9.object({
+var updateOrderStatusSchema = import_zod11.z.object({
   status: orderStatusEnum
 });
 
 // backend/src/routes/order.routes.ts
-var router10 = Router10();
+var router10 = (0, import_express10.Router)();
 router10.use(authenticate);
 router10.post(
   "/",
@@ -27023,62 +27050,62 @@ router10.get(
 var orderRouter = router10;
 
 // backend/src/routes/product.routes.ts
-import { Router as Router11 } from "express";
+var import_express11 = require("express");
 
 // backend/src/validators/product.validators.ts
-import { z as z10 } from "zod";
-var productStatusEnum = z10.enum(["DRAFT", "ACTIVE", "OUT_OF_STOCK", "INACTIVE"]);
-var productSortEnum = z10.enum(["featured", "newest", "price_low", "price_high", "BV"]);
-var imageInputSchema = z10.union([
-  z10.string().url("Image must be a valid URL"),
-  z10.object({
-    url: z10.string().url("Image must be a valid URL"),
-    altText: z10.string().trim().optional(),
-    isPrimary: z10.boolean().default(false),
-    displayOrder: z10.coerce.number().int().min(0).default(0)
+var import_zod12 = require("zod");
+var productStatusEnum = import_zod12.z.enum(["DRAFT", "ACTIVE", "OUT_OF_STOCK", "INACTIVE"]);
+var productSortEnum = import_zod12.z.enum(["featured", "newest", "price_low", "price_high", "BV"]);
+var imageInputSchema = import_zod12.z.union([
+  import_zod12.z.string().url("Image must be a valid URL"),
+  import_zod12.z.object({
+    url: import_zod12.z.string().url("Image must be a valid URL"),
+    altText: import_zod12.z.string().trim().optional(),
+    isPrimary: import_zod12.z.boolean().default(false),
+    displayOrder: import_zod12.z.coerce.number().int().min(0).default(0)
   })
 ]);
-var createProductSchema = z10.object({
-  sku: z10.string().min(2, "SKU must be at least 2 characters").max(50).trim().toUpperCase(),
-  name: z10.string().min(2, "Product name must be at least 2 characters").max(200).trim(),
-  slug: z10.string().min(2).max(250).trim().toLowerCase().regex(/^[a-z0-9-]+$/, "Slug can only contain lowercase alphanumeric characters and hyphens").optional(),
-  description: z10.string().trim().optional(),
-  categoryId: z10.string().min(1, "Category ID or Code is required").trim(),
-  wholesalePrice: z10.coerce.number().min(0, "Wholesale price cannot be negative"),
-  mrp: z10.coerce.number().min(0, "MRP cannot be negative"),
-  bv: z10.coerce.number().min(0, "BV cannot be negative").default(0),
-  stock: z10.coerce.number().int().min(0, "Stock cannot be negative").default(0),
-  lowStockThreshold: z10.coerce.number().int().min(0).default(10),
+var createProductSchema = import_zod12.z.object({
+  sku: import_zod12.z.string().min(2, "SKU must be at least 2 characters").max(50).trim().toUpperCase(),
+  name: import_zod12.z.string().min(2, "Product name must be at least 2 characters").max(200).trim(),
+  slug: import_zod12.z.string().min(2).max(250).trim().toLowerCase().regex(/^[a-z0-9-]+$/, "Slug can only contain lowercase alphanumeric characters and hyphens").optional(),
+  description: import_zod12.z.string().trim().optional(),
+  categoryId: import_zod12.z.string().min(1, "Category ID or Code is required").trim(),
+  wholesalePrice: import_zod12.z.coerce.number().min(0, "Wholesale price cannot be negative"),
+  mrp: import_zod12.z.coerce.number().min(0, "MRP cannot be negative"),
+  bv: import_zod12.z.coerce.number().min(0, "BV cannot be negative").default(0),
+  stock: import_zod12.z.coerce.number().int().min(0, "Stock cannot be negative").default(0),
+  lowStockThreshold: import_zod12.z.coerce.number().int().min(0).default(10),
   status: productStatusEnum.default("DRAFT"),
-  isFeatured: z10.boolean().default(false),
-  images: z10.array(imageInputSchema).optional().default([])
+  isFeatured: import_zod12.z.boolean().default(false),
+  images: import_zod12.z.array(imageInputSchema).optional().default([])
 });
 var updateProductSchema = createProductSchema.partial().extend({
-  sku: z10.string().min(2).max(50).trim().toUpperCase().optional(),
-  name: z10.string().min(2).max(200).trim().optional()
+  sku: import_zod12.z.string().min(2).max(50).trim().toUpperCase().optional(),
+  name: import_zod12.z.string().min(2).max(200).trim().optional()
 });
-var productQuerySchema = z10.object({
-  category: z10.string().trim().optional(),
-  search: z10.string().trim().optional(),
-  minPrice: z10.coerce.number().min(0).optional(),
-  maxPrice: z10.coerce.number().min(0).optional(),
-  minBV: z10.coerce.number().min(0).optional(),
-  maxBV: z10.coerce.number().min(0).optional(),
-  stock: z10.enum(["all", "in_stock", "out_of_stock", "low_stock"]).optional(),
+var productQuerySchema = import_zod12.z.object({
+  category: import_zod12.z.string().trim().optional(),
+  search: import_zod12.z.string().trim().optional(),
+  minPrice: import_zod12.z.coerce.number().min(0).optional(),
+  maxPrice: import_zod12.z.coerce.number().min(0).optional(),
+  minBV: import_zod12.z.coerce.number().min(0).optional(),
+  maxBV: import_zod12.z.coerce.number().min(0).optional(),
+  stock: import_zod12.z.enum(["all", "in_stock", "out_of_stock", "low_stock"]).optional(),
   status: productStatusEnum.optional(),
   sort: productSortEnum.default("featured"),
-  page: z10.coerce.number().int().min(1).default(1),
-  limit: z10.coerce.number().int().min(1).max(100).default(20)
+  page: import_zod12.z.coerce.number().int().min(1).default(1),
+  limit: import_zod12.z.coerce.number().int().min(1).max(100).default(20)
 });
-var productIdParamSchema = z10.object({
-  id: z10.string().uuid("Product ID must be a valid UUID")
+var productIdParamSchema = import_zod12.z.object({
+  id: import_zod12.z.string().uuid("Product ID must be a valid UUID")
 });
-var productSlugParamSchema = z10.object({
-  slug: z10.string().min(1, "Product slug is required").trim()
+var productSlugParamSchema = import_zod12.z.object({
+  slug: import_zod12.z.string().min(1, "Product slug is required").trim()
 });
 
 // backend/src/routes/product.routes.ts
-var router11 = Router11();
+var router11 = (0, import_express11.Router)();
 router11.get("/categories", ProductController.getCategories);
 router11.get(
   "/",
@@ -27114,7 +27141,7 @@ router11.delete(
 var productRouter = router11;
 
 // backend/src/routes/sponsor.routes.ts
-import { Router as Router12 } from "express";
+var import_express12 = require("express");
 
 // backend/src/repositories/sponsor.repository.ts
 init_database();
@@ -27339,13 +27366,13 @@ var SponsorController = class {
 };
 
 // backend/src/validators/sponsor.validators.ts
-import { z as z11 } from "zod";
-var sponsorIdParamSchema = z11.object({
-  sponsorId: z11.string().min(1, "Sponsor ID is required").trim()
+var import_zod13 = require("zod");
+var sponsorIdParamSchema = import_zod13.z.object({
+  sponsorId: import_zod13.z.string().min(1, "Sponsor ID is required").trim()
 });
 
 // backend/src/routes/sponsor.routes.ts
-var router12 = Router12();
+var router12 = (0, import_express12.Router)();
 router12.get(
   "/:sponsorId",
   validate({ params: sponsorIdParamSchema }),
@@ -27354,7 +27381,7 @@ router12.get(
 var sponsorRouter = router12;
 
 // backend/src/routes/networkTree.routes.ts
-import { Router as Router13 } from "express";
+var import_express13 = require("express");
 
 // backend/src/controllers/networkTree.controller.ts
 init_audit_service();
@@ -27545,21 +27572,21 @@ var NetworkTreeController = class {
 };
 
 // backend/src/validators/networkTree.validators.ts
-import { z as z12 } from "zod";
-var treeDepthQuerySchema = z12.object({
-  depth: z12.coerce.number().int().min(1, "Depth must be at least 1").max(5, "Depth cannot exceed 5 for performance and security").default(3).optional()
+var import_zod14 = require("zod");
+var treeDepthQuerySchema = import_zod14.z.object({
+  depth: import_zod14.z.coerce.number().int().min(1, "Depth must be at least 1").max(5, "Depth cannot exceed 5 for performance and security").default(3).optional()
 });
-var distributorIdParamSchema = z12.object({
-  distributorId: z12.string().trim().min(3, "Distributor ID must be at least 3 characters").max(50, "Distributor ID cannot exceed 50 characters").regex(/^[A-Za-z0-9_-]+$/, "Distributor ID must contain only alphanumeric characters, underscores, or hyphens")
+var distributorIdParamSchema = import_zod14.z.object({
+  distributorId: import_zod14.z.string().trim().min(3, "Distributor ID must be at least 3 characters").max(50, "Distributor ID cannot exceed 50 characters").regex(/^[A-Za-z0-9_-]+$/, "Distributor ID must contain only alphanumeric characters, underscores, or hyphens")
 });
-var treeSearchQuerySchema = z12.object({
-  q: z12.string().trim().max(100, "Search query cannot exceed 100 characters").optional()
+var treeSearchQuerySchema = import_zod14.z.object({
+  q: import_zod14.z.string().trim().max(100, "Search query cannot exceed 100 characters").optional()
 });
-var treePlacementInputSchema = z12.object({
-  distributorId: z12.string().trim().min(3, "Distributor ID must be at least 3 characters").max(50, "Distributor ID cannot exceed 50 characters").regex(/^[A-Za-z0-9_-]+$/, "Distributor ID contains invalid characters"),
-  sponsorId: z12.string().trim().min(3, "Sponsor ID must be at least 3 characters").max(50, "Sponsor ID cannot exceed 50 characters").regex(/^[A-Za-z0-9_-]+$/, "Sponsor ID contains invalid characters"),
-  placementParentId: z12.string().trim().min(3, "Placement parent ID must be at least 3 characters").max(50, "Placement parent ID cannot exceed 50 characters").regex(/^[A-Za-z0-9_-]+$/, "Placement parent ID contains invalid characters"),
-  placementPosition: z12.enum(["LEFT", "RIGHT"], {
+var treePlacementInputSchema = import_zod14.z.object({
+  distributorId: import_zod14.z.string().trim().min(3, "Distributor ID must be at least 3 characters").max(50, "Distributor ID cannot exceed 50 characters").regex(/^[A-Za-z0-9_-]+$/, "Distributor ID contains invalid characters"),
+  sponsorId: import_zod14.z.string().trim().min(3, "Sponsor ID must be at least 3 characters").max(50, "Sponsor ID cannot exceed 50 characters").regex(/^[A-Za-z0-9_-]+$/, "Sponsor ID contains invalid characters"),
+  placementParentId: import_zod14.z.string().trim().min(3, "Placement parent ID must be at least 3 characters").max(50, "Placement parent ID cannot exceed 50 characters").regex(/^[A-Za-z0-9_-]+$/, "Placement parent ID contains invalid characters"),
+  placementPosition: import_zod14.z.enum(["LEFT", "RIGHT"], {
     errorMap: () => ({ message: "Placement position must be either LEFT or RIGHT" })
   })
 }).refine((data) => data.distributorId.toUpperCase() !== data.sponsorId.toUpperCase(), {
@@ -27571,7 +27598,7 @@ var treePlacementInputSchema = z12.object({
 });
 
 // backend/src/routes/networkTree.routes.ts
-var router13 = Router13();
+var router13 = (0, import_express13.Router)();
 router13.use(treeRateLimiter);
 router13.get(
   "/search",
@@ -27608,8 +27635,8 @@ router13.delete("/audit-logs", authenticate, TreeAuditController.blockAuditMutat
 var networkTreeRouter = router13;
 
 // backend/src/routes/treeAudit.routes.ts
-import { Router as Router14 } from "express";
-var router14 = Router14();
+var import_express14 = require("express");
+var router14 = (0, import_express14.Router)();
 router14.use(authenticate);
 router14.get(
   "/",
@@ -27627,7 +27654,7 @@ router14.patch("/logs/:id", TreeAuditController.blockAuditMutation);
 router14.delete("/logs/:id", TreeAuditController.blockAuditMutation);
 router14.delete("/logs", TreeAuditController.blockAuditMutation);
 var treeAuditRouter = router14;
-var adminRouter = Router14();
+var adminRouter = (0, import_express14.Router)();
 adminRouter.use(authenticate);
 adminRouter.use(authorizeRoles("SUPER_ADMIN", "ADMIN"));
 adminRouter.get(
@@ -27652,7 +27679,7 @@ adminRouter.delete("/audit-logs", TreeAuditController.blockAuditMutation);
 var adminTreeAuditRouter = adminRouter;
 
 // backend/src/routes/level.routes.ts
-import { Router as Router15 } from "express";
+var import_express15 = require("express");
 
 // backend/src/controllers/level.controller.ts
 init_database();
@@ -27842,7 +27869,7 @@ var LevelController = class {
 
 // backend/src/routes/level.routes.ts
 init_appError();
-var router15 = Router15();
+var router15 = (0, import_express15.Router)();
 router15.get("/me", authenticate, LevelController.getMyLevel);
 router15.all("/history/:historyId?", (req, res, next) => {
   if (["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) {
@@ -27874,7 +27901,7 @@ router15.put(
 var levelRouter = router15;
 
 // backend/src/routes/levelCommission.routes.ts
-import { Router as Router17 } from "express";
+var import_express17 = require("express");
 
 // backend/src/controllers/levelCommission.controller.ts
 init_appError();
@@ -27998,37 +28025,37 @@ var LevelCommissionController = class {
 };
 
 // backend/src/validators/levelCommission.validators.ts
-import { z as z13 } from "zod";
-var calculateOrderCommissionSchema = z13.object({
-  orderId: z13.string().uuid("Valid order UUID is required")
+var import_zod15 = require("zod");
+var calculateOrderCommissionSchema = import_zod15.z.object({
+  orderId: import_zod15.z.string().uuid("Valid order UUID is required")
 });
-var previewOrderCommissionSchema = z13.object({
-  orderBV: z13.coerce.number().positive("Order BV must be greater than zero"),
-  purchaserDistributorId: z13.string().min(1, "Purchaser distributor ID or code is required")
+var previewOrderCommissionSchema = import_zod15.z.object({
+  orderBV: import_zod15.z.coerce.number().positive("Order BV must be greater than zero"),
+  purchaserDistributorId: import_zod15.z.string().min(1, "Purchaser distributor ID or code is required")
 });
-var payoutLevelCommissionsSchema = z13.object({
-  orderId: z13.string().uuid().optional(),
-  distributorId: z13.string().uuid().optional(),
-  commissionIds: z13.array(z13.string().uuid()).optional(),
-  periodId: z13.string().uuid().optional()
+var payoutLevelCommissionsSchema = import_zod15.z.object({
+  orderId: import_zod15.z.string().uuid().optional(),
+  distributorId: import_zod15.z.string().uuid().optional(),
+  commissionIds: import_zod15.z.array(import_zod15.z.string().uuid()).optional(),
+  periodId: import_zod15.z.string().uuid().optional()
 });
-var reverseLevelCommissionsSchema = z13.object({
-  orderId: z13.string().uuid("Valid order UUID is required"),
-  reason: z13.string().min(3, "Reversal reason is required")
+var reverseLevelCommissionsSchema = import_zod15.z.object({
+  orderId: import_zod15.z.string().uuid("Valid order UUID is required"),
+  reason: import_zod15.z.string().min(3, "Reversal reason is required")
 });
-var queryLevelCommissionsSchema = z13.object({
-  page: z13.coerce.number().int().positive().default(1),
-  limit: z13.coerce.number().int().positive().max(100).default(20),
-  level: z13.coerce.number().int().min(1).max(5).optional(),
-  status: z13.enum(["CALCULATED", "APPROVED", "PAID", "CANCELLED", "REVERSED", "FORFEITED"]).optional(),
-  distributorId: z13.string().optional(),
-  orderId: z13.string().uuid().optional(),
-  startDate: z13.string().datetime().optional(),
-  endDate: z13.string().datetime().optional()
+var queryLevelCommissionsSchema = import_zod15.z.object({
+  page: import_zod15.z.coerce.number().int().positive().default(1),
+  limit: import_zod15.z.coerce.number().int().positive().max(100).default(20),
+  level: import_zod15.z.coerce.number().int().min(1).max(5).optional(),
+  status: import_zod15.z.enum(["CALCULATED", "APPROVED", "PAID", "CANCELLED", "REVERSED", "FORFEITED"]).optional(),
+  distributorId: import_zod15.z.string().optional(),
+  orderId: import_zod15.z.string().uuid().optional(),
+  startDate: import_zod15.z.string().datetime().optional(),
+  endDate: import_zod15.z.string().datetime().optional()
 });
 
 // backend/src/routes/commissionConfig.routes.ts
-import { Router as Router16 } from "express";
+var import_express16 = require("express");
 
 // backend/src/controllers/commissionConfig.controller.ts
 init_commissionConfig_service();
@@ -28130,18 +28157,18 @@ var CommissionConfigController = class {
 };
 
 // backend/src/validators/commissionConfig.validators.ts
-import { z as z14 } from "zod";
-var updateCommissionRateSchema = z14.object({
-  percentage: z14.union([z14.number(), z14.string()]).refine((val) => {
+var import_zod16 = require("zod");
+var updateCommissionRateSchema = import_zod16.z.object({
+  percentage: import_zod16.z.union([import_zod16.z.number(), import_zod16.z.string()]).refine((val) => {
     const num = Number(val);
     return !isNaN(num) && num >= 0 && num <= 100;
   }, {
     message: "Percentage must be a non-negative number between 0.00 and 100.00"
   }),
-  isActive: z14.boolean().optional()
+  isActive: import_zod16.z.boolean().optional()
 });
-var levelNumberParamSchema = z14.object({
-  levelNumber: z14.string().refine((val) => {
+var levelNumberParamSchema = import_zod16.z.object({
+  levelNumber: import_zod16.z.string().refine((val) => {
     const num = parseInt(val, 10);
     return !isNaN(num) && num >= 1 && num <= 5;
   }, {
@@ -28150,7 +28177,7 @@ var levelNumberParamSchema = z14.object({
 });
 
 // backend/src/routes/commissionConfig.routes.ts
-var router16 = Router16();
+var router16 = (0, import_express16.Router)();
 router16.get("/", authenticate, CommissionConfigController.getCommissionRates);
 router16.get("/validate", authenticate, CommissionConfigController.validateConfiguration);
 router16.get(
@@ -28175,7 +28202,7 @@ router16.post(
 var commissionConfig_routes_default = router16;
 
 // backend/src/routes/levelCommission.routes.ts
-var router17 = Router17();
+var router17 = (0, import_express17.Router)();
 router17.use("/config", commissionConfig_routes_default);
 router17.get(
   "/summary",
@@ -28218,7 +28245,7 @@ router17.post(
 var levelCommission_routes_default = router17;
 
 // backend/src/routes/commission.routes.ts
-import { Router as Router19 } from "express";
+var import_express19 = require("express");
 
 // backend/src/controllers/commission.controller.ts
 init_database();
@@ -28587,8 +28614,8 @@ var CommissionPeriodService = class {
 init_appError();
 
 // backend/src/validators/commission.validators.ts
-import { z as z15 } from "zod";
-var commissionRuleTypeEnum = z15.enum([
+var import_zod17 = require("zod");
+var commissionRuleTypeEnum = import_zod17.z.enum([
   "BASE",
   "PC_ORDER",
   "MILESTONE",
@@ -28597,7 +28624,7 @@ var commissionRuleTypeEnum = z15.enum([
   "RANK",
   "OTHER"
 ]);
-var commissionStatusEnum = z15.enum([
+var commissionStatusEnum = import_zod17.z.enum([
   "PENDING",
   "QUALIFIED",
   "CALCULATED",
@@ -28605,47 +28632,47 @@ var commissionStatusEnum = z15.enum([
   "REVERSED",
   "CANCELLED"
 ]);
-var createCommissionRuleSchema = z15.object({
-  name: z15.string().trim().min(2, "Rule name must be at least 2 characters"),
+var createCommissionRuleSchema = import_zod17.z.object({
+  name: import_zod17.z.string().trim().min(2, "Rule name must be at least 2 characters"),
   type: commissionRuleTypeEnum,
-  enabled: z15.boolean().default(true),
-  configurationJson: z15.any().optional(),
-  priority: z15.coerce.number().int().min(1).default(1),
-  effectiveFrom: z15.coerce.date().nullable().optional(),
-  effectiveTo: z15.coerce.date().nullable().optional(),
-  ruleCode: z15.string().trim().optional()
+  enabled: import_zod17.z.boolean().default(true),
+  configurationJson: import_zod17.z.any().optional(),
+  priority: import_zod17.z.coerce.number().int().min(1).default(1),
+  effectiveFrom: import_zod17.z.coerce.date().nullable().optional(),
+  effectiveTo: import_zod17.z.coerce.date().nullable().optional(),
+  ruleCode: import_zod17.z.string().trim().optional()
 });
 var updateCommissionRuleSchema = createCommissionRuleSchema.partial();
-var calculateCommissionQuerySchema = z15.object({
-  periodId: z15.string().optional(),
-  distributorId: z15.string().uuid().optional()
+var calculateCommissionQuerySchema = import_zod17.z.object({
+  periodId: import_zod17.z.string().optional(),
+  distributorId: import_zod17.z.string().uuid().optional()
 });
-var processPCOrderBonusSchema = z15.object({
-  orderId: z15.string().uuid("orderId must be a valid UUID")
+var processPCOrderBonusSchema = import_zod17.z.object({
+  orderId: import_zod17.z.string().uuid("orderId must be a valid UUID")
 });
-var calculateMilestoneBonusSchema = z15.object({
-  distributorId: z15.string().uuid("distributorId must be a valid UUID"),
-  milestoneKey: z15.string().trim().min(1, "milestoneKey is required")
+var calculateMilestoneBonusSchema = import_zod17.z.object({
+  distributorId: import_zod17.z.string().uuid("distributorId must be a valid UUID"),
+  milestoneKey: import_zod17.z.string().trim().min(1, "milestoneKey is required")
 });
-var calculateRankBonusSchema = z15.object({
-  distributorId: z15.string().uuid("distributorId must be a valid UUID"),
-  rankCode: z15.string().trim().min(1, "rankCode is required"),
-  periodId: z15.string().optional()
+var calculateRankBonusSchema = import_zod17.z.object({
+  distributorId: import_zod17.z.string().uuid("distributorId must be a valid UUID"),
+  rankCode: import_zod17.z.string().trim().min(1, "rankCode is required"),
+  periodId: import_zod17.z.string().optional()
 });
-var payoutCommissionsSchema = z15.object({
-  periodId: z15.string().optional(),
-  commissionIds: z15.array(z15.string().uuid()).optional(),
-  distributorId: z15.string().uuid().optional()
+var payoutCommissionsSchema = import_zod17.z.object({
+  periodId: import_zod17.z.string().optional(),
+  commissionIds: import_zod17.z.array(import_zod17.z.string().uuid()).optional(),
+  distributorId: import_zod17.z.string().uuid().optional()
 });
-var commissionQuerySchema = z15.object({
-  distributorId: z15.string().uuid().optional(),
-  periodId: z15.string().optional(),
+var commissionQuerySchema = import_zod17.z.object({
+  distributorId: import_zod17.z.string().uuid().optional(),
+  periodId: import_zod17.z.string().optional(),
   type: commissionRuleTypeEnum.optional(),
   status: commissionStatusEnum.optional(),
-  page: z15.coerce.number().int().min(1).default(1),
-  limit: z15.coerce.number().int().min(1).max(100).default(20)
+  page: import_zod17.z.coerce.number().int().min(1).default(1),
+  limit: import_zod17.z.coerce.number().int().min(1).max(100).default(20)
 });
-var commissionPeriodStatusEnum = z15.enum([
+var commissionPeriodStatusEnum = import_zod17.z.enum([
   "OPEN",
   "PROCESSING",
   "CALCULATED",
@@ -28653,21 +28680,21 @@ var commissionPeriodStatusEnum = z15.enum([
   "PAID",
   "CLOSED"
 ]);
-var createCommissionPeriodSchema = z15.object({
-  startDate: z15.coerce.date({ required_error: "startDate is required" }),
-  endDate: z15.coerce.date({ required_error: "endDate is required" }),
+var createCommissionPeriodSchema = import_zod17.z.object({
+  startDate: import_zod17.z.coerce.date({ required_error: "startDate is required" }),
+  endDate: import_zod17.z.coerce.date({ required_error: "endDate is required" }),
   status: commissionPeriodStatusEnum.default("OPEN"),
-  periodCode: z15.string().trim().optional()
+  periodCode: import_zod17.z.string().trim().optional()
 }).refine((data) => data.endDate > data.startDate, {
   message: "endDate must be after startDate",
   path: ["endDate"]
 });
-var periodIdParamSchema = z15.object({
-  id: z15.string().trim().min(1, "Period ID or Code is required")
+var periodIdParamSchema = import_zod17.z.object({
+  id: import_zod17.z.string().trim().min(1, "Period ID or Code is required")
 });
-var periodHistoryQuerySchema = z15.object({
-  page: z15.coerce.number().int().min(1).default(1),
-  limit: z15.coerce.number().int().min(1).max(100).default(20),
+var periodHistoryQuerySchema = import_zod17.z.object({
+  page: import_zod17.z.coerce.number().int().min(1).default(1),
+  limit: import_zod17.z.coerce.number().int().min(1).max(100).default(20),
   status: commissionPeriodStatusEnum.optional()
 });
 
@@ -29075,19 +29102,19 @@ var CommissionController = class {
 };
 
 // backend/src/routes/commissionLedger.routes.ts
-import { Router as Router18 } from "express";
+var import_express18 = require("express");
 
 // backend/src/controllers/commissionLedger.controller.ts
 init_commissionLedger_service();
 init_atomicCommissionPosting_service();
 
 // backend/src/services/commissionWallet.service.ts
+var import_client26 = require("@prisma/client");
 init_database();
 init_logger();
 init_appError();
 init_safeDecimal();
 init_commissionLedger_service();
-import { Prisma as Prisma26 } from "@prisma/client";
 var CommissionWalletService = class {
   /**
    * Safely credits an eligible commission transaction to a distributor wallet.
@@ -29159,10 +29186,10 @@ var CommissionWalletService = class {
           data: {
             distributorId: recipientMemberId,
             userId: targetUserId,
-            availableBalance: new Prisma26.Decimal(0),
-            pendingBalance: new Prisma26.Decimal(0),
-            lifetimeEarned: new Prisma26.Decimal(0),
-            lifetimePaid: new Prisma26.Decimal(0),
+            availableBalance: new import_client26.Prisma.Decimal(0),
+            pendingBalance: new import_client26.Prisma.Decimal(0),
+            lifetimeEarned: new import_client26.Prisma.Decimal(0),
+            lifetimePaid: new import_client26.Prisma.Decimal(0),
             currency: "INR",
             isLocked: false
           }
@@ -29184,7 +29211,7 @@ var CommissionWalletService = class {
           status: "COMPLETED",
           amount: grossAmountDecimal,
           netAmount: grossAmountDecimal,
-          feeAmount: new Prisma26.Decimal(0),
+          feeAmount: new import_client26.Prisma.Decimal(0),
           balanceBefore,
           balanceAfter,
           referenceId: commTx.id,
@@ -29853,7 +29880,7 @@ var CommissionLedgerController = class {
 };
 
 // backend/src/routes/commissionLedger.routes.ts
-var router18 = Router18();
+var router18 = (0, import_express18.Router)();
 router18.use(authenticate);
 router18.get("/me", CommissionLedgerController.getMyLedger);
 router18.get("/order/:orderId", CommissionLedgerController.getByOrder);
@@ -29910,7 +29937,7 @@ router18.post(
 var commissionLedger_routes_default = router18;
 
 // backend/src/routes/commission.routes.ts
-var router19 = Router19();
+var router19 = (0, import_express19.Router)();
 var optionalAuth3 = (req, _res, next) => {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith("Bearer ")) {
@@ -29982,8 +30009,8 @@ router19.post(
 var commissionRouter = router19;
 
 // backend/src/routes/adminCommissionPeriod.routes.ts
-import { Router as Router20 } from "express";
-var router20 = Router20();
+var import_express20 = require("express");
+var router20 = (0, import_express20.Router)();
 router20.use(authenticate);
 router20.use(authorizeRoles("SUPER_ADMIN", "ADMIN"));
 router20.post(
@@ -30019,14 +30046,14 @@ router20.post(
 var adminCommissionPeriodRouter = router20;
 
 // backend/src/routes/wallet.routes.ts
-import { Router as Router21 } from "express";
+var import_express21 = require("express");
 
 // backend/src/controllers/wallet.controller.ts
 init_appError();
 
 // backend/src/validators/wallet.validators.ts
-import { z as z16 } from "zod";
-var walletTransactionTypeEnum = z16.enum([
+var import_zod18 = require("zod");
+var walletTransactionTypeEnum = import_zod18.z.enum([
   "CREDIT",
   "DEBIT",
   "COMMISSION",
@@ -30042,19 +30069,19 @@ var walletTransactionTypeEnum = z16.enum([
   "PEER_TRANSFER_CREDIT",
   "ADMIN_ADJUSTMENT"
 ]);
-var walletTransactionQuerySchema = z16.object({
+var walletTransactionQuerySchema = import_zod18.z.object({
   type: walletTransactionTypeEnum.optional(),
-  page: z16.coerce.number().int().min(1).default(1),
-  limit: z16.coerce.number().int().min(1).max(100).default(20),
-  startDate: z16.coerce.date().optional(),
-  endDate: z16.coerce.date().optional()
+  page: import_zod18.z.coerce.number().int().min(1).default(1),
+  limit: import_zod18.z.coerce.number().int().min(1).max(100).default(20),
+  startDate: import_zod18.z.coerce.date().optional(),
+  endDate: import_zod18.z.coerce.date().optional()
 });
-var adminWalletAdjustmentSchema = z16.object({
-  distributorId: z16.string().uuid("distributorId must be a valid UUID"),
-  type: z16.enum(["CREDIT", "DEBIT", "ADJUSTMENT"]),
-  amount: z16.coerce.number().positive("Adjustment amount must be greater than zero"),
-  reason: z16.string().trim().min(3, "Reason is required (min 3 characters)"),
-  referenceId: z16.string().trim().optional()
+var adminWalletAdjustmentSchema = import_zod18.z.object({
+  distributorId: import_zod18.z.string().uuid("distributorId must be a valid UUID"),
+  type: import_zod18.z.enum(["CREDIT", "DEBIT", "ADJUSTMENT"]),
+  amount: import_zod18.z.coerce.number().positive("Adjustment amount must be greater than zero"),
+  reason: import_zod18.z.string().trim().min(3, "Reason is required (min 3 characters)"),
+  referenceId: import_zod18.z.string().trim().optional()
 });
 
 // backend/src/controllers/wallet.controller.ts
@@ -30134,7 +30161,7 @@ var WalletController = class {
 };
 
 // backend/src/routes/wallet.routes.ts
-var walletRouter = Router21();
+var walletRouter = (0, import_express21.Router)();
 walletRouter.use(authenticate);
 walletRouter.get("/", WalletController.getMyWallet);
 walletRouter.get(
@@ -30152,7 +30179,7 @@ walletRouter.post("/", WalletController.blockDirectMutation);
 walletRouter.put("/", WalletController.blockDirectMutation);
 walletRouter.patch("/", WalletController.blockDirectMutation);
 walletRouter.delete("/", WalletController.blockDirectMutation);
-var adminWalletRouter = Router21();
+var adminWalletRouter = (0, import_express21.Router)();
 adminWalletRouter.use(authenticate);
 adminWalletRouter.use(authorizeRoles("SUPER_ADMIN", "ADMIN"));
 adminWalletRouter.post(
@@ -30162,13 +30189,13 @@ adminWalletRouter.post(
 );
 
 // backend/src/routes/payout.routes.ts
-import { Router as Router22 } from "express";
+var import_express22 = require("express");
 
 // backend/src/services/payout.service.ts
+var import_client27 = require("@prisma/client");
 init_database();
 init_logger();
 init_appError();
-import { Prisma as Prisma27 } from "@prisma/client";
 var PayoutService = class {
   /**
    * Formats a raw PayoutRequest ensuring bank details are always masked for standard responses.
@@ -30255,8 +30282,8 @@ var PayoutService = class {
           "WALLET_LOCKED"
         );
       }
-      const availableBalance = new Prisma27.Decimal(wallet.availableBalance ?? wallet.balance ?? 0);
-      const amount = new Prisma27.Decimal(input.amount);
+      const availableBalance = new import_client27.Prisma.Decimal(wallet.availableBalance ?? wallet.balance ?? 0);
+      const amount = new import_client27.Prisma.Decimal(input.amount);
       if (availableBalance.lessThan(amount)) {
         throw AppError.badRequest(
           `Insufficient available balance for payout. Available: ${availableBalance.toFixed(2)}, Requested: ${amount.toFixed(2)}`,
@@ -30279,7 +30306,7 @@ var PayoutService = class {
           distributorId: distributor.id,
           bankAccountId: bankAccount.id,
           amount,
-          fee: new Prisma27.Decimal(0),
+          fee: new import_client27.Prisma.Decimal(0),
           netAmount: amount,
           status: "REQUESTED",
           requestedAt: /* @__PURE__ */ new Date(),
@@ -30509,8 +30536,8 @@ var PayoutService = class {
         where: { distributorId: payout.distributorId }
       });
       if (wallet) {
-        const balanceBefore = new Prisma27.Decimal(wallet.availableBalance ?? wallet.balance ?? 0);
-        const amount = new Prisma27.Decimal(payout.amount);
+        const balanceBefore = new import_client27.Prisma.Decimal(wallet.availableBalance ?? wallet.balance ?? 0);
+        const amount = new import_client27.Prisma.Decimal(payout.amount);
         const balanceAfter = balanceBefore.add(amount);
         await tx.wallet.update({
           where: { id: wallet.id },
@@ -30528,7 +30555,7 @@ var PayoutService = class {
             type: "REVERSAL",
             status: "COMPLETED",
             amount,
-            feeAmount: new Prisma27.Decimal(0),
+            feeAmount: new import_client27.Prisma.Decimal(0),
             netAmount: amount,
             balanceBefore,
             balanceAfter,
@@ -30608,8 +30635,8 @@ var PayoutService = class {
       if (!wallet) {
         throw AppError.badRequest("Distributor wallet not found.", "WALLET_NOT_FOUND");
       }
-      const amount = new Prisma27.Decimal(payout.amount);
-      const available = new Prisma27.Decimal(wallet.availableBalance ?? wallet.balance ?? 0);
+      const amount = new import_client27.Prisma.Decimal(payout.amount);
+      const available = new import_client27.Prisma.Decimal(wallet.availableBalance ?? wallet.balance ?? 0);
       await tx.wallet.update({
         where: { id: wallet.id },
         data: {
@@ -30681,8 +30708,8 @@ var PayoutService = class {
 init_appError();
 
 // backend/src/validators/payout.validators.ts
-import { z as z17 } from "zod";
-var payoutStatusEnum = z17.enum([
+var import_zod19 = require("zod");
+var payoutStatusEnum = import_zod19.z.enum([
   "REQUESTED",
   "UNDER_REVIEW",
   "APPROVED",
@@ -30693,32 +30720,32 @@ var payoutStatusEnum = z17.enum([
   "COMPLETED",
   "CANCELLED"
 ]);
-var createPayoutRequestSchema = z17.object({
-  amount: z17.coerce.number().positive("Payout amount must be greater than zero").min(1, "Minimum payout request amount is 1.00"),
-  bankAccountId: z17.string().uuid("bankAccountId must be a valid UUID"),
-  notes: z17.string().trim().max(500, "Notes cannot exceed 500 characters").optional()
+var createPayoutRequestSchema = import_zod19.z.object({
+  amount: import_zod19.z.coerce.number().positive("Payout amount must be greater than zero").min(1, "Minimum payout request amount is 1.00"),
+  bankAccountId: import_zod19.z.string().uuid("bankAccountId must be a valid UUID"),
+  notes: import_zod19.z.string().trim().max(500, "Notes cannot exceed 500 characters").optional()
 });
-var payoutQuerySchema = z17.object({
+var payoutQuerySchema = import_zod19.z.object({
   status: payoutStatusEnum.optional(),
-  distributorId: z17.string().uuid().optional(),
-  page: z17.coerce.number().int().min(1).default(1),
-  limit: z17.coerce.number().int().min(1).max(100).default(20),
-  startDate: z17.coerce.date().optional(),
-  endDate: z17.coerce.date().optional()
+  distributorId: import_zod19.z.string().uuid().optional(),
+  page: import_zod19.z.coerce.number().int().min(1).default(1),
+  limit: import_zod19.z.coerce.number().int().min(1).max(100).default(20),
+  startDate: import_zod19.z.coerce.date().optional(),
+  endDate: import_zod19.z.coerce.date().optional()
 });
-var payoutIdParamSchema = z17.object({
-  id: z17.string().uuid("Payout ID must be a valid UUID")
+var payoutIdParamSchema = import_zod19.z.object({
+  id: import_zod19.z.string().uuid("Payout ID must be a valid UUID")
 });
-var approvePayoutSchema = z17.object({
-  adminNotes: z17.string().trim().max(500).optional()
+var approvePayoutSchema = import_zod19.z.object({
+  adminNotes: import_zod19.z.string().trim().max(500).optional()
 });
-var rejectPayoutSchema = z17.object({
-  reason: z17.string().trim().min(3, "Rejection reason is required (min 3 characters)"),
-  adminNotes: z17.string().trim().max(500).optional()
+var rejectPayoutSchema = import_zod19.z.object({
+  reason: import_zod19.z.string().trim().min(3, "Rejection reason is required (min 3 characters)"),
+  adminNotes: import_zod19.z.string().trim().max(500).optional()
 });
-var markPaidPayoutSchema = z17.object({
-  referenceNumber: z17.string().trim().max(100).optional(),
-  adminNotes: z17.string().trim().max(500).optional()
+var markPaidPayoutSchema = import_zod19.z.object({
+  referenceNumber: import_zod19.z.string().trim().max(100).optional(),
+  adminNotes: import_zod19.z.string().trim().max(500).optional()
 });
 
 // backend/src/controllers/payout.controller.ts
@@ -30865,7 +30892,7 @@ var PayoutController = class {
 };
 
 // backend/src/routes/payout.routes.ts
-var payoutRouter = Router22();
+var payoutRouter = (0, import_express22.Router)();
 payoutRouter.use(authenticate);
 payoutRouter.post(
   "/",
@@ -30882,7 +30909,7 @@ payoutRouter.get(
   validate({ params: payoutIdParamSchema }),
   PayoutController.getMyPayoutById
 );
-var adminPayoutRouter = Router22();
+var adminPayoutRouter = (0, import_express22.Router)();
 adminPayoutRouter.use(authenticate);
 adminPayoutRouter.use(authorizeRoles("SUPER_ADMIN", "ADMIN"));
 adminPayoutRouter.get(
@@ -30907,19 +30934,19 @@ adminPayoutRouter.post(
 );
 
 // backend/src/routes/withdrawal.routes.ts
-import { Router as Router23 } from "express";
+var import_express23 = require("express");
 
 // backend/src/controllers/withdrawal.controller.ts
 init_database();
 
 // backend/src/services/withdrawal.service.ts
+var import_client29 = require("@prisma/client");
 init_database();
 init_logger();
 init_appError();
 init_safeDecimal();
 init_platformTreasury_service();
 init_commissionLedger_service();
-import { Prisma as Prisma29 } from "@prisma/client";
 var WithdrawalService = class {
   static DEFAULT_MIN_WITHDRAWAL = 500;
   static DEFAULT_MAX_WITHDRAWAL = 1e5;
@@ -31144,7 +31171,7 @@ var WithdrawalService = class {
         data: {
           memberId,
           amount: amountDecimal,
-          fee: new Prisma29.Decimal(0),
+          fee: new import_client29.Prisma.Decimal(0),
           netAmount: amountDecimal,
           status: "REQUESTED",
           payoutProvider: input.payoutProvider || this.DEFAULT_PAYOUT_PROVIDER,
@@ -31165,7 +31192,7 @@ var WithdrawalService = class {
           distributorId: memberId,
           bankAccountId: input.bankAccountId,
           amount: amountDecimal,
-          fee: new Prisma29.Decimal(0),
+          fee: new import_client29.Prisma.Decimal(0),
           netAmount: amountDecimal,
           status: "REQUESTED",
           requestedAt: /* @__PURE__ */ new Date(),
@@ -31409,7 +31436,7 @@ var WithdrawalService = class {
             status: "COMPLETED",
             amount: amountDecimal,
             netAmount: amountDecimal,
-            feeAmount: new Prisma29.Decimal(0),
+            feeAmount: new import_client29.Prisma.Decimal(0),
             balanceBefore: availBefore,
             balanceAfter: availAfter,
             referenceId: withdrawal.id,
@@ -31537,8 +31564,8 @@ ${status}: ${reason}` : `${status}: ${reason}`
 init_appError();
 
 // backend/src/validators/withdrawal.validators.ts
-import { z as z18 } from "zod";
-var withdrawalStatusEnum = z18.enum([
+var import_zod20 = require("zod");
+var withdrawalStatusEnum = import_zod20.z.enum([
   "REQUESTED",
   "UNDER_REVIEW",
   "APPROVED",
@@ -31548,46 +31575,46 @@ var withdrawalStatusEnum = z18.enum([
   "CANCELLED",
   "REVERSED"
 ]);
-var createWithdrawalSchema = z18.object({
-  amount: z18.coerce.number().positive("Withdrawal amount must be greater than zero").min(500, "Minimum withdrawal amount is 500.00 INR").max(1e5, "Maximum single withdrawal amount is 100,000.00 INR"),
-  bankAccountId: z18.string().uuid("bankAccountId must be a valid UUID"),
-  payoutProvider: z18.string().trim().max(50).optional(),
-  idempotencyKey: z18.string().trim().max(128).optional(),
-  notes: z18.string().trim().max(500, "Notes cannot exceed 500 characters").optional()
+var createWithdrawalSchema = import_zod20.z.object({
+  amount: import_zod20.z.coerce.number().positive("Withdrawal amount must be greater than zero").min(500, "Minimum withdrawal amount is 500.00 INR").max(1e5, "Maximum single withdrawal amount is 100,000.00 INR"),
+  bankAccountId: import_zod20.z.string().uuid("bankAccountId must be a valid UUID"),
+  payoutProvider: import_zod20.z.string().trim().max(50).optional(),
+  idempotencyKey: import_zod20.z.string().trim().max(128).optional(),
+  notes: import_zod20.z.string().trim().max(500, "Notes cannot exceed 500 characters").optional()
 });
-var validateWithdrawalQuerySchema = z18.object({
-  amount: z18.coerce.number().positive("Amount must be positive"),
-  bankAccountId: z18.string().uuid().optional()
+var validateWithdrawalQuerySchema = import_zod20.z.object({
+  amount: import_zod20.z.coerce.number().positive("Amount must be positive"),
+  bankAccountId: import_zod20.z.string().uuid().optional()
 });
-var withdrawalQuerySchema = z18.object({
+var withdrawalQuerySchema = import_zod20.z.object({
   status: withdrawalStatusEnum.optional(),
-  memberId: z18.string().uuid().optional(),
-  payoutProvider: z18.string().trim().optional(),
-  page: z18.coerce.number().int().min(1).default(1),
-  limit: z18.coerce.number().int().min(1).max(100).default(20),
-  startDate: z18.coerce.date().optional(),
-  endDate: z18.coerce.date().optional()
+  memberId: import_zod20.z.string().uuid().optional(),
+  payoutProvider: import_zod20.z.string().trim().optional(),
+  page: import_zod20.z.coerce.number().int().min(1).default(1),
+  limit: import_zod20.z.coerce.number().int().min(1).max(100).default(20),
+  startDate: import_zod20.z.coerce.date().optional(),
+  endDate: import_zod20.z.coerce.date().optional()
 });
-var withdrawalIdParamSchema = z18.object({
-  id: z18.string().uuid("Withdrawal ID must be a valid UUID")
+var withdrawalIdParamSchema = import_zod20.z.object({
+  id: import_zod20.z.string().uuid("Withdrawal ID must be a valid UUID")
 });
-var approveWithdrawalSchema = z18.object({
-  adminNotes: z18.string().trim().max(500).optional()
+var approveWithdrawalSchema = import_zod20.z.object({
+  adminNotes: import_zod20.z.string().trim().max(500).optional()
 });
-var processWithdrawalSchema = z18.object({
-  provider: z18.string().trim().max(50).default("RAZORPAYX"),
-  externalTransactionId: z18.string().trim().max(100).optional()
+var processWithdrawalSchema = import_zod20.z.object({
+  provider: import_zod20.z.string().trim().max(50).default("RAZORPAYX"),
+  externalTransactionId: import_zod20.z.string().trim().max(100).optional()
 });
-var disburseWithdrawalSchema = z18.object({
-  externalTransactionId: z18.string().trim().max(100).optional(),
-  referenceNumber: z18.string().trim().max(100).optional(),
-  adminNotes: z18.string().trim().max(500).optional()
+var disburseWithdrawalSchema = import_zod20.z.object({
+  externalTransactionId: import_zod20.z.string().trim().max(100).optional(),
+  referenceNumber: import_zod20.z.string().trim().max(100).optional(),
+  adminNotes: import_zod20.z.string().trim().max(500).optional()
 });
-var cancelOrFailWithdrawalSchema = z18.object({
-  reason: z18.string().trim().min(3, "Reason is required (min 3 characters)")
+var cancelOrFailWithdrawalSchema = import_zod20.z.object({
+  reason: import_zod20.z.string().trim().min(3, "Reason is required (min 3 characters)")
 });
-var reverseWithdrawalSchema = z18.object({
-  reason: z18.string().trim().min(3, "Reversal reason is required (min 3 characters)")
+var reverseWithdrawalSchema = import_zod20.z.object({
+  reason: import_zod20.z.string().trim().min(3, "Reversal reason is required (min 3 characters)")
 });
 
 // backend/src/controllers/withdrawal.controller.ts
@@ -31829,7 +31856,7 @@ var WithdrawalController = class {
 };
 
 // backend/src/routes/withdrawal.routes.ts
-var withdrawalRouter = Router23();
+var withdrawalRouter = (0, import_express23.Router)();
 withdrawalRouter.use(authenticate);
 withdrawalRouter.get(
   "/validate",
@@ -31856,7 +31883,7 @@ withdrawalRouter.post(
   validate({ params: withdrawalIdParamSchema, body: cancelOrFailWithdrawalSchema }),
   WithdrawalController.adminCancel
 );
-var adminWithdrawalRouter = Router23();
+var adminWithdrawalRouter = (0, import_express23.Router)();
 adminWithdrawalRouter.use(authenticate);
 adminWithdrawalRouter.use(authorizeRoles("SUPER_ADMIN", "ADMIN"));
 adminWithdrawalRouter.get(
@@ -31901,7 +31928,7 @@ adminWithdrawalRouter.post(
 );
 
 // backend/src/routes/businessCenter.routes.ts
-import { Router as Router24 } from "express";
+var import_express24 = require("express");
 
 // backend/src/services/businessCenter.service.ts
 init_database();
@@ -32361,21 +32388,21 @@ var BusinessCenterService = class {
 };
 
 // backend/src/validators/businessCenter.validators.ts
-import { z as z19 } from "zod";
-var businessCenterStatusEnum = z19.enum(["ACTIVE", "INACTIVE", "SUSPENDED"]);
-var businessCenterQuerySchema = z19.object({
-  distributorId: z19.string().uuid().optional(),
+var import_zod21 = require("zod");
+var businessCenterStatusEnum = import_zod21.z.enum(["ACTIVE", "INACTIVE", "SUSPENDED"]);
+var businessCenterQuerySchema = import_zod21.z.object({
+  distributorId: import_zod21.z.string().uuid().optional(),
   status: businessCenterStatusEnum.optional()
 });
-var businessCenterIdParamSchema = z19.object({
-  id: z19.string().trim().min(1, "Business center ID or code is required")
+var businessCenterIdParamSchema = import_zod21.z.object({
+  id: import_zod21.z.string().trim().min(1, "Business center ID or code is required")
 });
-var businessCenterTreeQuerySchema = z19.object({
-  depth: z19.coerce.number().int().min(1).max(10).default(3)
+var businessCenterTreeQuerySchema = import_zod21.z.object({
+  depth: import_zod21.z.coerce.number().int().min(1).max(10).default(3)
 });
-var createBusinessCenterSchema = z19.object({
-  distributorId: z19.string().uuid("distributorId must be a valid UUID"),
-  centerNumber: z19.coerce.number().int().min(1).max(10),
+var createBusinessCenterSchema = import_zod21.z.object({
+  distributorId: import_zod21.z.string().uuid("distributorId must be a valid UUID"),
+  centerNumber: import_zod21.z.coerce.number().int().min(1).max(10),
   status: businessCenterStatusEnum.default("ACTIVE")
 });
 
@@ -32472,7 +32499,7 @@ var BusinessCenterController = class {
 };
 
 // backend/src/routes/businessCenter.routes.ts
-var businessCenterRouter = Router24();
+var businessCenterRouter = (0, import_express24.Router)();
 var optionalAuth4 = (req, _res, next) => {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith("Bearer ")) {
@@ -32513,14 +32540,14 @@ businessCenterRouter.get(
 );
 
 // backend/src/routes/training.routes.ts
-import { Router as Router25 } from "express";
+var import_express25 = require("express");
 
 // backend/src/controllers/training.controller.ts
 init_appError();
 
 // backend/src/validators/training.validators.ts
-import { z as z20 } from "zod";
-var trainingCourseCategoryEnum = z20.enum([
+var import_zod22 = require("zod");
+var trainingCourseCategoryEnum = import_zod22.z.enum([
   "ORIENTATION",
   "BUSINESS_SETUP",
   "PRODUCT",
@@ -32528,17 +32555,17 @@ var trainingCourseCategoryEnum = z20.enum([
   "MARKETING",
   "TOOLS"
 ]);
-var trainingCourseQuerySchema = z20.object({
+var trainingCourseQuerySchema = import_zod22.z.object({
   category: trainingCourseCategoryEnum.optional(),
-  search: z20.string().trim().optional(),
-  isMandatory: z20.coerce.boolean().optional()
+  search: import_zod22.z.string().trim().optional(),
+  isMandatory: import_zod22.z.coerce.boolean().optional()
 });
-var courseIdParamSchema = z20.object({
-  courseId: z20.string().trim().min(1, "Course ID or slug is required")
+var courseIdParamSchema = import_zod22.z.object({
+  courseId: import_zod22.z.string().trim().min(1, "Course ID or slug is required")
 });
-var lessonActionParamSchema = z20.object({
-  courseId: z20.string().trim().min(1, "Course ID or slug is required"),
-  lessonId: z20.string().trim().min(1, "Lesson ID is required")
+var lessonActionParamSchema = import_zod22.z.object({
+  courseId: import_zod22.z.string().trim().min(1, "Course ID or slug is required"),
+  lessonId: import_zod22.z.string().trim().min(1, "Lesson ID is required")
 });
 
 // backend/src/controllers/training.controller.ts
@@ -32640,7 +32667,7 @@ var TrainingController = class {
 };
 
 // backend/src/routes/training.routes.ts
-var trainingRouter = Router25();
+var trainingRouter = (0, import_express25.Router)();
 trainingRouter.use(authenticate);
 trainingRouter.get("/progress", TrainingController.getProgress);
 trainingRouter.get(
@@ -32665,7 +32692,7 @@ trainingRouter.post(
 );
 
 // backend/src/routes/website.routes.ts
-import { Router as Router26 } from "express";
+var import_express26 = require("express");
 
 // backend/src/services/website.service.ts
 init_database();
@@ -33065,35 +33092,35 @@ var DistributorWebsiteService = class {
 init_appError();
 
 // backend/src/validators/website.validators.ts
-import { z as z21 } from "zod";
-var updateDistributorWebsiteSchema = z21.object({
-  slug: z21.string().trim().min(2, "Slug must be at least 2 characters").max(50).regex(/^[a-z0-9-]+$/, "Slug can only contain lowercase alphanumeric characters and hyphens").optional(),
-  subdomain: z21.string().trim().min(2, "Subdomain must be at least 2 characters").max(50).regex(/^[a-z0-9-]+$/, "Subdomain can only contain lowercase alphanumeric characters and hyphens").optional(),
-  title: z21.string().trim().min(1).max(150).optional(),
-  description: z21.string().trim().max(1e3).optional().nullable(),
-  theme: z21.string().trim().max(50).optional(),
-  logo: z21.string().trim().optional().nullable(),
-  isPublished: z21.boolean().optional()
+var import_zod23 = require("zod");
+var updateDistributorWebsiteSchema = import_zod23.z.object({
+  slug: import_zod23.z.string().trim().min(2, "Slug must be at least 2 characters").max(50).regex(/^[a-z0-9-]+$/, "Slug can only contain lowercase alphanumeric characters and hyphens").optional(),
+  subdomain: import_zod23.z.string().trim().min(2, "Subdomain must be at least 2 characters").max(50).regex(/^[a-z0-9-]+$/, "Subdomain can only contain lowercase alphanumeric characters and hyphens").optional(),
+  title: import_zod23.z.string().trim().min(1).max(150).optional(),
+  description: import_zod23.z.string().trim().max(1e3).optional().nullable(),
+  theme: import_zod23.z.string().trim().max(50).optional(),
+  logo: import_zod23.z.string().trim().optional().nullable(),
+  isPublished: import_zod23.z.boolean().optional()
 });
-var createWebsiteLinkSchema = z21.object({
-  label: z21.string().trim().min(1, "Label is required").max(100),
-  url: z21.string().trim().min(1, "URL is required").max(500),
-  type: z21.string().trim().default("CUSTOM"),
-  sortOrder: z21.coerce.number().int().default(0),
-  enabled: z21.boolean().default(true)
+var createWebsiteLinkSchema = import_zod23.z.object({
+  label: import_zod23.z.string().trim().min(1, "Label is required").max(100),
+  url: import_zod23.z.string().trim().min(1, "URL is required").max(500),
+  type: import_zod23.z.string().trim().default("CUSTOM"),
+  sortOrder: import_zod23.z.coerce.number().int().default(0),
+  enabled: import_zod23.z.boolean().default(true)
 });
-var updateWebsiteLinkSchema = z21.object({
-  label: z21.string().trim().min(1).max(100).optional(),
-  url: z21.string().trim().min(1).max(500).optional(),
-  type: z21.string().trim().optional(),
-  sortOrder: z21.coerce.number().int().optional(),
-  enabled: z21.boolean().optional()
+var updateWebsiteLinkSchema = import_zod23.z.object({
+  label: import_zod23.z.string().trim().min(1).max(100).optional(),
+  url: import_zod23.z.string().trim().min(1).max(500).optional(),
+  type: import_zod23.z.string().trim().optional(),
+  sortOrder: import_zod23.z.coerce.number().int().optional(),
+  enabled: import_zod23.z.boolean().optional()
 });
-var linkIdParamSchema = z21.object({
-  id: z21.string().uuid("Link ID must be a valid UUID")
+var linkIdParamSchema = import_zod23.z.object({
+  id: import_zod23.z.string().uuid("Link ID must be a valid UUID")
 });
-var distributorSlugParamSchema = z21.object({
-  slug: z21.string().trim().min(1, "Slug or distributor code is required").max(100)
+var distributorSlugParamSchema = import_zod23.z.object({
+  slug: import_zod23.z.string().trim().min(1, "Slug or distributor code is required").max(100)
 });
 
 // backend/src/controllers/website.controller.ts
@@ -33230,7 +33257,7 @@ var WebsiteController = class {
 };
 
 // backend/src/routes/website.routes.ts
-var websiteRouter = Router26();
+var websiteRouter = (0, import_express26.Router)();
 websiteRouter.use(authenticate);
 websiteRouter.get("/", WebsiteController.getMyWebsite);
 websiteRouter.patch(
@@ -33256,8 +33283,8 @@ websiteRouter.delete(
 );
 
 // backend/src/routes/public.routes.ts
-import { Router as Router27 } from "express";
-var publicRouter = Router27();
+var import_express27 = require("express");
+var publicRouter = (0, import_express27.Router)();
 publicRouter.get(
   "/distributor/:slug",
   validate({ params: distributorSlugParamSchema }),
@@ -33265,7 +33292,7 @@ publicRouter.get(
 );
 
 // backend/src/routes/news.routes.ts
-import { Router as Router28 } from "express";
+var import_express28 = require("express");
 
 // backend/src/services/news.service.ts
 init_database();
@@ -33596,44 +33623,44 @@ var NewsService = class {
 };
 
 // backend/src/validators/news.validators.ts
-import { z as z22 } from "zod";
-import { NewsStatus } from "@prisma/client";
-var newsStatusSchema = z22.nativeEnum(NewsStatus);
-var createNewsSchema = z22.object({
-  title: z22.string().trim().min(3, "Title must be at least 3 characters").max(200, "Title cannot exceed 200 characters"),
-  slug: z22.string().trim().min(2, "Slug must be at least 2 characters").max(150, "Slug cannot exceed 150 characters").regex(/^[a-z0-9-]+$/, "Slug can only contain lowercase alphanumeric characters and hyphens").optional(),
-  summary: z22.string().trim().min(5, "Summary must be at least 5 characters").max(1e3, "Summary cannot exceed 1000 characters"),
-  content: z22.string().trim().min(10, "Content must be at least 10 characters"),
-  image: z22.string().trim().max(500).optional().nullable(),
+var import_zod24 = require("zod");
+var import_client30 = require("@prisma/client");
+var newsStatusSchema = import_zod24.z.nativeEnum(import_client30.NewsStatus);
+var createNewsSchema = import_zod24.z.object({
+  title: import_zod24.z.string().trim().min(3, "Title must be at least 3 characters").max(200, "Title cannot exceed 200 characters"),
+  slug: import_zod24.z.string().trim().min(2, "Slug must be at least 2 characters").max(150, "Slug cannot exceed 150 characters").regex(/^[a-z0-9-]+$/, "Slug can only contain lowercase alphanumeric characters and hyphens").optional(),
+  summary: import_zod24.z.string().trim().min(5, "Summary must be at least 5 characters").max(1e3, "Summary cannot exceed 1000 characters"),
+  content: import_zod24.z.string().trim().min(10, "Content must be at least 10 characters"),
+  image: import_zod24.z.string().trim().max(500).optional().nullable(),
   status: newsStatusSchema.default("DRAFT"),
-  publishedAt: z22.string().datetime({ offset: true }).or(z22.date()).optional().nullable(),
-  authorId: z22.string().uuid("Author ID must be a valid UUID").optional().nullable(),
-  targetAudience: z22.string().trim().default("ALL")
+  publishedAt: import_zod24.z.string().datetime({ offset: true }).or(import_zod24.z.date()).optional().nullable(),
+  authorId: import_zod24.z.string().uuid("Author ID must be a valid UUID").optional().nullable(),
+  targetAudience: import_zod24.z.string().trim().default("ALL")
 });
-var updateNewsSchema = z22.object({
-  title: z22.string().trim().min(3, "Title must be at least 3 characters").max(200).optional(),
-  slug: z22.string().trim().min(2).max(150).regex(/^[a-z0-9-]+$/, "Slug can only contain lowercase alphanumeric characters and hyphens").optional(),
-  summary: z22.string().trim().min(5).max(1e3).optional(),
-  content: z22.string().trim().min(10).optional(),
-  image: z22.string().trim().max(500).optional().nullable(),
+var updateNewsSchema = import_zod24.z.object({
+  title: import_zod24.z.string().trim().min(3, "Title must be at least 3 characters").max(200).optional(),
+  slug: import_zod24.z.string().trim().min(2).max(150).regex(/^[a-z0-9-]+$/, "Slug can only contain lowercase alphanumeric characters and hyphens").optional(),
+  summary: import_zod24.z.string().trim().min(5).max(1e3).optional(),
+  content: import_zod24.z.string().trim().min(10).optional(),
+  image: import_zod24.z.string().trim().max(500).optional().nullable(),
   status: newsStatusSchema.optional(),
-  publishedAt: z22.string().datetime({ offset: true }).or(z22.date()).optional().nullable(),
-  authorId: z22.string().uuid().optional().nullable(),
-  targetAudience: z22.string().trim().optional()
+  publishedAt: import_zod24.z.string().datetime({ offset: true }).or(import_zod24.z.date()).optional().nullable(),
+  authorId: import_zod24.z.string().uuid().optional().nullable(),
+  targetAudience: import_zod24.z.string().trim().optional()
 });
-var newsQuerySchema = z22.object({
-  search: z22.string().trim().optional(),
+var newsQuerySchema = import_zod24.z.object({
+  search: import_zod24.z.string().trim().optional(),
   status: newsStatusSchema.optional(),
-  targetAudience: z22.string().trim().optional(),
-  page: z22.coerce.number().int().min(1).default(1),
-  limit: z22.coerce.number().int().min(1).max(100).default(10),
-  sort: z22.enum(["newest", "oldest", "title_asc", "title_desc"]).default("newest")
+  targetAudience: import_zod24.z.string().trim().optional(),
+  page: import_zod24.z.coerce.number().int().min(1).default(1),
+  limit: import_zod24.z.coerce.number().int().min(1).max(100).default(10),
+  sort: import_zod24.z.enum(["newest", "oldest", "title_asc", "title_desc"]).default("newest")
 });
-var newsSlugParamSchema = z22.object({
-  slug: z22.string().trim().min(1, "News slug is required")
+var newsSlugParamSchema = import_zod24.z.object({
+  slug: import_zod24.z.string().trim().min(1, "News slug is required")
 });
-var newsIdParamSchema = z22.object({
-  id: z22.string().trim().min(1, "News ID is required")
+var newsIdParamSchema = import_zod24.z.object({
+  id: import_zod24.z.string().trim().min(1, "News ID is required")
 });
 
 // backend/src/controllers/news.controller.ts
@@ -33741,10 +33768,10 @@ var NewsController = class {
 };
 
 // backend/src/routes/news.routes.ts
-var newsRouter = Router28();
+var newsRouter = (0, import_express28.Router)();
 newsRouter.get("/", validate({ query: newsQuerySchema }), NewsController.getPublicNews);
 newsRouter.get("/:slug", validate({ params: newsSlugParamSchema }), NewsController.getPublicNewsBySlug);
-var adminNewsRouter = Router28();
+var adminNewsRouter = (0, import_express28.Router)();
 adminNewsRouter.use(authenticate);
 adminNewsRouter.use(authorizeRoles("SUPER_ADMIN", "ADMIN"));
 adminNewsRouter.get("/", validate({ query: newsQuerySchema }), NewsController.getAdminNews);
@@ -33765,7 +33792,7 @@ adminNewsRouter.delete(
 );
 
 // backend/src/routes/support.routes.ts
-import { Router as Router29 } from "express";
+var import_express29 = require("express");
 
 // backend/src/services/support.service.ts
 init_database();
@@ -34199,51 +34226,51 @@ var SupportController = class {
 };
 
 // backend/src/validators/support.validators.ts
-import { z as z23 } from "zod";
-var ticketStatusEnum = z23.enum([
+var import_zod25 = require("zod");
+var ticketStatusEnum = import_zod25.z.enum([
   "OPEN",
   "IN_PROGRESS",
   "WAITING_USER",
   "RESOLVED",
   "CLOSED"
 ]);
-var ticketPriorityEnum = z23.enum([
+var ticketPriorityEnum = import_zod25.z.enum([
   "LOW",
   "MEDIUM",
   "HIGH",
   "URGENT"
 ]);
-var createSupportTicketSchema = z23.object({
-  subject: z23.string().min(3, "Subject must be at least 3 characters").max(200),
-  description: z23.string().min(5, "Description must be at least 5 characters"),
-  department: z23.string().min(2).default("GENERAL"),
+var createSupportTicketSchema = import_zod25.z.object({
+  subject: import_zod25.z.string().min(3, "Subject must be at least 3 characters").max(200),
+  description: import_zod25.z.string().min(5, "Description must be at least 5 characters"),
+  department: import_zod25.z.string().min(2).default("GENERAL"),
   priority: ticketPriorityEnum.default("MEDIUM"),
-  name: z23.string().optional(),
-  email: z23.string().email().optional(),
-  phone: z23.string().optional()
+  name: import_zod25.z.string().optional(),
+  email: import_zod25.z.string().email().optional(),
+  phone: import_zod25.z.string().optional()
 });
-var addTicketMessageSchema = z23.object({
-  message: z23.string().min(1, "Message cannot be empty"),
-  attachments: z23.any().optional()
+var addTicketMessageSchema = import_zod25.z.object({
+  message: import_zod25.z.string().min(1, "Message cannot be empty"),
+  attachments: import_zod25.z.any().optional()
 });
-var supportTicketIdParamSchema = z23.object({
-  id: z23.string().min(1, "Ticket ID is required")
+var supportTicketIdParamSchema = import_zod25.z.object({
+  id: import_zod25.z.string().min(1, "Ticket ID is required")
 });
-var supportTicketQuerySchema = z23.object({
+var supportTicketQuerySchema = import_zod25.z.object({
   status: ticketStatusEnum.optional(),
   priority: ticketPriorityEnum.optional(),
-  department: z23.string().optional(),
-  search: z23.string().optional(),
-  page: z23.coerce.number().int().min(1).default(1),
-  limit: z23.coerce.number().int().min(1).max(100).default(20)
+  department: import_zod25.z.string().optional(),
+  search: import_zod25.z.string().optional(),
+  page: import_zod25.z.coerce.number().int().min(1).default(1),
+  limit: import_zod25.z.coerce.number().int().min(1).max(100).default(20)
 });
-var updateTicketStatusSchema = z23.object({
+var updateTicketStatusSchema = import_zod25.z.object({
   status: ticketStatusEnum,
-  assignedToId: z23.string().uuid().optional()
+  assignedToId: import_zod25.z.string().uuid().optional()
 });
 
 // backend/src/routes/support.routes.ts
-var router21 = Router29();
+var router21 = (0, import_express29.Router)();
 var supportAuth = (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith("Bearer ")) {
@@ -34304,7 +34331,7 @@ router21.patch(
 var supportRouter = router21;
 
 // backend/src/routes/notification.routes.ts
-import { Router as Router30 } from "express";
+var import_express30 = require("express");
 
 // backend/src/services/notification.service.ts
 init_database();
@@ -34555,26 +34582,26 @@ var NotificationController = class {
 };
 
 // backend/src/validators/notification.validators.ts
-import { z as z24 } from "zod";
-var notificationIdParamSchema = z24.object({
-  id: z24.string().min(1, "Notification ID is required")
+var import_zod26 = require("zod");
+var notificationIdParamSchema = import_zod26.z.object({
+  id: import_zod26.z.string().min(1, "Notification ID is required")
 });
-var notificationQuerySchema = z24.object({
-  isRead: z24.enum(["true", "false"]).transform((val) => val === "true").optional(),
-  type: z24.string().optional(),
-  page: z24.coerce.number().int().min(1).default(1),
-  limit: z24.coerce.number().int().min(1).max(100).default(20)
+var notificationQuerySchema = import_zod26.z.object({
+  isRead: import_zod26.z.enum(["true", "false"]).transform((val) => val === "true").optional(),
+  type: import_zod26.z.string().optional(),
+  page: import_zod26.z.coerce.number().int().min(1).default(1),
+  limit: import_zod26.z.coerce.number().int().min(1).max(100).default(20)
 });
-var broadcastNotificationSchema = z24.object({
-  title: z24.string().min(2, "Title must be at least 2 characters"),
-  message: z24.string().min(3, "Message must be at least 3 characters"),
-  type: z24.string().default("INFO"),
-  targetRole: z24.enum(["ALL", "DISTRIBUTOR", "CUSTOMER", "ADMIN"]).default("ALL"),
-  linkUrl: z24.string().optional()
+var broadcastNotificationSchema = import_zod26.z.object({
+  title: import_zod26.z.string().min(2, "Title must be at least 2 characters"),
+  message: import_zod26.z.string().min(3, "Message must be at least 3 characters"),
+  type: import_zod26.z.string().default("INFO"),
+  targetRole: import_zod26.z.enum(["ALL", "DISTRIBUTOR", "CUSTOMER", "ADMIN"]).default("ALL"),
+  linkUrl: import_zod26.z.string().optional()
 });
 
 // backend/src/routes/notification.routes.ts
-var router22 = Router30();
+var router22 = (0, import_express30.Router)();
 router22.use(authenticate);
 router22.get(
   "/",
@@ -34593,7 +34620,7 @@ router22.post(
 var notificationRouter = router22;
 
 // backend/src/routes/admin.routes.ts
-import { Router as Router32 } from "express";
+var import_express32 = require("express");
 
 // backend/src/controllers/admin.controller.ts
 init_database();
@@ -36586,9 +36613,9 @@ var CommissionReconciliationService = class {
 init_audit_service();
 
 // backend/src/validators/commissionApi.validators.ts
+var import_zod27 = require("zod");
 init_appError();
 init_audit_service();
-import { z as z25 } from "zod";
 var FORBIDDEN_CLIENT_COMMISSION_FIELDS = [
   "commission",
   "commissions",
@@ -36663,50 +36690,50 @@ function assertNoCommissionFieldOverrides(payload, endpointName = "Commission", 
     );
   }
 }
-var memberIdParamSchema = z25.object({
-  memberId: z25.string().trim().min(1, "Member identifier is required")
+var memberIdParamSchema = import_zod27.z.object({
+  memberId: import_zod27.z.string().trim().min(1, "Member identifier is required")
 });
-var memberCommissionParamsSchema = z25.object({
-  memberId: z25.string().trim().min(1, "Member identifier is required"),
-  commissionId: z25.string().trim().min(1, "Commission identifier is required")
+var memberCommissionParamsSchema = import_zod27.z.object({
+  memberId: import_zod27.z.string().trim().min(1, "Member identifier is required"),
+  commissionId: import_zod27.z.string().trim().min(1, "Commission identifier is required")
 });
-var memberCommissionsQuerySchema = z25.object({
-  page: z25.coerce.number().int().positive().default(1),
-  limit: z25.coerce.number().int().positive().max(100).default(20),
-  status: z25.enum(["PENDING", "APPROVED", "AVAILABLE", "PAID", "CANCELLED", "REVERSED"]).optional(),
-  level: z25.coerce.number().int().min(1).max(5).optional(),
-  commissionLevel: z25.coerce.number().int().min(1).max(5).optional(),
-  orderId: z25.string().trim().optional(),
-  sourceMemberId: z25.string().trim().optional(),
-  fromDate: z25.string().trim().optional(),
-  toDate: z25.string().trim().optional(),
-  startDate: z25.string().trim().optional(),
-  endDate: z25.string().trim().optional()
+var memberCommissionsQuerySchema = import_zod27.z.object({
+  page: import_zod27.z.coerce.number().int().positive().default(1),
+  limit: import_zod27.z.coerce.number().int().positive().max(100).default(20),
+  status: import_zod27.z.enum(["PENDING", "APPROVED", "AVAILABLE", "PAID", "CANCELLED", "REVERSED"]).optional(),
+  level: import_zod27.z.coerce.number().int().min(1).max(5).optional(),
+  commissionLevel: import_zod27.z.coerce.number().int().min(1).max(5).optional(),
+  orderId: import_zod27.z.string().trim().optional(),
+  sourceMemberId: import_zod27.z.string().trim().optional(),
+  fromDate: import_zod27.z.string().trim().optional(),
+  toDate: import_zod27.z.string().trim().optional(),
+  startDate: import_zod27.z.string().trim().optional(),
+  endDate: import_zod27.z.string().trim().optional()
 });
-var adminOrderIdParamSchema = z25.object({
-  orderId: z25.string().trim().min(1, "Order identifier is required")
+var adminOrderIdParamSchema = import_zod27.z.object({
+  orderId: import_zod27.z.string().trim().min(1, "Order identifier is required")
 });
-var adminCommissionIdParamSchema = z25.object({
-  commissionId: z25.string().trim().min(1, "Commission identifier is required")
+var adminCommissionIdParamSchema = import_zod27.z.object({
+  commissionId: import_zod27.z.string().trim().min(1, "Commission identifier is required")
 });
-var adminCommissionsQuerySchema = z25.object({
-  page: z25.coerce.number().int().positive().default(1),
-  limit: z25.coerce.number().int().positive().max(100).default(20),
-  member: z25.string().trim().optional(),
-  recipientId: z25.string().trim().optional(),
-  sourceMember: z25.string().trim().optional(),
-  sourceMemberId: z25.string().trim().optional(),
-  order: z25.string().trim().optional(),
-  orderId: z25.string().trim().optional(),
-  level: z25.coerce.number().int().min(1).max(5).optional(),
-  commissionLevel: z25.coerce.number().int().min(1).max(5).optional(),
-  status: z25.enum(["PENDING", "APPROVED", "AVAILABLE", "PAID", "CANCELLED", "REVERSED"]).optional(),
-  fromDate: z25.string().trim().optional(),
-  toDate: z25.string().trim().optional(),
-  startDate: z25.string().trim().optional(),
-  endDate: z25.string().trim().optional()
+var adminCommissionsQuerySchema = import_zod27.z.object({
+  page: import_zod27.z.coerce.number().int().positive().default(1),
+  limit: import_zod27.z.coerce.number().int().positive().max(100).default(20),
+  member: import_zod27.z.string().trim().optional(),
+  recipientId: import_zod27.z.string().trim().optional(),
+  sourceMember: import_zod27.z.string().trim().optional(),
+  sourceMemberId: import_zod27.z.string().trim().optional(),
+  order: import_zod27.z.string().trim().optional(),
+  orderId: import_zod27.z.string().trim().optional(),
+  level: import_zod27.z.coerce.number().int().min(1).max(5).optional(),
+  commissionLevel: import_zod27.z.coerce.number().int().min(1).max(5).optional(),
+  status: import_zod27.z.enum(["PENDING", "APPROVED", "AVAILABLE", "PAID", "CANCELLED", "REVERSED"]).optional(),
+  fromDate: import_zod27.z.string().trim().optional(),
+  toDate: import_zod27.z.string().trim().optional(),
+  startDate: import_zod27.z.string().trim().optional(),
+  endDate: import_zod27.z.string().trim().optional()
 });
-var adminProcessOrderCommissionBodySchema = z25.record(z25.any()).optional().refine(
+var adminProcessOrderCommissionBodySchema = import_zod27.z.record(import_zod27.z.any()).optional().refine(
   (body) => {
     if (body) {
       assertNoCommissionFieldOverrides(body, "Process Order Commission");
@@ -36717,8 +36744,8 @@ var adminProcessOrderCommissionBodySchema = z25.record(z25.any()).optional().ref
     message: "Client cannot inject commission amount, percentage, recipientId, or BV."
   }
 );
-var adminReverseCommissionBodySchema = z25.object({
-  reason: z25.string().trim().optional()
+var adminReverseCommissionBodySchema = import_zod27.z.object({
+  reason: import_zod27.z.string().trim().optional()
 }).passthrough().refine(
   (body) => {
     if (body) {
@@ -36986,7 +37013,7 @@ var AdminCommissionController = class {
 };
 
 // backend/src/routes/adminMember.routes.ts
-import { Router as Router31 } from "express";
+var import_express31 = require("express");
 
 // backend/src/controllers/memberLevel.controller.ts
 init_level_service();
@@ -37121,22 +37148,22 @@ var MemberRankProgressService = class {
 };
 
 // backend/src/validators/memberLevel.validators.ts
-import { z as z26 } from "zod";
-var memberIdParamSchema2 = z26.object({
-  memberId: z26.string().trim().min(1, "Member identifier is required")
+var import_zod28 = require("zod");
+var memberIdParamSchema2 = import_zod28.z.object({
+  memberId: import_zod28.z.string().trim().min(1, "Member identifier is required")
 });
-var paginationQuerySchema = z26.object({
-  page: z26.coerce.number().int().min(1).optional().default(1),
-  limit: z26.coerce.number().int().min(1).max(100).optional().default(20),
-  source: z26.string().trim().optional(),
-  type: z26.string().trim().optional(),
-  startDate: z26.string().optional(),
-  endDate: z26.string().optional()
+var paginationQuerySchema = import_zod28.z.object({
+  page: import_zod28.z.coerce.number().int().min(1).optional().default(1),
+  limit: import_zod28.z.coerce.number().int().min(1).max(100).optional().default(20),
+  source: import_zod28.z.string().trim().optional(),
+  type: import_zod28.z.string().trim().optional(),
+  startDate: import_zod28.z.string().optional(),
+  endDate: import_zod28.z.string().optional()
 });
-var adminRecalculateBodySchema = z26.object({
-  reason: z26.string().trim().optional(),
-  notes: z26.string().trim().optional(),
-  forceUpdate: z26.boolean().optional()
+var adminRecalculateBodySchema = import_zod28.z.object({
+  reason: import_zod28.z.string().trim().optional(),
+  notes: import_zod28.z.string().trim().optional(),
+  forceUpdate: import_zod28.z.boolean().optional()
 }).strict();
 
 // backend/src/controllers/memberLevel.controller.ts
@@ -37399,13 +37426,13 @@ var MemberLevelController = class {
 };
 
 // backend/src/services/mlmReconciliation.service.ts
+var import_client31 = require("@prisma/client");
 init_database();
 init_logger();
 init_appError();
 init_level_service();
 init_matching_service();
 init_mlmSecurity_service();
-import { Prisma as Prisma30 } from "@prisma/client";
 var MLMReconciliationService = class {
   /**
    * 1. RECALCULATE SINGLE MEMBER
@@ -37566,9 +37593,9 @@ var MLMReconciliationService = class {
           await client.distributorProfile.update({
             where: { id: distId },
             data: {
-              currentBB: new Prisma30.Decimal(calculatedBB),
-              currentMatching: new Prisma30.Decimal(calculatedMatching),
-              lifetimePV: new Prisma30.Decimal(Math.max(calculatedBB, Number(member.lifetimePV ?? 0)))
+              currentBB: new import_client31.Prisma.Decimal(calculatedBB),
+              currentMatching: new import_client31.Prisma.Decimal(calculatedMatching),
+              lifetimePV: new import_client31.Prisma.Decimal(Math.max(calculatedBB, Number(member.lifetimePV ?? 0)))
             }
           });
         } catch {
@@ -37597,16 +37624,16 @@ var MLMReconciliationService = class {
           const audit = await client.reconciliationAudit?.create({
             data: {
               memberId: distId,
-              oldBB: new Prisma30.Decimal(oldBB),
-              calculatedBB: new Prisma30.Decimal(calculatedBB),
-              bbDiscrepancy: new Prisma30.Decimal(bbDiscrepancy),
-              oldMatching: new Prisma30.Decimal(oldMatching),
-              calculatedMatching: new Prisma30.Decimal(calculatedMatching),
-              matchingDiscrepancy: new Prisma30.Decimal(matchingDiscrepancy),
-              oldLeftVolume: new Prisma30.Decimal(oldLeftVolume),
-              calculatedLeftVolume: new Prisma30.Decimal(calculatedLeftVolume),
-              oldRightVolume: new Prisma30.Decimal(oldRightVolume),
-              calculatedRightVolume: new Prisma30.Decimal(calculatedRightVolume),
+              oldBB: new import_client31.Prisma.Decimal(oldBB),
+              calculatedBB: new import_client31.Prisma.Decimal(calculatedBB),
+              bbDiscrepancy: new import_client31.Prisma.Decimal(bbDiscrepancy),
+              oldMatching: new import_client31.Prisma.Decimal(oldMatching),
+              calculatedMatching: new import_client31.Prisma.Decimal(calculatedMatching),
+              matchingDiscrepancy: new import_client31.Prisma.Decimal(matchingDiscrepancy),
+              oldLeftVolume: new import_client31.Prisma.Decimal(oldLeftVolume),
+              calculatedLeftVolume: new import_client31.Prisma.Decimal(calculatedLeftVolume),
+              oldRightVolume: new import_client31.Prisma.Decimal(oldRightVolume),
+              calculatedRightVolume: new import_client31.Prisma.Decimal(calculatedRightVolume),
               oldLevel: oldLevel.code,
               calculatedLevel: calculatedLevel.code,
               promoted,
@@ -37997,7 +38024,7 @@ var ReconciliationController = class {
 };
 
 // backend/src/routes/adminMember.routes.ts
-var router23 = Router31();
+var router23 = (0, import_express31.Router)();
 router23.use(authenticate);
 router23.use(authorizeRoles("SUPER_ADMIN", "ADMIN"));
 router23.post("/:memberId/recalculate-level", MemberLevelController.adminRecalculateLevel);
@@ -38010,7 +38037,7 @@ router23.get("/:memberId/reconciliation/history", ReconciliationController.admin
 var adminMemberRouter = router23;
 
 // backend/src/routes/admin.routes.ts
-var router24 = Router32();
+var router24 = (0, import_express32.Router)();
 router24.use(authenticate);
 router24.use(authorizeRoles("SUPER_ADMIN", "ADMIN"));
 router24.get("/dashboard", AdminController.getDashboard);
@@ -38067,7 +38094,7 @@ router24.use("/members", adminMemberRouter);
 var adminRouter2 = router24;
 
 // backend/src/routes/member.routes.ts
-import { Router as Router33 } from "express";
+var import_express33 = require("express");
 init_appError();
 
 // backend/src/controllers/memberCommission.controller.ts
@@ -38497,7 +38524,7 @@ var CommissionDashboardController = class {
 };
 
 // backend/src/routes/member.routes.ts
-var router25 = Router33();
+var router25 = (0, import_express33.Router)();
 router25.use(authenticate);
 router25.all("/:memberId/level/history/:historyId?", (req, res, next) => {
   if (["POST", "PUT", "PATCH", "DELETE"].includes(req.method)) {
@@ -38519,7 +38546,7 @@ router25.get("/:memberId/commissions", MemberCommissionController.getCommissions
 var memberRouter = router25;
 
 // backend/src/routes/funding.routes.ts
-import { Router as Router34 } from "express";
+var import_express34 = require("express");
 
 // backend/src/controllers/funding.controller.ts
 init_database();
@@ -38529,13 +38556,13 @@ init_fundingReconciliation_service();
 init_platformTreasury_service();
 
 // backend/src/services/treasuryCommission.service.ts
+var import_client35 = require("@prisma/client");
 init_database();
 init_logger();
 init_appError();
 init_safeDecimal();
 init_platformTreasury_service();
 init_commissionLedger_service();
-import { Prisma as Prisma34 } from "@prisma/client";
 var TreasuryCommissionService = class {
   static DEFAULT_WALLET_CODE = "PRIMARY_TREASURY";
   /**
@@ -38652,10 +38679,10 @@ var TreasuryCommissionService = class {
             data: {
               distributorId: distProfile.id,
               userId: distProfile.userId,
-              availableBalance: new Prisma34.Decimal(0),
-              pendingBalance: new Prisma34.Decimal(0),
+              availableBalance: new import_client35.Prisma.Decimal(0),
+              pendingBalance: new import_client35.Prisma.Decimal(0),
               lifetimeEarned: grossDecimal,
-              lifetimePaid: new Prisma34.Decimal(0),
+              lifetimePaid: new import_client35.Prisma.Decimal(0),
               currency: "INR",
               isLocked: false
             }
@@ -38822,10 +38849,10 @@ var TreasuryCommissionService = class {
           data: {
             distributorId: recipientDistributorId,
             userId: targetUserId,
-            availableBalance: new Prisma34.Decimal(0),
-            pendingBalance: new Prisma34.Decimal(0),
+            availableBalance: new import_client35.Prisma.Decimal(0),
+            pendingBalance: new import_client35.Prisma.Decimal(0),
             lifetimeEarned: grossDecimal,
-            lifetimePaid: new Prisma34.Decimal(0),
+            lifetimePaid: new import_client35.Prisma.Decimal(0),
             currency: "INR",
             isLocked: false
           }
@@ -38847,7 +38874,7 @@ var TreasuryCommissionService = class {
           status: "COMPLETED",
           amount: grossDecimal,
           netAmount: grossDecimal,
-          feeAmount: new Prisma34.Decimal(0),
+          feeAmount: new import_client35.Prisma.Decimal(0),
           balanceBefore: memberBalanceBefore,
           balanceAfter: memberBalanceAfter,
           referenceId: commission.id,
@@ -39292,7 +39319,7 @@ var TreasuryCommissionService = class {
               status: "COMPLETED",
               amount: grossDecimal,
               netAmount: grossDecimal,
-              feeAmount: new Prisma34.Decimal(0),
+              feeAmount: new import_client35.Prisma.Decimal(0),
               balanceBefore: mBefore,
               balanceAfter: mAfter,
               referenceId: commission.id,
@@ -39516,39 +39543,39 @@ var TreasuryCommissionService = class {
 init_appError();
 
 // backend/src/validators/funding.validators.ts
-import { z as z27 } from "zod";
-var connectFundingAccountSchema = z27.object({
-  provider: z27.string().trim().min(2, "Provider name is required"),
-  providerAccountId: z27.string().trim().min(2, "Provider account identifier is required"),
-  accountType: z27.string().trim().default("CURRENT"),
-  accountName: z27.string().trim().min(3, "Account name is required"),
-  maskedAccountNumber: z27.string().trim().min(4, "Masked account number is required"),
-  currency: z27.string().trim().default("INR"),
-  isPrimary: z27.boolean().default(false),
-  metadata: z27.record(z27.any()).optional()
+var import_zod29 = require("zod");
+var connectFundingAccountSchema = import_zod29.z.object({
+  provider: import_zod29.z.string().trim().min(2, "Provider name is required"),
+  providerAccountId: import_zod29.z.string().trim().min(2, "Provider account identifier is required"),
+  accountType: import_zod29.z.string().trim().default("CURRENT"),
+  accountName: import_zod29.z.string().trim().min(3, "Account name is required"),
+  maskedAccountNumber: import_zod29.z.string().trim().min(4, "Masked account number is required"),
+  currency: import_zod29.z.string().trim().default("INR"),
+  isPrimary: import_zod29.z.boolean().default(false),
+  metadata: import_zod29.z.record(import_zod29.z.any()).optional()
 });
 var MAX_FUNDING_AMOUNT = 1e7;
-var initiateFundingSchema = z27.object({
-  fundingAccountId: z27.string().uuid("fundingAccountId must be a valid UUID").optional(),
-  amount: z27.coerce.number().positive("Intended funding amount must be greater than zero").min(100, "Minimum funding amount is 100").max(MAX_FUNDING_AMOUNT, `Funding amount exceeds maximum configured limit of \u20B9${MAX_FUNDING_AMOUNT.toLocaleString("en-IN")}`),
-  currency: z27.string().trim().default("INR"),
-  description: z27.string().trim().min(3, "Description is required").default("Corporate operational float top-up"),
-  idempotencyKey: z27.string().trim().optional(),
-  metadata: z27.record(z27.any()).optional()
+var initiateFundingSchema = import_zod29.z.object({
+  fundingAccountId: import_zod29.z.string().uuid("fundingAccountId must be a valid UUID").optional(),
+  amount: import_zod29.z.coerce.number().positive("Intended funding amount must be greater than zero").min(100, "Minimum funding amount is 100").max(MAX_FUNDING_AMOUNT, `Funding amount exceeds maximum configured limit of \u20B9${MAX_FUNDING_AMOUNT.toLocaleString("en-IN")}`),
+  currency: import_zod29.z.string().trim().default("INR"),
+  description: import_zod29.z.string().trim().min(3, "Description is required").default("Corporate operational float top-up"),
+  idempotencyKey: import_zod29.z.string().trim().optional(),
+  metadata: import_zod29.z.record(import_zod29.z.any()).optional()
 });
-var verifyFundingSchema = z27.object({
-  utrNumber: z27.string().trim().optional()
+var verifyFundingSchema = import_zod29.z.object({
+  utrNumber: import_zod29.z.string().trim().optional()
 });
-var reverseFundingSchema = z27.object({
-  reason: z27.string().trim().min(5, "Reversal reason is required (minimum 5 characters)")
+var reverseFundingSchema = import_zod29.z.object({
+  reason: import_zod29.z.string().trim().min(5, "Reversal reason is required (minimum 5 characters)")
 });
-var reconcileFundingSchema = z27.object({
-  expectedAmount: z27.coerce.number().positive().optional(),
-  utrNumber: z27.string().trim().optional(),
-  notes: z27.string().trim().optional()
+var reconcileFundingSchema = import_zod29.z.object({
+  expectedAmount: import_zod29.z.coerce.number().positive().optional(),
+  utrNumber: import_zod29.z.string().trim().optional(),
+  notes: import_zod29.z.string().trim().optional()
 });
-var fundingQuerySchema = z27.object({
-  status: z27.enum([
+var fundingQuerySchema = import_zod29.z.object({
+  status: import_zod29.z.enum([
     "CREATED",
     "PENDING",
     "PROCESSING",
@@ -39558,21 +39585,21 @@ var fundingQuerySchema = z27.object({
     "REVERSED",
     "RECONCILIATION_REQUIRED"
   ]).optional(),
-  provider: z27.string().optional(),
-  transactionId: z27.string().trim().optional(),
-  admin: z27.string().trim().optional(),
-  amount: z27.coerce.number().positive().optional(),
-  minAmount: z27.coerce.number().positive().optional(),
-  maxAmount: z27.coerce.number().positive().optional(),
-  page: z27.coerce.number().int().min(1).default(1),
-  limit: z27.coerce.number().int().min(1).max(100).default(20),
-  startDate: z27.coerce.date().optional(),
-  endDate: z27.coerce.date().optional(),
-  from: z27.coerce.date().optional(),
-  to: z27.coerce.date().optional()
+  provider: import_zod29.z.string().optional(),
+  transactionId: import_zod29.z.string().trim().optional(),
+  admin: import_zod29.z.string().trim().optional(),
+  amount: import_zod29.z.coerce.number().positive().optional(),
+  minAmount: import_zod29.z.coerce.number().positive().optional(),
+  maxAmount: import_zod29.z.coerce.number().positive().optional(),
+  page: import_zod29.z.coerce.number().int().min(1).default(1),
+  limit: import_zod29.z.coerce.number().int().min(1).max(100).default(20),
+  startDate: import_zod29.z.coerce.date().optional(),
+  endDate: import_zod29.z.coerce.date().optional(),
+  from: import_zod29.z.coerce.date().optional(),
+  to: import_zod29.z.coerce.date().optional()
 });
-var treasuryTransactionQuerySchema = z27.object({
-  type: z27.enum([
+var treasuryTransactionQuerySchema = import_zod29.z.object({
+  type: import_zod29.z.enum([
     "FUNDING",
     "FUNDING_REVERSAL",
     "COMMISSION_RESERVE",
@@ -39581,43 +39608,43 @@ var treasuryTransactionQuerySchema = z27.object({
     "REFUND",
     "RECONCILIATION"
   ]).optional(),
-  status: z27.enum(["PENDING", "COMPLETED", "FAILED", "REVERSED"]).optional(),
-  referenceType: z27.string().trim().optional(),
-  page: z27.coerce.number().int().min(1).default(1),
-  limit: z27.coerce.number().int().min(1).max(100).default(20),
-  startDate: z27.coerce.date().optional(),
-  endDate: z27.coerce.date().optional()
+  status: import_zod29.z.enum(["PENDING", "COMPLETED", "FAILED", "REVERSED"]).optional(),
+  referenceType: import_zod29.z.string().trim().optional(),
+  page: import_zod29.z.coerce.number().int().min(1).default(1),
+  limit: import_zod29.z.coerce.number().int().min(1).max(100).default(20),
+  startDate: import_zod29.z.coerce.date().optional(),
+  endDate: import_zod29.z.coerce.date().optional()
 });
-var disconnectFundingAccountSchema = z27.object({
-  reason: z27.string().trim().min(3, "Disconnect reason must be at least 3 characters").optional()
+var disconnectFundingAccountSchema = import_zod29.z.object({
+  reason: import_zod29.z.string().trim().min(3, "Disconnect reason must be at least 3 characters").optional()
 });
-var initiateTreasuryAdjustmentSchema = z27.object({
-  type: z27.enum(["CREDIT", "DEBIT"]),
-  amount: z27.coerce.number().positive("Adjustment amount must be greater than zero"),
-  reason: z27.string().trim().min(5, "Adjustment reason is required (minimum 5 characters)"),
-  referenceNumber: z27.string().trim().optional(),
-  walletCode: z27.string().trim().default("PRIMARY_TREASURY")
+var initiateTreasuryAdjustmentSchema = import_zod29.z.object({
+  type: import_zod29.z.enum(["CREDIT", "DEBIT"]),
+  amount: import_zod29.z.coerce.number().positive("Adjustment amount must be greater than zero"),
+  reason: import_zod29.z.string().trim().min(5, "Adjustment reason is required (minimum 5 characters)"),
+  referenceNumber: import_zod29.z.string().trim().optional(),
+  walletCode: import_zod29.z.string().trim().default("PRIMARY_TREASURY")
 });
-var reconcileFundingPeriodSchema = z27.object({
-  startDate: z27.coerce.date({ required_error: "startDate is required" }),
-  endDate: z27.coerce.date({ required_error: "endDate is required" }),
-  provider: z27.string().trim().optional()
+var reconcileFundingPeriodSchema = import_zod29.z.object({
+  startDate: import_zod29.z.coerce.date({ required_error: "startDate is required" }),
+  endDate: import_zod29.z.coerce.date({ required_error: "endDate is required" }),
+  provider: import_zod29.z.string().trim().optional()
 });
-var resolveFundingDiscrepancySchema = z27.object({
-  action: z27.enum([
+var resolveFundingDiscrepancySchema = import_zod29.z.object({
+  action: import_zod29.z.enum([
     "FORCE_SETTLE_CREDIT",
     "REVERSE_DEBIT",
     "MARK_FAILED",
     "MARK_RESOLVED_NO_ACTION"
   ]),
-  reason: z27.string().trim().min(5, "Resolution reason is required (minimum 5 characters)"),
-  notes: z27.string().trim().optional(),
-  correctionAmount: z27.coerce.number().positive().optional()
+  reason: import_zod29.z.string().trim().min(5, "Resolution reason is required (minimum 5 characters)"),
+  notes: import_zod29.z.string().trim().optional(),
+  correctionAmount: import_zod29.z.coerce.number().positive().optional()
 });
-var discrepancyQuerySchema = z27.object({
-  page: z27.coerce.number().int().min(1).default(1),
-  limit: z27.coerce.number().int().min(1).max(100).default(20),
-  provider: z27.string().trim().optional()
+var discrepancyQuerySchema = import_zod29.z.object({
+  page: import_zod29.z.coerce.number().int().min(1).default(1),
+  limit: import_zod29.z.coerce.number().int().min(1).max(100).default(20),
+  provider: import_zod29.z.string().trim().optional()
 });
 
 // backend/src/controllers/funding.controller.ts
@@ -40237,7 +40264,7 @@ var FundingController = class _FundingController {
 
 // backend/src/routes/funding.routes.ts
 init_appError();
-var adminFundingRouter = Router34();
+var adminFundingRouter = (0, import_express34.Router)();
 adminFundingRouter.use(authenticate);
 adminFundingRouter.use(authorizeRoles("SUPER_ADMIN", "ADMIN"));
 adminFundingRouter.get("/dashboard", FundingController.getDashboard);
@@ -40281,7 +40308,7 @@ adminFundingRouter.post("/balance", blockDirectBalanceMutation);
 adminFundingRouter.put("/balance", blockDirectBalanceMutation);
 adminFundingRouter.patch("/balance", blockDirectBalanceMutation);
 adminFundingRouter.delete("/balance", blockDirectBalanceMutation);
-var adminTreasuryRouter = Router34();
+var adminTreasuryRouter = (0, import_express34.Router)();
 adminTreasuryRouter.use(authenticate);
 adminTreasuryRouter.use(authorizeRoles("SUPER_ADMIN", "ADMIN"));
 adminTreasuryRouter.get("/", FundingController.getTreasuryBalance);
@@ -40293,12 +40320,12 @@ adminTreasuryRouter.post("/", blockDirectBalanceMutation);
 adminTreasuryRouter.put("/", blockDirectBalanceMutation);
 adminTreasuryRouter.patch("/", blockDirectBalanceMutation);
 adminTreasuryRouter.delete("/", blockDirectBalanceMutation);
-var fundingWebhookRouter = Router34();
+var fundingWebhookRouter = (0, import_express34.Router)();
 fundingWebhookRouter.post("/:provider?", FundingController.handleWebhook);
 fundingWebhookRouter.post("/", FundingController.handleWebhook);
 
 // backend/src/routes/index.ts
-var apiRouter = Router35();
+var apiRouter = (0, import_express35.Router)();
 apiRouter.use("/sponsors", sponsorRouter);
 apiRouter.use("/health", healthRouter);
 apiRouter.use("/auth", authRouter);
@@ -40363,16 +40390,16 @@ function cookieParser(req, _res, next) {
 }
 
 // backend/src/app.ts
-var app = express();
+var app = (0, import_express36.default)();
 app.use(
-  helmet({
+  (0, import_helmet.default)({
     contentSecurityPolicy: false,
     // Allows flexibility with API consumers
     crossOriginEmbedderPolicy: false
   })
 );
 app.use(
-  cors({
+  (0, import_cors.default)({
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);
       const customOrigins = process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(",").map((s) => s.trim()) : [];
@@ -40390,14 +40417,14 @@ app.use(
 app.use("/api", globalRateLimiter);
 app.use(requestLogger);
 app.use(
-  express.json({
+  import_express36.default.json({
     limit: "10mb",
     verify: (req, _res, buf) => {
       req.rawBody = buf.toString();
     }
   })
 );
-app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+app.use(import_express36.default.urlencoded({ extended: true, limit: "10mb" }));
 app.use(cookieParser);
 app.use("/api", protectMlmFields);
 app.get("/health", (_req, res) => {
@@ -40413,6 +40440,5 @@ app.use("/webhooks/funding", fundingWebhookRouter);
 app.use(notFoundHandler);
 app.use(errorHandler);
 var app_default = app;
-export {
-  app_default as default
-};
+module.exports = app_default;
+module.exports.default = app_default;

@@ -6,11 +6,14 @@ try {
     bundle: true,
     platform: 'node',
     target: 'node20',
-    format: 'esm',
+    format: 'cjs',
     outfile: 'api/index.js',
     packages: 'external',
+    footer: {
+      js: 'module.exports = app_default;\nmodule.exports.default = app_default;',
+    },
   });
-  console.log('✅ Successfully bundled backend/src/app.ts into api/index.js');
+  console.log('✅ Successfully bundled backend/src/app.ts into CommonJS api/index.js');
 } catch (error) {
   console.error('❌ Failed to bundle API:', error);
   process.exit(1);
