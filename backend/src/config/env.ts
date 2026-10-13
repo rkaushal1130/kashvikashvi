@@ -53,6 +53,24 @@ const parseEnv = () => {
       });
     }
 
+    // In Vercel serverless environment, do not call process.exit(1) as it crashes the lambda container.
+    // Provide safe defaults so health check endpoints still respond and log the missing vars.
+    if (process.env.VERCEL) {
+      // eslint-disable-next-line no-console
+      console.warn(`⚠️ Warning: Missing environment variables on Vercel:\n${formattedErrors}\nPlease add them in Vercel Project Settings > Environment Variables.`);
+      return envSchema.parse({
+        PORT: 5000,
+        NODE_ENV: 'production',
+        FRONTEND_URL: 'https://kashvimlm.vercel.app',
+        DATABASE_URL: process.env.DATABASE_URL || 'postgresql://unconfigured:unconfigured@localhost:5432/unconfigured',
+        JWT_ACCESS_SECRET: process.env.JWT_ACCESS_SECRET || 'temporary_secret_key_needs_replacement_32_chars_min',
+        JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET || 'temporary_secret_key_needs_replacement_32_chars_min',
+        JWT_ACCESS_EXPIRES_IN: '15m',
+        JWT_REFRESH_EXPIRES_IN: '7d',
+        ...process.env,
+      });
+    }
+
     // eslint-disable-next-line no-console
     console.error(`❌ Invalid environment configuration:\n${formattedErrors}`);
     process.exit(1);
