@@ -24,8 +24,9 @@ export function Login() {
   // If already authenticated and not transitioning from a successful login, redirect to dashboard
   useEffect(() => {
     if (isAuthenticated && !successMsg) {
-      const from = location.state?.from?.pathname || '/dashboard';
-      navigate(from, { replace: true });
+      const rawFrom = location.state?.from?.pathname;
+      const target = rawFrom && rawFrom !== '/login' && rawFrom !== '/register' ? rawFrom : '/dashboard';
+      navigate(target, { replace: true });
     }
   }, [isAuthenticated, successMsg, navigate, location]);
 
@@ -100,9 +101,10 @@ export function Login() {
 
       setSuccessMsg('Login successful. Redirecting to your dashboard...');
 
-      const from = location.state?.from?.pathname || '/dashboard';
+      const rawFrom = location.state?.from?.pathname;
+      const target = rawFrom && rawFrom !== '/login' && rawFrom !== '/register' ? rawFrom : '/dashboard';
       setTimeout(() => {
-        navigate(from, { replace: true });
+        navigate(target, { replace: true });
       }, 500);
     } catch (err) {
       console.error('[Login] Error:', err);

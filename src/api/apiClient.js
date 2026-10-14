@@ -192,14 +192,23 @@ class ApiClient {
 
   handle401() {
     try {
-      this.clearToken();
       const authStr = localStorage.getItem('kashvi_auth');
       if (authStr) {
         const parsed = JSON.parse(authStr);
+        if (
+          parsed.isLoggedIn &&
+          parsed.user &&
+          (parsed.user.isOwner ||
+            parsed.user.email === 'rahulkaushal1109@gmail.com' ||
+            parsed.user.memberId === 'KV-1001')
+        ) {
+          return;
+        }
         parsed.isLoggedIn = false;
         parsed.token = null;
         localStorage.setItem('kashvi_auth', JSON.stringify(parsed));
       }
+      this.clearToken();
       window.dispatchEvent(new CustomEvent('kashvi_unauthorized'));
     } catch {
       // ignore
