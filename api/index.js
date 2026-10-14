@@ -40416,6 +40416,7 @@ app.use(
     crossOriginEmbedderPolicy: false
   })
 );
+app.set("trust proxy", 1);
 app.use(
   (0, import_cors.default)({
     origin: (origin, callback) => {

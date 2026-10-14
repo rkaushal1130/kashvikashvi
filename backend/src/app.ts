@@ -16,6 +16,9 @@ app.use(
   })
 );
 
+// Trust the first reverse proxy (Vercel, AWS ELB, Heroku, etc.)
+app.set('trust proxy', 1);
+
 // CORS Configuration
 app.use(
   cors({
