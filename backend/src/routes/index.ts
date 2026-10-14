@@ -15,8 +15,9 @@ import { sponsorRouter } from './sponsor.routes';
 
 const apiRouter = Router();
 
-// Sponsor Validation Endpoint: GET /api/v1/sponsors/:sponsorId
+// Sponsor Validation Endpoint: GET /api/v1/sponsors/:sponsorId and /api/v1/sponsor/:sponsorId
 apiRouter.use('/sponsors', sponsorRouter);
+apiRouter.use('/sponsor', sponsorRouter);
 
 // Health Check Endpoint: GET /api/v1/health
 apiRouter.use('/health', healthRouter);
@@ -42,8 +43,9 @@ import { treeAuditRouter, adminTreeAuditRouter } from './treeAudit.routes';
 apiRouter.use('/tree/audit', treeAuditRouter);
 apiRouter.use('/admin/tree', adminTreeAuditRouter);
 
-// Distributor & Customer Enrollment Pipeline: /api/v1/enrollments
+// Distributor & Customer Enrollment Pipeline: /api/v1/enrollments and /api/v1/enrollment
 apiRouter.use('/enrollments', enrollmentRouter);
+apiRouter.use('/enrollment', enrollmentRouter);
 
 // Product Catalog & Categories: /api/v1/products & /api/v1/categories
 apiRouter.use('/products', productRouter);

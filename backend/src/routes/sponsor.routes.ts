@@ -16,4 +16,10 @@ router.get(
   SponsorController.validateSponsor
 );
 
+router.get(
+  '/validate/:sponsorId',
+  validate({ params: sponsorIdParamSchema }),
+  SponsorController.validateSponsor
+);
+
 export const sponsorRouter = router;

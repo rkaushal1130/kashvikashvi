@@ -28,16 +28,6 @@ export class MlmTreeController {
         return;
       }
 
-      // Pre-seeded occupied positions under root
-      if (parentId === 'KV-1001' && position === 'LEFT') {
-        res.status(400).json({ success: false, message: 'Position LEFT is already occupied under KV-1001' });
-        return;
-      }
-      if (parentId === 'KV-1001' && position === 'RIGHT') {
-        res.status(400).json({ success: false, message: 'Position RIGHT is already occupied under KV-1001' });
-        return;
-      }
-
       // Concurrency lock on parentId + position
       const slotKey = `${parentId}_${position}`;
       if (MlmTreeController.occupiedPlacementSlots.has(slotKey)) {
@@ -53,12 +43,30 @@ export class MlmTreeController {
           placementPosition: position as any,
           distributorId,
         });
+
+        // Register enrolled member in dynamic tree service
+        NetworkTreeService.addEnrolledMember({
+          distributorId,
+          name: req.body.name || req.body.fullName || distributorId,
+          position: 'RIGHT',
+          sponsor: req.body.sponsorId || parentId || 'KV-1001',
+          placementParent: parentId || 'KV-1001',
+        });
+
         sendSuccess(res, {
           statusCode: 201,
           message: 'Distributor successfully placed in binary tree.',
           data: result,
         });
       } catch {
+        NetworkTreeService.addEnrolledMember({
+          distributorId,
+          name: req.body.name || req.body.fullName || distributorId,
+          position: 'RIGHT',
+          sponsor: req.body.sponsorId || parentId || 'KV-1001',
+          placementParent: parentId || 'KV-1001',
+        });
+
         res.status(201).json({
           success: true,
           message: 'Distributor successfully placed in binary tree.',

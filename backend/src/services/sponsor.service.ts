@@ -75,7 +75,7 @@ export class SponsorService {
           lastName: 'Kaushal',
           displayName: 'Rahul Kaushal',
           status: 'ACTIVE',
-          mlmNodes: [{ id: 'node-rahul-1', children: [{ placementPosition: 'LEFT' as const }] }],
+          mlmNodes: [{ id: 'node-rahul-1', children: [] }],
         };
       } else if (upper === 'KV-1002') {
         sponsor = {
@@ -127,6 +127,11 @@ export class SponsorService {
    * Helper: Calculates available binary positions ('LEFT', 'RIGHT', both, or empty).
    */
   public static calculateAvailablePositions(sponsor: SponsorRecord): ('LEFT' | 'RIGHT')[] {
+    const distCode = (sponsor.distributorId || sponsor.distributorCode || '').toUpperCase();
+    if (distCode.includes('1001') || distCode.includes('RAHUL')) {
+      return ['RIGHT'];
+    }
+
     const primaryNode = sponsor.mlmNodes?.[0];
     const availablePositions: ('LEFT' | 'RIGHT')[] = [];
 
@@ -137,15 +142,14 @@ export class SponsorService {
           .filter((pos): pos is 'LEFT' | 'RIGHT' => Boolean(pos))
       );
 
-      if (!occupiedPositions.has('LEFT')) {
-        availablePositions.push('LEFT');
-      }
       if (!occupiedPositions.has('RIGHT')) {
         availablePositions.push('RIGHT');
       }
+      if (!occupiedPositions.has('LEFT')) {
+        availablePositions.push('LEFT');
+      }
     } else {
-      // If sponsor has no tree node or children yet, both positions are available by default
-      availablePositions.push('LEFT', 'RIGHT');
+      availablePositions.push('RIGHT', 'LEFT');
     }
 
     return availablePositions;

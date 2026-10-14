@@ -22,6 +22,13 @@ router.post(
   EnrollmentController.complete
 );
 
+// POST /api/v1/enrollments/submit - Alias for direct complete enrollment
+router.post(
+  '/submit',
+  validate({ body: completeEnrollmentSchema }),
+  EnrollmentController.complete
+);
+
 // POST /api/v1/enrollments - Initialize enrollment session
 router.post(
   '/',

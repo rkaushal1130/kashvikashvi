@@ -46,7 +46,7 @@ function EnrollmentView({ user, onNavigate }) {
   const [sponsorData, setSponsorData] = useState(null);
   const [isValidatingSponsor, setIsValidatingSponsor] = useState(false);
   const [sponsorError, setSponsorError] = useState(null);
-  const [selectedPlacementPosition, setSelectedPlacementPosition] = useState('');
+  const [selectedPlacementPosition, setSelectedPlacementPosition] = useState('RIGHT');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
 
@@ -101,16 +101,16 @@ function EnrollmentView({ user, onNavigate }) {
       if (res && res.success && res.data) {
         setSponsorData(res.data);
         const avail = res.data.availablePositions || [];
-        if (avail.length === 1) {
+        if (avail.includes('RIGHT')) {
+          setSelectedPlacementPosition('RIGHT');
+        } else if (avail.length > 0) {
           setSelectedPlacementPosition(avail[0]);
-        } else if (avail.includes(selectedPlacementPosition)) {
-          // Keep current selection
         } else {
-          setSelectedPlacementPosition('');
+          setSelectedPlacementPosition('RIGHT');
         }
       } else {
         setSponsorData(null);
-        setSelectedPlacementPosition('');
+        setSelectedPlacementPosition('RIGHT');
         if (res?.code === 'SPONSOR_NOT_FOUND' || res?.code === 'SPONSOR_INACTIVE') {
           setSponsorError('Invalid or inactive sponsor.');
         } else {
@@ -119,7 +119,7 @@ function EnrollmentView({ user, onNavigate }) {
       }
     } catch (err) {
       setSponsorData(null);
-      setSelectedPlacementPosition('');
+      setSelectedPlacementPosition('RIGHT');
       setSponsorError('Invalid or inactive sponsor.');
     } finally {
       setIsValidatingSponsor(false);
@@ -211,7 +211,7 @@ function EnrollmentView({ user, onNavigate }) {
       country: 'India',
       sponsorId: sponsorInput.trim(),
       placementParentId: sponsorInput.trim(),
-      placementPosition: selectedPlacementPosition,
+      placementPosition: 'RIGHT',
       enrollmentType: enrollType === 'distributor' ? 'DISTRIBUTOR' : 'CUSTOMER',
       starterKitId: formData.starterKitId,
       productPackage:
@@ -240,7 +240,7 @@ function EnrollmentView({ user, onNavigate }) {
           type: enrollType === 'distributor' ? 'Brand Partner / Associate' : 'Preferred Customer',
           sponsorId: d.sponsor?.distributorId || sponsorInput,
           sponsorName: d.sponsor?.displayName || sponsorData?.sponsor?.name || sponsorName,
-          placement: `${d.placement?.position} Leg (Depth ${d.placement?.depth})`,
+          placement: 'RIGHT Leg',
           placementParent: d.placement?.placementParentDistributorId || sponsorInput,
           assignedBV: kitBV,
           enrolledAt: new Date().toLocaleDateString('en-US', {
@@ -251,11 +251,45 @@ function EnrollmentView({ user, onNavigate }) {
           status: 'Active & Commission Qualified',
         };
 
-        // Save into downline history in localStorage
+        // Save into downline history and persistent enrolled tree members in localStorage
         try {
           const existing = JSON.parse(localStorage.getItem('kashvi_downline_team') || '[]');
           existing.unshift(result);
           localStorage.setItem('kashvi_downline_team', JSON.stringify(existing));
+
+          const storedTree = JSON.parse(localStorage.getItem('kashvi_enrolled_tree_members') || '[]');
+          const newMemberId = result.memberId;
+          const newTreeEntry = {
+            id: `node-${newMemberId.toLowerCase()}-uuid`,
+            distributorId: newMemberId,
+            name: result.name,
+            status: 'ACTIVE',
+            rank: 'Associate',
+            position: 'RIGHT',
+            joinedDate: result.enrolledAt,
+            sponsor: result.sponsorId,
+            sponsorName: result.sponsorName,
+            placementParent: result.placementParent,
+            placementParentName: result.sponsorName,
+            businessCenter: 'BC-001',
+            bv: kitBV,
+            email: result.email,
+            phone: result.phone,
+            leftTeamCount: 0,
+            rightTeamCount: 0,
+            totalTeamCount: 0,
+            leftBV: 0,
+            rightBV: 0,
+            directMembers: 0,
+          };
+          const existsIdx = storedTree.findIndex((m) => m.distributorId === newMemberId);
+          if (existsIdx >= 0) {
+            storedTree[existsIdx] = newTreeEntry;
+          } else {
+            storedTree.push(newTreeEntry);
+          }
+          localStorage.setItem('kashvi_enrolled_tree_members', JSON.stringify(storedTree));
+          window.dispatchEvent(new CustomEvent('kashvi_tree_updated'));
         } catch {
           // ignore
         }
@@ -860,10 +894,10 @@ function EnrollmentView({ user, onNavigate }) {
                               onChange={() => setSelectedPlacementPosition('RIGHT')}
                             />
                             <div className="placement-card-body">
-                              <div className="placement-pill recommended">Available</div>
-                              <strong className="placement-title">RIGHT Leg</strong>
+                              <div className="placement-pill recommended">Automatic Placement (Right Leg)</div>
+                              <strong className="placement-title">RIGHT Leg (System Default)</strong>
                               <p className="placement-desc">
-                                Directly enrolls into the RIGHT leg under {sponsorData.sponsor.name}.
+                                Newly enrolled member will automatically join the binary tree in the RIGHT leg under {sponsorData.sponsor.name}.
                                 Increases Right Leg Group Volume (RGV).
                               </p>
                             </div>

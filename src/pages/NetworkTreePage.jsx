@@ -320,6 +320,19 @@ function NetworkTreePage({ embedded = false }) {
     fetchTreeData(currentRootId, depth);
   }, [currentRootId, depth, fetchTreeData]);
 
+  // Auto-refresh tree when dynamic enrollment or tree change occurs
+  useEffect(() => {
+    const handleTreeUpdated = () => {
+      fetchTreeData(currentRootId, depth);
+    };
+    window.addEventListener('kashvi_tree_updated', handleTreeUpdated);
+    window.addEventListener('storage', handleTreeUpdated);
+    return () => {
+      window.removeEventListener('kashvi_tree_updated', handleTreeUpdated);
+      window.removeEventListener('storage', handleTreeUpdated);
+    };
+  }, [currentRootId, depth, fetchTreeData]);
+
   // 6. Navigation & View Network Handlers (Prompt 11 & 13)
   const handleViewNetwork = (member) => {
     if (!member) return;

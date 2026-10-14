@@ -48,7 +48,63 @@ export interface DistributorSearchResult {
   status: string;
 }
 
+export interface EnrolledTreeMember {
+  id: string;
+  distributorId: string;
+  name: string;
+  status: string;
+  rank: string;
+  position: 'RIGHT' | 'LEFT';
+  joinedDate: string;
+  sponsor: string;
+  sponsorName?: string;
+  placementParent: string;
+  businessCenter: string;
+  bv: number;
+  starterKitId?: string;
+  email?: string;
+  phone?: string;
+}
+
 export class NetworkTreeService {
+  private static dynamicEnrollees: EnrolledTreeMember[] = [];
+
+  public static addEnrolledMember(member: Partial<EnrolledTreeMember>): EnrolledTreeMember {
+    const nextNum = 1002 + this.dynamicEnrollees.length;
+    const distId = member.distributorId || `KV-${nextNum}`;
+    const newMember: EnrolledTreeMember = {
+      id: member.id || `node-${distId.toLowerCase()}-uuid`,
+      distributorId: distId,
+      name: member.name || 'New Distributor',
+      status: member.status || 'ACTIVE',
+      rank: member.rank || 'Associate',
+      position: 'RIGHT', // Strictly placed in right leg automatically
+      joinedDate: member.joinedDate || new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+      sponsor: member.sponsor || 'KV-1001',
+      sponsorName: member.sponsorName || 'Rahul Kaushal',
+      placementParent: member.placementParent || 'KV-1001',
+      businessCenter: 'BC-001',
+      bv: Number(member.bv) || 100,
+      starterKitId: member.starterKitId || 'kit_pro',
+      email: member.email,
+      phone: member.phone,
+    };
+    const idx = this.dynamicEnrollees.findIndex(m => m.distributorId === newMember.distributorId);
+    if (idx >= 0) {
+      this.dynamicEnrollees[idx] = newMember;
+    } else {
+      this.dynamicEnrollees.push(newMember);
+    }
+    return newMember;
+  }
+
+  public static getEnrolledMembers(): EnrolledTreeMember[] {
+    return this.dynamicEnrollees;
+  }
+
+  public static clearEnrolledMembers(): void {
+    this.dynamicEnrollees = [];
+  }
   /**
    * Retrieves visual binary MLM network tree up to specified depth.
    * Default depth: 3. Max depth: 10.
@@ -409,329 +465,132 @@ export class NetworkTreeService {
         'Database query failed in getNetworkSummary; returning resilient modeled summary.'
       );
 
-      // Return modeled realistic summary for demo/offline resilience
-      const isOwner = identifier.toUpperCase().includes('1001') || identifier.toUpperCase().includes('RAHUL');
-      return {
-        distributorId: isOwner ? 'KV-1001' : identifier,
-        directMembers: isOwner ? 12 : 4,
-        leftTeamCount: isOwner ? 24 : 8,
-        rightTeamCount: isOwner ? 18 : 6,
-        totalTeamCount: isOwner ? 42 : 14,
-        leftBV: isOwner ? 14500 : 3200,
-        rightBV: isOwner ? 11200 : 2800,
-      };
-    }
-  }
+      // Return dynamic summary based on enrolled members
+      const clean = (identifier || '').toUpperCase();
+      const isOwner = clean.includes('1001') || clean.includes('RAHUL');
+      const enrolledCount = this.dynamicEnrollees.length;
+      const totalRightBV = this.dynamicEnrollees.reduce((sum, m) => sum + (m.bv || 100), 0);
 
-  /**
-   * Resilient modeled fallback matching prompt specification:
-   * Level 0: Current distributor (Rahul - KV-1001)
-   * Level 1: LEFT (Amit - KV-1002) + RIGHT (Rohit - KV-1003)
-   * Level 2: Children of LEFT (Priya - KV-1004, Vikram - KV-1005) + Children of RIGHT (Neha - KV-1006, Suresh - KV-1007)
-   * Level 3: Next level
-   */
-  public static getModeledNetworkTree(identifier = 'KV-1001', maxDepth = 3): NetworkTreeResponse {
-    // Level 3 Nodes
-    const createLevel3 = (id: string, distId: string, name: string, pos: 'LEFT' | 'RIGHT', sponsorId: string): NetworkTreeNode => ({
-      id,
-      distributorId: distId,
-      name,
-      status: 'ACTIVE',
-      rank: 'Senior Partner',
-      position: pos,
-      joinedDate: '22 Sep 2026',
-      sponsor: sponsorId,
-      businessCenter: 'BC-001',
-      directMembers: 0,
-      leftTeamCount: 0,
-      rightTeamCount: 0,
-      totalTeamCount: 0,
-      leftBV: 600,
-      rightBV: 400,
-      hasDeeperMembers: false,
-      hasChildren: false,
-      isExpanded: false,
-      left: null,
-      right: null,
-    });
+      if (isOwner) {
+        return {
+          distributorId: 'KV-1001',
+          directMembers: enrolledCount,
+          leftTeamCount: 0,
+          rightTeamCount: enrolledCount,
+          totalTeamCount: enrolledCount,
+          leftBV: 0,
+          rightBV: totalRightBV,
+        };
+      }
 
-    // Level 2 Nodes
-    const priyaNode: NetworkTreeNode = {
-      id: 'node-priya-uuid',
-      distributorId: 'KV-1004',
-      name: 'Priya',
-      status: 'ACTIVE',
-      rank: 'Silver Director',
-      position: 'LEFT',
-      joinedDate: '19 Sep 2026',
-      sponsor: 'KV-1002',
-      businessCenter: 'BC-001',
-      directMembers: 2,
-      leftTeamCount: 1,
-      rightTeamCount: 1,
-      totalTeamCount: 2,
-      leftBV: 2400,
-      rightBV: 1800,
-      hasDeeperMembers: true,
-      hasChildren: true,
-      isExpanded: maxDepth >= 4,
-      left: maxDepth >= 4 ? createLevel3('node-l3-1', 'KV-1008', 'Karan', 'LEFT', 'KV-1004') : null,
-      right: maxDepth >= 4 ? createLevel3('node-l3-2', 'KV-1009', 'Ananya', 'RIGHT', 'KV-1004') : null,
-    };
-
-    const poojaNode: NetworkTreeNode = {
-      id: 'node-pooja-uuid',
-      distributorId: 'KV-1005',
-      name: 'Pooja',
-      status: 'ACTIVE',
-      rank: 'Bronze Director',
-      position: 'RIGHT',
-      joinedDate: '19 Sep 2026',
-      sponsor: 'KV-1002',
-      businessCenter: 'BC-001',
-      directMembers: 2,
-      leftTeamCount: 1,
-      rightTeamCount: 1,
-      totalTeamCount: 2,
-      leftBV: 1900,
-      rightBV: 1400,
-      hasDeeperMembers: true,
-      hasChildren: true,
-      isExpanded: maxDepth >= 4,
-      left: maxDepth >= 4 ? createLevel3('node-l3-3', 'KV-1010', 'Deepak', 'LEFT', 'KV-1005') : null,
-      right: maxDepth >= 4 ? createLevel3('node-l3-4', 'KV-1011', 'Sunita', 'RIGHT', 'KV-1005') : null,
-    };
-
-    const nehaNode: NetworkTreeNode = {
-      id: 'node-neha-uuid',
-      distributorId: 'KV-1006',
-      name: 'Neha',
-      status: 'ACTIVE',
-      rank: 'Silver Director',
-      position: 'LEFT',
-      joinedDate: '20 Sep 2026',
-      sponsor: 'KV-1003',
-      businessCenter: 'BC-001',
-      directMembers: 2,
-      leftTeamCount: 1,
-      rightTeamCount: 1,
-      totalTeamCount: 2,
-      leftBV: 2100,
-      rightBV: 1600,
-      hasDeeperMembers: true,
-      hasChildren: true,
-      isExpanded: maxDepth >= 4,
-      left: maxDepth >= 4 ? createLevel3('node-l3-5', 'KV-1012', 'Arjun', 'LEFT', 'KV-1006') : null,
-      right: maxDepth >= 4 ? createLevel3('node-l3-6', 'KV-1013', 'Meera', 'RIGHT', 'KV-1006') : null,
-    };
-
-    const sureshNode: NetworkTreeNode = {
-      id: 'node-suresh-uuid',
-      distributorId: 'KV-1007',
-      name: 'Suresh',
-      status: 'ACTIVE',
-      rank: 'Gold Partner',
-      position: 'RIGHT',
-      joinedDate: '21 Sep 2026',
-      sponsor: 'KV-1003',
-      businessCenter: 'BC-001',
-      directMembers: 2,
-      leftTeamCount: 1,
-      rightTeamCount: 1,
-      totalTeamCount: 2,
-      leftBV: 2300,
-      rightBV: 1700,
-      hasDeeperMembers: true,
-      hasChildren: true,
-      isExpanded: maxDepth >= 4,
-      left: maxDepth >= 4 ? createLevel3('node-l3-7', 'KV-1014', 'Rohan', 'LEFT', 'KV-1007') : null,
-      right: maxDepth >= 4 ? createLevel3('node-l3-8', 'KV-1015', 'Kavita', 'RIGHT', 'KV-1007') : null,
-    };
-
-    // Level 1 Nodes
-    const amitNode: NetworkTreeNode = {
-      id: 'node-amit-uuid',
-      distributorId: 'KV-1002',
-      name: 'Amit',
-      status: 'ACTIVE',
-      rank: 'Executive Director',
-      position: 'LEFT',
-      joinedDate: '18 Sep 2026',
-      sponsor: 'KV-1001',
-      businessCenter: 'BC-001',
-      directMembers: 2,
-      leftTeamCount: 2,
-      rightTeamCount: 2,
-      totalTeamCount: 5,
-      leftBV: 4800,
-      rightBV: 3600,
-      hasDeeperMembers: true,
-      hasChildren: true,
-      isExpanded: maxDepth >= 2,
-      left: maxDepth >= 2 ? nehaNode : null,
-      right: maxDepth >= 2 ? poojaNode : null,
-    };
-
-    const rohitNode: NetworkTreeNode = {
-      id: 'node-rohit-uuid',
-      distributorId: 'KV-1003',
-      name: 'Rohit',
-      status: 'ACTIVE',
-      rank: 'Senior Director',
-      position: 'RIGHT',
-      joinedDate: '18 Sep 2026',
-      sponsor: 'KV-1001',
-      businessCenter: 'BC-001',
-      directMembers: 2,
-      leftTeamCount: 2,
-      rightTeamCount: 2,
-      totalTeamCount: 5,
-      leftBV: 4600,
-      rightBV: 3500,
-      hasDeeperMembers: true,
-      hasChildren: true,
-      isExpanded: maxDepth >= 2,
-      left: maxDepth >= 2 ? priyaNode : null,
-      right: maxDepth >= 2 ? sureshNode : null,
-    };
-
-    // Subtree routing when viewing a specific member's network
-    const cleanId = (identifier || '').toUpperCase();
-    if (cleanId.includes('1002') || cleanId.includes('AMIT')) {
-      return {
-        root: {
-          ...amitNode,
-          position: 'ROOT',
-          isExpanded: maxDepth >= 2,
-          left: maxDepth >= 2 ? nehaNode : null,
-          right: maxDepth >= 2 ? poojaNode : null,
-        },
-      };
-    }
-    if (cleanId.includes('1003') || cleanId.includes('ROHIT')) {
-      return {
-        root: {
-          ...rohitNode,
-          position: 'ROOT',
-          isExpanded: maxDepth >= 2,
-          left: maxDepth >= 2 ? priyaNode : null,
-          right: maxDepth >= 2 ? sureshNode : null,
-        },
-      };
-    }
-    if (cleanId.includes('1004') || cleanId.includes('PRIYA')) {
-      return {
-        root: {
-          ...priyaNode,
-          position: 'ROOT',
-          isExpanded: maxDepth >= 2,
-          left: maxDepth >= 2 ? createLevel3('node-l3-1', 'KV-1008', 'Karan', 'LEFT', 'KV-1004') : null,
-          right: maxDepth >= 2 ? createLevel3('node-l3-2', 'KV-1009', 'Ananya', 'RIGHT', 'KV-1004') : null,
-        },
-      };
-    }
-    if (cleanId.includes('1005') || cleanId.includes('POOJA') || cleanId.includes('VIKRAM')) {
-      return {
-        root: {
-          ...poojaNode,
-          position: 'ROOT',
-          isExpanded: maxDepth >= 2,
-          left: maxDepth >= 2 ? createLevel3('node-l3-3', 'KV-1010', 'Deepak', 'LEFT', 'KV-1005') : null,
-          right: maxDepth >= 2 ? createLevel3('node-l3-4', 'KV-1011', 'Sunita', 'RIGHT', 'KV-1005') : null,
-        },
-      };
-    }
-    if (cleanId.includes('1006') || cleanId.includes('NEHA')) {
-      return {
-        root: {
-          ...nehaNode,
-          position: 'ROOT',
-          isExpanded: maxDepth >= 2,
-          left: maxDepth >= 2 ? createLevel3('node-l3-5', 'KV-1012', 'Arjun', 'LEFT', 'KV-1006') : null,
-          right: maxDepth >= 2 ? createLevel3('node-l3-6', 'KV-1013', 'Meera', 'RIGHT', 'KV-1006') : null,
-        },
-      };
-    }
-    if (cleanId.includes('1007') || cleanId.includes('SURESH')) {
-      return {
-        root: {
-          ...sureshNode,
-          position: 'ROOT',
-          isExpanded: maxDepth >= 2,
-          left: maxDepth >= 2 ? createLevel3('node-l3-7', 'KV-1014', 'Rohan', 'LEFT', 'KV-1007') : null,
-          right: maxDepth >= 2 ? createLevel3('node-l3-8', 'KV-1015', 'Kavita', 'RIGHT', 'KV-1007') : null,
-        },
-      };
-    }
-
-    // Specific modeled leaf nodes with zero downline (Arjun, Meera, Deepak, Sunita, Karan, Ananya, Rohan, Kavita)
-    if (
-      cleanId.includes('1008') || cleanId.includes('KARAN') ||
-      cleanId.includes('1009') || cleanId.includes('ANANYA') ||
-      cleanId.includes('1010') || cleanId.includes('DEEPAK') ||
-      cleanId.includes('1011') || cleanId.includes('SUNITA') ||
-      cleanId.includes('1012') || cleanId.includes('ARJUN') ||
-      cleanId.includes('1013') || cleanId.includes('MEERA') ||
-      cleanId.includes('1014') || cleanId.includes('ROHAN') ||
-      cleanId.includes('1015') || cleanId.includes('KAVITA')
-    ) {
-      return {
-        root: {
-          id: `node-${cleanId.toLowerCase()}-uuid`,
-          distributorId: identifier,
-          name: identifier,
-          status: 'ACTIVE',
-          rank: 'Associate',
-          position: 'ROOT',
-          joinedDate: '22 Sep 2026',
-          sponsor: 'KV-1006',
-          businessCenter: 'BC-001',
+      const enrolled = this.dynamicEnrollees.find(
+        (m) => m.distributorId.toUpperCase() === clean || m.name.toUpperCase().includes(clean)
+      );
+      if (enrolled) {
+        return {
+          distributorId: enrolled.distributorId,
           directMembers: 0,
           leftTeamCount: 0,
           rightTeamCount: 0,
           totalTeamCount: 0,
           leftBV: 0,
           rightBV: 0,
-          hasDeeperMembers: false,
-          hasChildren: false,
-          isExpanded: false,
+        };
+      }
+
+      return {
+        distributorId: identifier,
+        directMembers: 0,
+        leftTeamCount: 0,
+        rightTeamCount: 0,
+        totalTeamCount: 0,
+        leftBV: 0,
+        rightBV: 0,
+      };
+    }
+  }
+
+  /**
+   * Network tree hierarchy:
+   * Level 0: Owner (Rahul Kaushal - KV-1001).
+   * Level 1 Left: null (Empty "+ Available" slot).
+   * Level 1 Right: null initially; newly enrolled members join in the RIGHT leg automatically.
+   */
+  public static getModeledNetworkTree(identifier = 'KV-1001', _maxDepth = 3): NetworkTreeResponse {
+    const cleanId = (identifier || '').toUpperCase();
+
+    // If viewing an enrolled member directly:
+    const enrolledIdx = this.dynamicEnrollees.findIndex(
+      (m) => m.distributorId.toUpperCase() === cleanId || m.name.toUpperCase().includes(cleanId)
+    );
+    if (enrolledIdx !== -1 && !cleanId.includes('1001') && !cleanId.includes('RAHUL')) {
+      const mem = this.dynamicEnrollees[enrolledIdx];
+      const remainingDownline = this.dynamicEnrollees.length - 1 - enrolledIdx;
+      return {
+        root: {
+          id: mem.id,
+          distributorId: mem.distributorId,
+          name: mem.name,
+          status: mem.status,
+          rank: mem.rank,
+          position: 'ROOT',
+          joinedDate: mem.joinedDate,
+          sponsor: mem.sponsor,
+          businessCenter: 'BC-001',
+          directMembers: 0,
+          leftTeamCount: 0,
+          rightTeamCount: remainingDownline,
+          totalTeamCount: remainingDownline,
+          leftBV: 0,
+          rightBV: this.dynamicEnrollees.slice(enrolledIdx + 1).reduce((sum, m) => sum + (m.bv || 100), 0),
+          hasDeeperMembers: remainingDownline > 0,
+          hasChildren: remainingDownline > 0,
+          isExpanded: true,
           left: null,
           right: null,
         },
       };
     }
 
-    if (cleanId && !cleanId.includes('1001') && !cleanId.includes('RAHUL')) {
-      return {
-        root: {
-          id: `node-${cleanId.toLowerCase()}-uuid`,
-          distributorId: identifier,
-          name: identifier,
-          status: 'ACTIVE',
-          rank: 'Business Center',
-          position: 'ROOT',
-          joinedDate: '18 Sep 2026',
-          sponsor: 'KV-1001',
-          businessCenter: 'BC-001',
-          directMembers: 2,
-          leftTeamCount: 2,
-          rightTeamCount: 2,
-          totalTeamCount: 4,
-          leftBV: 2400,
-          rightBV: 2100,
-          hasDeeperMembers: maxDepth >= 2,
-          hasChildren: true,
-          isExpanded: maxDepth >= 2,
-          left: maxDepth >= 2 ? createLevel3('custom-l1-1', `${identifier}-L`, 'Left Team', 'LEFT', identifier) : null,
-          right: maxDepth >= 2 ? createLevel3('custom-l1-2', `${identifier}-R`, 'Right Team', 'RIGHT', identifier) : null,
-        },
-      };
-    }
+    // Build right leg hierarchy from dynamic enrolled members
+    const buildEnrolledRightBranch = (index: number): NetworkTreeNode | null => {
+      if (index >= this.dynamicEnrollees.length) return null;
+      const mem = this.dynamicEnrollees[index];
+      const remainingDownline = this.dynamicEnrollees.length - 1 - index;
+      const nextRight = buildEnrolledRightBranch(index + 1);
 
-    // Level 0: Default Root Node (Rahul Kaushal)
+      return {
+        id: mem.id,
+        distributorId: mem.distributorId,
+        name: mem.name,
+        status: mem.status,
+        rank: mem.rank,
+        position: 'RIGHT',
+        joinedDate: mem.joinedDate,
+        sponsor: mem.sponsor,
+        businessCenter: 'BC-001',
+        directMembers: 0,
+        leftTeamCount: 0,
+        rightTeamCount: remainingDownline,
+        totalTeamCount: remainingDownline,
+        leftBV: 0,
+        rightBV: this.dynamicEnrollees.slice(index + 1).reduce((sum, m) => sum + (m.bv || 100), 0),
+        hasDeeperMembers: remainingDownline > 0,
+        hasChildren: remainingDownline > 0,
+        isExpanded: true,
+        left: null, // Left is always empty (+ Available)
+        right: nextRight, // Any subsequent enrollees chain down the right leg
+      };
+    };
+
+    const rightNode = buildEnrolledRightBranch(0);
+    const enrolledCount = this.dynamicEnrollees.length;
+    const totalRightBV = this.dynamicEnrollees.reduce((sum, m) => sum + (m.bv || 100), 0);
+
+    // Root node is ONLY the owner (Rahul Kaushal)
     const root: NetworkTreeNode = {
       id: 'node-root-uuid',
-      distributorId: identifier.startsWith('KV-') ? identifier : 'KV-1001',
+      distributorId: 'KV-1001',
       name: 'Rahul Kaushal',
       status: 'ACTIVE',
       rank: 'Business Center',
@@ -739,17 +598,17 @@ export class NetworkTreeService {
       joinedDate: '15 Sep 2026',
       sponsor: 'KV-1000',
       businessCenter: 'BC-001',
-      directMembers: 2,
-      leftTeamCount: 5,
-      rightTeamCount: 7,
-      totalTeamCount: 14,
-      leftBV: 14500,
-      rightBV: 11200,
-      hasDeeperMembers: true,
-      hasChildren: true,
-      isExpanded: maxDepth >= 1,
-      left: maxDepth >= 1 ? amitNode : null,
-      right: maxDepth >= 1 ? rohitNode : null,
+      directMembers: enrolledCount,
+      leftTeamCount: 0,
+      rightTeamCount: enrolledCount,
+      totalTeamCount: enrolledCount,
+      leftBV: 0,
+      rightBV: totalRightBV,
+      hasDeeperMembers: enrolledCount > 1,
+      hasChildren: enrolledCount > 0,
+      isExpanded: true,
+      left: null, // Left leg is empty (+ Available)
+      right: rightNode, // Empty initially; populated when sponsored person completes enrollment in RIGHT leg
     };
 
     return { root };
@@ -810,23 +669,16 @@ export class NetworkTreeService {
     }
 
     if (results.length === 0) {
-      // Fallback: search known modeled distributors for resilient dev/test environment
+      // Fallback: search ONLY owner (Rahul Kaushal) and dynamic enrollees
       const modeledDistributors: DistributorSearchResult[] = [
         { id: 'dist-rahul-uuid', distributorId: 'KV-1001', name: 'Rahul Kaushal', rank: 'Business Center', status: 'ACTIVE' },
-        { id: 'dist-amit-uuid', distributorId: 'KV-1002', name: 'Amit', rank: 'Executive Director', status: 'ACTIVE' },
-        { id: 'dist-rohit-uuid', distributorId: 'KV-1003', name: 'Rohit', rank: 'Senior Director', status: 'ACTIVE' },
-        { id: 'dist-priya-uuid', distributorId: 'KV-1004', name: 'Priya', rank: 'Director', status: 'ACTIVE' },
-        { id: 'dist-pooja-uuid', distributorId: 'KV-1005', name: 'Pooja', rank: 'Bronze Director', status: 'ACTIVE' },
-        { id: 'dist-neha-uuid', distributorId: 'KV-1006', name: 'Neha', rank: 'Silver Director', status: 'ACTIVE' },
-        { id: 'dist-suresh-uuid', distributorId: 'KV-1007', name: 'Suresh', rank: 'Director', status: 'ACTIVE' },
-        { id: 'dist-vikram-uuid', distributorId: 'KV-1008', name: 'Vikram', rank: 'Associate', status: 'ACTIVE' },
-        { id: 'dist-ananya-uuid', distributorId: 'KV-1009', name: 'Ananya', rank: 'Associate', status: 'ACTIVE' },
-        { id: 'dist-deepak-uuid', distributorId: 'KV-1010', name: 'Deepak', rank: 'Associate', status: 'ACTIVE' },
-        { id: 'dist-sunita-uuid', distributorId: 'KV-1011', name: 'Sunita', rank: 'Associate', status: 'ACTIVE' },
-        { id: 'dist-manish-uuid', distributorId: 'KV-1012', name: 'Manish', rank: 'Associate', status: 'ACTIVE' },
-        { id: 'dist-ritu-uuid', distributorId: 'KV-1013', name: 'Ritu', rank: 'Associate', status: 'ACTIVE' },
-        { id: 'dist-kavita-uuid', distributorId: 'KV-1014', name: 'Kavita', rank: 'Associate', status: 'ACTIVE' },
-        { id: 'dist-sanjay-uuid', distributorId: 'KV-1015', name: 'Sanjay', rank: 'Associate', status: 'ACTIVE' },
+        ...this.dynamicEnrollees.map((m) => ({
+          id: m.id,
+          distributorId: m.distributorId,
+          name: m.name,
+          rank: m.rank,
+          status: m.status,
+        })),
       ];
 
       const lowerQ = q.toLowerCase();
@@ -974,8 +826,17 @@ export class NetworkTreeService {
     const cleanTarget = (targetDistributorId || '').trim().toUpperCase();
 
     // Fast-path modeled binary genealogy
-    // Root: Rahul (KV-1001) -> Downline: everyone (KV-1001 to KV-1015)
+    // Root: Rahul (KV-1001) -> Downline: everyone enrolled
     if (cleanReq.includes('1001') || cleanReq.includes('RAHUL')) {
+      if (
+        this.dynamicEnrollees.some(
+          (m) =>
+            cleanTarget.includes(m.distributorId.toUpperCase()) ||
+            cleanTarget.includes(m.name.toUpperCase())
+        )
+      ) {
+        return true;
+      }
       const allKnown = [
         'KV-1001', 'KV-1002', 'KV-1003', 'KV-1004', 'KV-1005', 'KV-1006',
         'KV-1007', 'KV-1008', 'KV-1009', 'KV-1010', 'KV-1011', 'KV-1012',
@@ -984,6 +845,25 @@ export class NetworkTreeService {
         'KARAN', 'ANANYA', 'DEEPAK', 'SUNITA', 'ARJUN', 'MEERA', 'ROHAN', 'KAVITA'
       ];
       if (allKnown.some((k) => cleanTarget.includes(k))) return true;
+    }
+
+    // Downline check for dynamic enrollees chained down the right leg
+    const reqEnrolledIdx = this.dynamicEnrollees.findIndex(
+      (m) =>
+        cleanReq.includes(m.distributorId.toUpperCase()) ||
+        cleanReq.includes(m.name.toUpperCase())
+    );
+    if (reqEnrolledIdx !== -1) {
+      const downlineMembers = this.dynamicEnrollees.slice(reqEnrolledIdx + 1);
+      if (
+        downlineMembers.some(
+          (m) =>
+            cleanTarget.includes(m.distributorId.toUpperCase()) ||
+            cleanTarget.includes(m.name.toUpperCase())
+        )
+      ) {
+        return true;
+      }
     }
 
     // Left Branch: Amit (KV-1002)

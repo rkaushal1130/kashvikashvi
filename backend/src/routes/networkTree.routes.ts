@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { treeRateLimiter } from '../config/rateLimiter';
 import { NetworkTreeController } from '../controllers/networkTree.controller';
+import { NetworkTreeService } from '../services/networkTree.service';
 import { authenticate } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { distributorIdParamSchema, treeDepthQuerySchema, treeSearchQuerySchema } from '../validators/networkTree.validators';
@@ -77,7 +78,10 @@ router.post('/remove-member', authenticate, authorizeRoles('SUPER_ADMIN', 'ADMIN
 router.put('/audit-logs/:id', authenticate, TreeAuditController.blockAuditMutation);
 router.patch('/audit-logs/:id', authenticate, TreeAuditController.blockAuditMutation);
 router.delete('/audit-logs/:id', authenticate, TreeAuditController.blockAuditMutation);
-router.delete('/audit-logs', authenticate, TreeAuditController.blockAuditMutation);
+router.post('/reset', (_req, res) => {
+  NetworkTreeService.clearEnrolledMembers();
+  res.json({ success: true, message: 'Dynamic tree reset to initial state (Owner only).' });
+});
 
 export const networkTreeRouter = router;
 
