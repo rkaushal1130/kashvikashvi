@@ -56,8 +56,22 @@ export class AuthService {
     const distHash = await SecurityUtils.hashPassword('Distributor@123');
     const suspHash = await SecurityUtils.hashPassword('Suspended@123');
     const defaultHash = await SecurityUtils.hashPassword('password123');
+    const rahulHash = await SecurityUtils.hashPassword('R@hul1130');
 
     const seedList: StoredUser[] = [
+      {
+        id: 'owner-rahul-id',
+        email: 'rahulkaushal1109@gmail.com',
+        username: 'rahulkaushal',
+        name: 'Rahul Kaushal',
+        phone: '+91 98765 43210',
+        passwordHash: rahulHash,
+        role: 'admin',
+        status: 'ACTIVE',
+        memberId: 'KV-1001',
+        distributorId: 'KV-1001',
+        sponsorId: 'ROOT',
+      },
       {
         id: 'usr-admin-seed',
         email: 'admin@example.com',
@@ -103,7 +117,7 @@ export class AuthService {
         username: 'rahul_kaushal',
         name: 'Rahul Kaushal',
         phone: '+91 98765 43210',
-        passwordHash: defaultHash,
+        passwordHash: rahulHash,
         role: 'admin',
         status: 'ACTIVE',
         memberId: '88767139',

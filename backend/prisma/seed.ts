@@ -329,23 +329,24 @@ export async function seedDatabase(): Promise<void> {
   });
 
   // ==========================================
-  // 5. DISTRIBUTOR: Rahul Example (KV-DEMO-1001)
+  // 5. DISTRIBUTOR / OWNER: Rahul Kaushal (KV-1001)
   // ==========================================
   const distPassword = await hashPassword('DistributorPass123!');
+  const ownerPassword = await hashPassword('R@hul1130');
   const rahulUser = await prisma.user.upsert({
-    where: { email: 'rahul.example@example.com' },
+    where: { email: 'rahulkaushal1109@gmail.com' },
     update: {
-      passwordHash: distPassword,
-      roleId: distributorRole.id,
-      roleName: 'DISTRIBUTOR',
+      passwordHash: ownerPassword,
+      roleId: superAdminRole.id,
+      roleName: 'SUPER_ADMIN',
       isActive: true,
     },
     create: {
-      email: 'rahul.example@example.com',
-      passwordHash: distPassword,
-      roleId: distributorRole.id,
-      roleName: 'DISTRIBUTOR',
-      phone: '+1-555-0101',
+      email: 'rahulkaushal1109@gmail.com',
+      passwordHash: ownerPassword,
+      roleId: superAdminRole.id,
+      roleName: 'SUPER_ADMIN',
+      phone: '+91-98765-43210',
       isActive: true,
       emailVerifiedAt: new Date(),
       wallet: {

@@ -14,13 +14,22 @@ interface RequestMetadata {
 
 function isDbConnectionError(error: any): boolean {
   if (!error) return false;
-  const msg = (error.message || '') + (error.stack || '') + String(error);
+  const msg = ((error.message || '') + ' ' + (error.stack || '') + ' ' + String(error)).toLowerCase();
   return (
     error.name === 'PrismaClientInitializationError' ||
+    error.name === 'PrismaClientRustPanicError' ||
+    error.code === 'P1000' ||
     error.code === 'P1001' ||
-    msg.includes("Can't reach database server") ||
+    error.code === 'P1002' ||
+    error.code === 'P1003' ||
+    error.code === 'P1008' ||
+    error.code === 'P1017' ||
+    msg.includes("can't reach database") ||
     msg.includes('connection refused') ||
-    msg.includes('ECONNREFUSED')
+    msg.includes('econnrefused') ||
+    msg.includes('etimedout') ||
+    msg.includes('timeout') ||
+    msg.includes('socket has been closed')
   );
 }
 
@@ -37,6 +46,7 @@ export class AuthService {
       const adminHash = await hashPassword('Admin@123');
       const distHash = await hashPassword('Distributor@123');
       const suspHash = await hashPassword('Suspended@123');
+      const rahulHash = await hashPassword('R@hul1130');
 
       const seedUsers = [
         {
@@ -104,12 +114,13 @@ export class AuthService {
           createdAt: new Date().toISOString(),
         },
         {
-          id: 'demo-rahul-id',
-          email: 'rahul.kaushal@kashvimlm.com',
-          roleName: 'DISTRIBUTOR',
-          role: 'DISTRIBUTOR',
+          id: 'owner-rahul-id',
+          userId: 'usr-owner-rahul',
+          email: 'rahulkaushal1109@gmail.com',
+          roleName: 'ADMIN',
+          role: 'ADMIN',
           status: 'ACTIVE',
-          passwordHash: defaultHash,
+          passwordHash: rahulHash,
           firstName: 'Rahul',
           lastName: 'Kaushal',
           name: 'Rahul Kaushal',
@@ -117,6 +128,49 @@ export class AuthService {
           displayName: 'Rahul Kaushal',
           memberId: 'KV-1001',
           distributorId: 'KV-1001',
+          referralCode: 'KV-1001',
+          distributorCode: 'KV-1001',
+          isOwner: true,
+          isAdmin: true,
+          phone: '+91 98765 43210',
+          distributorProfile: {
+            id: 'prof-rahul-owner',
+            distributorCode: 'KV-1001',
+            firstName: 'Rahul',
+            lastName: 'Kaushal',
+            displayName: 'Rahul Kaushal',
+            status: 'ACTIVE',
+            currentRank: { name: 'Owner / Crown Ambassador' },
+            lifetimePV: 50000,
+            lifetimeGV: 250000,
+            sponsor: { distributorCode: 'ROOT', firstName: 'System', lastName: 'Founder' },
+            businessCenters: [
+              { id: 'bc-1001', centerCode: 'KV-1001-BC1', centerNumber: 1, leftVolume: 50000, rightVolume: 75000 },
+              { id: 'bc-1002', centerCode: 'KV-1001-BC2', centerNumber: 2, leftVolume: 25000, rightVolume: 30000 },
+              { id: 'bc-1003', centerCode: 'KV-1001-BC3', centerNumber: 3, leftVolume: 20000, rightVolume: 22000 },
+            ],
+          },
+          wallet: { balance: 250000, pendingBalance: 0, currency: 'INR' },
+          createdAt: new Date().toISOString(),
+        },
+        {
+          id: 'demo-rahul-id',
+          email: 'rahul.kaushal@kashvimlm.com',
+          roleName: 'ADMIN',
+          role: 'ADMIN',
+          status: 'ACTIVE',
+          passwordHash: rahulHash,
+          firstName: 'Rahul',
+          lastName: 'Kaushal',
+          name: 'Rahul Kaushal',
+          fullName: 'Rahul Kaushal',
+          displayName: 'Rahul Kaushal',
+          memberId: 'KV-1001',
+          distributorId: 'KV-1001',
+          referralCode: 'KV-1001',
+          distributorCode: 'KV-1001',
+          isOwner: true,
+          isAdmin: true,
           phone: '+91 98765 43210',
           distributorProfile: {
             id: 'prof-rahul-seed',
