@@ -39,7 +39,11 @@
     "test:commission-reconciliation": "npm run test:commission-reconciliation --prefix backend",
     "test:tree": "npm run test:tree --prefix server",
     "test:api": "npm run test:api --prefix server",
-    "db:init": "npm run db:init --prefix server"
+    "test:backend": "npm test --prefix backend",
+    "db:init": "npm run prisma:db:push --prefix backend && npm run prisma:seed --prefix backend",
+    "db:seed": "npm run prisma:seed --prefix backend",
+    "db:migrate": "npm run prisma:migrate:deploy --prefix backend",
+    "db:status": "npm run prisma:migrate --prefix backend"
   },
   "dependencies": {
     "@prisma/client": "^6.4.1",
