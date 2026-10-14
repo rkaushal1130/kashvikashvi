@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import DistributorDashboard from '../components/dashboard/DistributorDashboard';
 
@@ -13,11 +14,22 @@ import DistributorDashboard from '../components/dashboard/DistributorDashboard';
  */
 export function Dashboard({ defaultNav = 'dashboard' }) {
   const { currentUser, logout } = useAuth();
+  const navigate = useNavigate();
+
+  const handleSignOut = async () => {
+    try {
+      await logout();
+    } catch (err) {
+      console.error('[Dashboard] Logout error:', err);
+    } finally {
+      navigate('/login', { replace: true });
+    }
+  };
 
   return (
     <DistributorDashboard
       user={currentUser}
-      onSignOut={logout}
+      onSignOut={handleSignOut}
       defaultNav={defaultNav}
     />
   );

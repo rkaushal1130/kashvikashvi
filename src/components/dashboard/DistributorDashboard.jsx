@@ -121,7 +121,7 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
       await api.markNotificationAsRead(id);
       setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)));
       setUnreadNotifCount((prev) => Math.max(0, prev - 1));
-    } catch {}
+    } catch { }
   };
 
   const handleMarkAllRead = async () => {
@@ -129,7 +129,7 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
       await api.markAllNotificationsAsRead();
       setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
       setUnreadNotifCount(0);
-    } catch {}
+    } catch { }
     showToast('All notifications marked as read.');
     setActiveModal(null);
   };
@@ -230,6 +230,14 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
     memberId: 'KV-1001',
     role: 'ADMIN',
     isOwner: true,
+    distributorProfile: {
+      name: 'Rahul Kaushal',
+      displayName: 'Rahul Kaushal',
+      fullName: 'Rahul Kaushal',
+      distributorCode: 'KV-1001',
+      joinDate: '2026',
+      currentRank: 'Company Owner / Emerald Director',
+    },
   };
 
   const isAuthorizedAdmin = Boolean(
@@ -246,16 +254,28 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
 
   // Member data (Owner: Rahul Kaushal)
   const memberName =
+    effectiveUser?.distributorProfile?.name ||
+    effectiveUser?.distributorProfile?.displayName ||
+    effectiveUser?.distributorProfile?.fullName ||
     effectiveUser?.name ||
     effectiveUser?.displayName ||
     effectiveUser?.fullName ||
-    'Rahul Kaushal';
+    'NA';
   const memberId =
+    effectiveUser?.distributorProfile?.distributorCode ||
     effectiveUser?.memberId ||
     effectiveUser?.distributorId ||
-    'KV-1001';
-  const memberSince = effectiveUser?.since || '2026';
-  const memberRank = effectiveUser?.tier || effectiveUser?.rank || 'Company Owner / Emerald Director';
+    'NA';
+  const memberSince =
+    effectiveUser?.distributorProfile?.joinDate ||
+    effectiveUser?.memberSince ||
+    effectiveUser?.since ||
+    'NA';
+  const memberRank =
+    effectiveUser?.distributorProfile?.currentRank ||
+    effectiveUser?.tier ||
+    effectiveUser?.rank ||
+    'NA';
 
   // Format today's date dynamically
   const todayDateStr = new Intl.DateTimeFormat('en-US', {
@@ -363,7 +383,7 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
             title="Select Regional Market"
           >
             <span className="market-flag">{selectedMarket.flag}</span>
-            <span className="market-text">Select Market</span>
+            <span className="market-text">{selectedMarket.country}</span>
             <ChevronDown size={14} className="market-chevron" />
           </button>
 
@@ -476,9 +496,22 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
                 <button
                   type="button"
                   className="dropdown-item text-danger"
-                  onClick={() => {
+                  onClick={async () => {
                     setActiveModal(null);
-                    if (onSignOut) onSignOut();
+                    try {
+                      if (typeof onSignOut === 'function') {
+                        await onSignOut();
+                      } else if (auth?.logout) {
+                        await auth.logout();
+                      }
+                      window.location.reload();
+                    } catch (err) {
+                      console.error('[DistributorDashboard] SignOut error:', err);
+                    } finally {
+                      localStorage.removeItem('kashvi_token');
+                      localStorage.removeItem('kashvi_auth');
+                      localStorage.removeItem('kashvi_current_user');
+                    }
                   }}
                 >
                   <LogOut size={16} />
@@ -596,1030 +629,1030 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
           {activeNavIcon === 'dashboard' && (
             <>
               {/* Welcome Header & Hide Commission Toggle */}
-          <div className="kashvimlm-welcome-row">
-            <h1 className="kashvimlm-welcome-heading">Welcome!</h1>
+              <div className="kashvimlm-welcome-row">
+                <h1 className="kashvimlm-welcome-heading">Welcome!</h1>
 
-            <div className="kashvimlm-commission-toggle-wrap">
-              <label className="kashvimlm-toggle-label">
-                <span className="toggle-text">Hide Commission Information</span>
-                <button
-                  type="button"
-                  className={`kashvimlm-toggle-pill ${hideCommission ? 'toggled' : ''}`}
-                  onClick={() => setHideCommission((prev) => !prev)}
-                  role="switch"
-                  aria-checked={hideCommission}
-                >
-                  <span className="toggle-thumb" />
-                </button>
-              </label>
-            </div>
-          </div>
-
-          {/* Section 1: Member Summary 3-Column Card */}
-          <section className="kashvimlm-member-summary-card">
-            {/* Column 1: Identity & Rank */}
-            <div className="summary-col col-identity">
-              <h2 className="member-name-title">{memberName}</h2>
-              <p className="member-id-text">KASHVIMLM ID: {memberId}</p>
-              <p className="member-meta-text">Brand Partner Since {memberSince}</p>
-              <p className="member-meta-text">Rank: {memberRank}</p>
-
-              <button
-                type="button"
-                className="my-badges-btn"
-                onClick={() => setActiveModal('badges')}
-              >
-                <span className="badge-stars">⭐ ⭐ ⭐</span>
-                <span className="badge-label">My Badges</span>
-              </button>
-            </div>
-
-            {/* Column 2: Estimated Commission */}
-            <div className="summary-col col-commission">
-              <div className="commission-header-row">
-                <span className="commission-subheading">Estimated Commission</span>
-                <button
-                  type="button"
-                  className="status-pill-badge not-qualified"
-                  onClick={() => setActiveModal('qualification')}
-                  title="Click to view qualification criteria"
-                >
-                  Not Commission Qualified
-                </button>
+                <div className="kashvimlm-commission-toggle-wrap">
+                  <label className="kashvimlm-toggle-label">
+                    <span className="toggle-text">Hide Commission Information</span>
+                    <button
+                      type="button"
+                      className={`kashvimlm-toggle-pill ${hideCommission ? 'toggled' : ''}`}
+                      onClick={() => setHideCommission((prev) => !prev)}
+                      role="switch"
+                      aria-checked={hideCommission}
+                    >
+                      <span className="toggle-thumb" />
+                    </button>
+                  </label>
+                </div>
               </div>
 
-              <div className="commission-amount-val">
-                {hideCommission ? '•••• CP' : '0.00 CP'}
-              </div>
+              {/* Section 1: Member Summary 3-Column Card */}
+              <section className="kashvimlm-member-summary-card">
+                {/* Column 1: Identity & Rank */}
+                <div className="summary-col col-identity">
+                  <h2 className="member-name-title">{memberName}</h2>
+                  <p className="member-id-text">KASHVIMLM ID: {memberId}</p>
+                  <p className="member-meta-text">Brand Partner Since {memberSince}</p>
+                  <p className="member-meta-text">Rank: {memberRank}</p>
 
-              <button
-                type="button"
-                className="commission-checks-link"
-                onClick={() => setActiveModal('payout')}
-              >
-                Weekly Commission/Payout checks
-              </button>
-            </div>
-
-            {/* Column 3: Commission Bonus Breakdown List */}
-            <div className="summary-col col-breakdown">
-              <div className="breakdown-list">
-                <div className="breakdown-row">
-                  <span className="breakdown-name">Base Commission</span>
                   <button
                     type="button"
-                    className="breakdown-learn-link"
-                    onClick={() => {
-                      setModalData({
-                        title: 'Base Commission',
-                        details:
-                          'Base Commission is calculated weekly at 20% of the balanced Commission Volume Points (CVP) from your Left and Right legs across all active Business Centers.',
-                      });
-                      setActiveModal('commissionLearn');
-                    }}
+                    className="my-badges-btn"
+                    onClick={() => setActiveModal('badges')}
                   >
-                    Learn More
+                    <span className="badge-stars">⭐ ⭐ ⭐</span>
+                    <span className="badge-label">My Badges</span>
                   </button>
                 </div>
 
-                <div className="breakdown-row">
-                  <span className="breakdown-name">PC Order Bonus</span>
+                {/* Column 2: Estimated Commission */}
+                <div className="summary-col col-commission">
+                  <div className="commission-header-row">
+                    <span className="commission-subheading">Estimated Commission</span>
+                    <button
+                      type="button"
+                      className="status-pill-badge not-qualified"
+                      onClick={() => setActiveModal('qualification')}
+                      title="Click to view qualification criteria"
+                    >
+                      Not Commission Qualified
+                    </button>
+                  </div>
+
+                  <div className="commission-amount-val">
+                    {hideCommission ? '•••• CP' : '0.00 CP'}
+                  </div>
+
                   <button
                     type="button"
-                    className="breakdown-learn-link"
-                    onClick={() => {
-                      setModalData({
-                        title: 'PC Order Bonus (Preferred Customer)',
-                        details:
-                          'Earn up to 10% cash bonus on initial and repeat orders made by your enrolled Preferred Customers through your replicated site.',
-                      });
-                      setActiveModal('commissionLearn');
-                    }}
+                    className="commission-checks-link"
+                    onClick={() => setActiveModal('payout')}
                   >
-                    Learn More
+                    Weekly Commission/Payout checks
                   </button>
                 </div>
 
-                <div className="breakdown-row">
-                  <span className="breakdown-name">Milestone Bonus</span>
-                  <button
-                    type="button"
-                    className="breakdown-learn-link"
-                    onClick={() => {
-                      setModalData({
-                        title: 'Milestone Bonus',
-                        details:
-                          'Special fast-growth incentive bonuses awarded when achieving key team volume milestones within your first 56 days.',
-                      });
-                      setActiveModal('commissionLearn');
-                    }}
-                  >
-                    Learn More
-                  </button>
-                </div>
-
-                <div className="breakdown-row">
-                  <span className="breakdown-name">Frontline Bonus</span>
-                  <button
-                    type="button"
-                    className="breakdown-learn-link"
-                    onClick={() => {
-                      setModalData({
-                        title: 'Frontline Bonus',
-                        details:
-                          'Matching bonuses earned on the base commission of your personally sponsored Brand Partners who maintain active business centers.',
-                      });
-                      setActiveModal('commissionLearn');
-                    }}
-                  >
-                    Learn More
-                  </button>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          {/* Section 2: Action Bar / Share & Quick Links */}
-          <section className="kashvimlm-action-bar-card">
-            {/* Action Group 1: My KASHVIMLM Website */}
-            <div className="action-col">
-              <div className="kashvimlm-select-wrapper">
-                <select
-                  value={selectedWebsite}
-                  onChange={(e) => setSelectedWebsite(e.target.value)}
-                  className="kashvimlm-select-input"
-                >
-                  <option value="My KASHVIMLM Website">My KASHVIMLM Website</option>
-                  <option value="Customer Enrollment Link">Customer Enrollment Link</option>
-                  <option value="Product Showcase Page">Product Showcase Page</option>
-                  <option value="Associate Opportunity Link">Associate Opportunity Link</option>
-                </select>
-                <ChevronDown size={15} className="select-arrow-icon" />
-              </div>
-
-              <div className="action-button-row">
-                <button
-                  type="button"
-                  className="action-pill-btn"
-                  onClick={() =>
-                    handleCopyLink(
-                      `https://kashvimlm.com/share/${memberName.toLowerCase().replace(/\s+/g, '')}?site=${encodeURIComponent(
-                        selectedWebsite
-                      )}`,
-                      selectedWebsite
-                    )
-                  }
-                >
-                  Copy
-                </button>
-                <button
-                  type="button"
-                  className="action-link-btn"
-                  onClick={() => setActiveModal('website')}
-                >
-                  Manage Website
-                </button>
-              </div>
-            </div>
-
-            {/* Action Group 2: Select Customer Type */}
-            <div className="action-col">
-              <div className="kashvimlm-select-wrapper">
-                <select
-                  value={selectedCustomerType}
-                  onChange={(e) => setSelectedCustomerType(e.target.value)}
-                  className="kashvimlm-select-input"
-                >
-                  <option value="Select Customer Type">Select Customer Type</option>
-                  <option value="Preferred Customer (10% Off)">Preferred Customer (10% Off)</option>
-                  <option value="Brand Partner / Associate">Brand Partner / Associate</option>
-                  <option value="Retail Customer">Retail Customer</option>
-                </select>
-                <ChevronDown size={15} className="select-arrow-icon" />
-              </div>
-
-              <div className="action-button-row">
-                <button
-                  type="button"
-                  className="action-pill-btn"
-                  onClick={() =>
-                    handleCopyLink(
-                      `${window.location.origin}/join?ref=${memberId}`,
-                      'Distributor Referral'
-                    )
-                  }
-                >
-                  Copy Referral Link
-                </button>
-                <button
-                  type="button"
-                  className="action-link-btn"
-                  onClick={() => setActiveModal('links')}
-                >
-                  Manage Links
-                </button>
-              </div>
-            </div>
-
-            {/* Action Group 3: Quick Links */}
-            <div className="action-col col-quick-links">
-              <span className="quick-links-label">Quick Links:</span>
-              <div className="quick-links-grid">
-                <button
-                  type="button"
-                  className="quick-link-box"
-                  onClick={() => {
-                    setModalData({
-                      title: 'KASHVIMLM Connect',
-                      desc: 'KASHVIMLM Connect gives you access to social sharing tools, asset libraries, prospect tracking, and messaging templates.',
-                      type: 'connect',
-                    });
-                    setActiveModal('quickLink');
-                  }}
-                >
-                  KASHVIMLM Connect
-                </button>
-                <button
-                  type="button"
-                  className="quick-link-box"
-                  onClick={() => setActiveNavIcon('shop')}
-                >
-                  Shop
-                </button>
-                <button
-                  type="button"
-                  className="quick-link-box"
-                  onClick={() => {
-                    setActiveModal('volumeReport');
-                  }}
-                >
-                  Team Manager
-                </button>
-                <button
-                  type="button"
-                  className="quick-link-box"
-                  onClick={() => {
-                    setModalData({
-                      title: 'Distributor Forms & Downloads',
-                      desc: 'Official compliance documents, Auto-Order authorization forms, GST declaration, and Direct Deposit enrollment sheets.',
-                      type: 'forms',
-                    });
-                    setActiveModal('quickLink');
-                  }}
-                >
-                  Forms
-                </button>
-                {isAuthorizedAdmin && (
-                  <button
-                    type="button"
-                    className="quick-link-box quick-link-funding-portal"
-                    onClick={() => navigate('/admin/funding-portal')}
-                    style={{ background: '#eff6ff', borderColor: '#2563eb', color: '#1d4ed8', fontWeight: 700 }}
-                  >
-                    Funding Portal
-                  </button>
-                )}
-              </div>
-            </div>
-          </section>
-
-          {/* Section 3: Navigation Tabs (Home / Training) */}
-          <div className="kashvimlm-tabs-row">
-            <button
-              type="button"
-              className={`kashvimlm-nav-tab ${activeTab === 'home' ? 'active' : ''}`}
-              onClick={() => setActiveTab('home')}
-            >
-              Home
-            </button>
-            <button
-              type="button"
-              className={`kashvimlm-nav-tab ${activeTab === 'training' ? 'active' : ''}`}
-              onClick={() => setActiveTab('training')}
-            >
-              Training
-            </button>
-          </div>
-
-          {/* TAB 1: HOME VIEW */}
-          {activeTab === 'home' && (
-            <>
-              {/* JumpStart Your Business Banner */}
-              <section className="kashvimlm-jumpstart-card">
-                <div className="jumpstart-header">
-                  <div className="jumpstart-title-wrap">
-                    <h3 className="jumpstart-title">JumpStart Your Business</h3>
-                    <span className="start-here-badge">Start Here</span>
-                  </div>
-                  <p className="jumpstart-desc">
-                    Here are a few key activities that will help you start your business off right.
-                  </p>
-                </div>
-
-                <div className="jumpstart-cards-grid">
-                  {/* Step 1 */}
-                  <div
-                    className={`jumpstart-step-card ${completedSteps.orientation ? 'completed' : ''}`}
-                    onClick={() => {
-                      setModalData({
-                        key: 'orientation',
-                        title: 'Complete your Associate Orientation',
-                        time: 'About 10 minutes',
-                        desc: 'Discover how KASHVIMLM compensation works, learn how to place your first order, and tour your Team Manager portal.',
-                      });
-                      setActiveModal('jumpStart');
-                    }}
-                  >
-                    <div className="step-card-content">
-                      <h4 className="step-card-title">
-                        {completedSteps.orientation && <Check size={14} className="step-done-check" />}
-                        Complete your Associate Orientation
-                      </h4>
-                      <span className="step-card-time">About 10 minutes</span>
+                {/* Column 3: Commission Bonus Breakdown List */}
+                <div className="summary-col col-breakdown">
+                  <div className="breakdown-list">
+                    <div className="breakdown-row">
+                      <span className="breakdown-name">Base Commission</span>
+                      <button
+                        type="button"
+                        className="breakdown-learn-link"
+                        onClick={() => {
+                          setModalData({
+                            title: 'Base Commission',
+                            details:
+                              'Base Commission is calculated weekly at 20% of the balanced Commission Volume Points (CVP) from your Left and Right legs across all active Business Centers.',
+                          });
+                          setActiveModal('commissionLearn');
+                        }}
+                      >
+                        Learn More
+                      </button>
                     </div>
-                    <ChevronRight size={18} className="step-card-arrow" />
-                  </div>
 
-                  {/* Step 2 */}
-                  <div
-                    className={`jumpstart-step-card ${completedSteps.website ? 'completed' : ''}`}
-                    onClick={() => {
-                      setModalData({
-                        key: 'website',
-                        title: 'Personalize your KASHVIMLM website',
-                        time: 'About 5 minutes',
-                        desc: 'Add your profile photo, custom greeting, and favorite products to your complimentary personal KASHVIMLM e-store.',
-                      });
-                      setActiveModal('jumpStart');
-                    }}
-                  >
-                    <div className="step-card-content">
-                      <h4 className="step-card-title">
-                        {completedSteps.website && <Check size={14} className="step-done-check" />}
-                        Personalize your KASHVIMLM website
-                      </h4>
-                      <span className="step-card-time">About 5 minutes</span>
+                    <div className="breakdown-row">
+                      <span className="breakdown-name">PC Order Bonus</span>
+                      <button
+                        type="button"
+                        className="breakdown-learn-link"
+                        onClick={() => {
+                          setModalData({
+                            title: 'PC Order Bonus (Preferred Customer)',
+                            details:
+                              'Earn up to 10% cash bonus on initial and repeat orders made by your enrolled Preferred Customers through your replicated site.',
+                          });
+                          setActiveModal('commissionLearn');
+                        }}
+                      >
+                        Learn More
+                      </button>
                     </div>
-                    <ChevronRight size={18} className="step-card-arrow" />
-                  </div>
 
-                  {/* Step 3 */}
-                  <div
-                    className={`jumpstart-step-card ${completedSteps.sms ? 'completed' : ''}`}
-                    onClick={() => {
-                      setModalData({
-                        key: 'sms',
-                        title: 'Opt in for text messages',
-                        time: 'About 2 minutes',
-                        desc: 'Receive instant notifications regarding order shipments, weekly commission checks, and major incentive announcements.',
-                      });
-                      setActiveModal('jumpStart');
-                    }}
-                  >
-                    <div className="step-card-content">
-                      <h4 className="step-card-title">
-                        {completedSteps.sms && <Check size={14} className="step-done-check" />}
-                        Opt in for text messages
-                      </h4>
-                      <span className="step-card-time">About 2 minutes</span>
+                    <div className="breakdown-row">
+                      <span className="breakdown-name">Milestone Bonus</span>
+                      <button
+                        type="button"
+                        className="breakdown-learn-link"
+                        onClick={() => {
+                          setModalData({
+                            title: 'Milestone Bonus',
+                            details:
+                              'Special fast-growth incentive bonuses awarded when achieving key team volume milestones within your first 56 days.',
+                          });
+                          setActiveModal('commissionLearn');
+                        }}
+                      >
+                        Learn More
+                      </button>
                     </div>
-                    <ChevronRight size={18} className="step-card-arrow" />
-                  </div>
 
-                  {/* Step 4 */}
-                  <div
-                    className={`jumpstart-step-card ${completedSteps.ethics ? 'completed' : ''}`}
-                    onClick={() => {
-                      setModalData({
-                        key: 'ethics',
-                        title: 'Complete your Ethics Certification',
-                        time: 'About 20 minutes',
-                        desc: 'Understand international direct selling compliance, truthful health claims, and proper brand representation guidelines.',
-                      });
-                      setActiveModal('jumpStart');
-                    }}
-                  >
-                    <div className="step-card-content">
-                      <h4 className="step-card-title">
-                        {completedSteps.ethics && <Check size={14} className="step-done-check" />}
-                        Complete your Ethics Certification
-                      </h4>
-                      <span className="step-card-time">About 20 minutes</span>
+                    <div className="breakdown-row">
+                      <span className="breakdown-name">Frontline Bonus</span>
+                      <button
+                        type="button"
+                        className="breakdown-learn-link"
+                        onClick={() => {
+                          setModalData({
+                            title: 'Frontline Bonus',
+                            details:
+                              'Matching bonuses earned on the base commission of your personally sponsored Brand Partners who maintain active business centers.',
+                          });
+                          setActiveModal('commissionLearn');
+                        }}
+                      >
+                        Learn More
+                      </button>
                     </div>
-                    <ChevronRight size={18} className="step-card-arrow" />
-                  </div>
-
-                  {/* Step 5 */}
-                  <div
-                    className={`jumpstart-step-card ${completedSteps.app ? 'completed' : ''}`}
-                    onClick={() => {
-                      setModalData({
-                        key: 'app',
-                        title: 'Download the KASHVIMLM Hub App',
-                        time: 'About 5 minutes',
-                        desc: 'Manage your business on iOS or Android. Track team volume, send digital carts, and view real-time commission.',
-                      });
-                      setActiveModal('jumpStart');
-                    }}
-                  >
-                    <div className="step-card-content">
-                      <h4 className="step-card-title">
-                        {completedSteps.app && <Check size={14} className="step-done-check" />}
-                        Download the KASHVIMLM Hub App
-                      </h4>
-                      <span className="step-card-time">About 5 minutes</span>
-                    </div>
-                    <ChevronRight size={18} className="step-card-arrow" />
                   </div>
                 </div>
               </section>
 
-              {/* Section 4: Middle Grid (Priority Contact + Volume + KASHVIMLM News) */}
-              <div className="kashvimlm-middle-layout">
-                {/* Left 2/3 Column: Priority Contact & Volume */}
-                <div className="kashvimlm-middle-left-col">
-                  {/* Priority Contact Card */}
-                  <div className="kashvimlm-panel-card priority-contact-card">
-                    <div className="panel-card-header">
-                      <h3 className="panel-card-title">Priority Contact</h3>
-                      <p className="panel-card-subtitle">Who to reach out this week</p>
-                    </div>
-
-                    {/* Filter Pills */}
-                    <div className="contact-filter-pills">
-                      {['All', 'Pacesetter', 'New Sales', 'Close To Check'].map((filter) => (
-                        <button
-                          key={filter}
-                          type="button"
-                          className={`contact-pill ${contactFilter === filter ? 'active' : ''}`}
-                          onClick={() => setContactFilter(filter)}
-                        >
-                          {filter}
-                        </button>
-                      ))}
-                    </div>
-
-                    {/* Caught Up State */}
-                    <div className="caught-up-state">
-                      <div className="caught-up-circle">
-                        <Check size={28} className="caught-up-check-icon" />
-                      </div>
-                      <h4 className="caught-up-title">You're all caught up</h4>
-                      <p className="caught-up-desc">
-                        No priority contacts this week. A great moment to plan ahead — review your
-                        team activity or set a goal for next week.
-                      </p>
-                      <button
-                        type="button"
-                        className="btn-view-team"
-                        onClick={() => setActiveModal('team')}
-                      >
-                        View team
-                      </button>
-                    </div>
+              {/* Section 2: Action Bar / Share & Quick Links */}
+              <section className="kashvimlm-action-bar-card">
+                {/* Action Group 1: My KASHVIMLM Website */}
+                <div className="action-col">
+                  <div className="kashvimlm-select-wrapper">
+                    <select
+                      value={selectedWebsite}
+                      onChange={(e) => setSelectedWebsite(e.target.value)}
+                      className="kashvimlm-select-input"
+                    >
+                      <option value="My KASHVIMLM Website">My KASHVIMLM Website</option>
+                      <option value="Customer Enrollment Link">Customer Enrollment Link</option>
+                      <option value="Product Showcase Page">Product Showcase Page</option>
+                      <option value="Associate Opportunity Link">Associate Opportunity Link</option>
+                    </select>
+                    <ChevronDown size={15} className="select-arrow-icon" />
                   </div>
 
-                  {/* Volume Card */}
-                  <div className="kashvimlm-panel-card volume-card">
-                    <div className="panel-card-header">
-                      <h3 className="panel-card-title">Volume</h3>
-                      <p className="panel-card-subtitle">Your weekly commission progress</p>
-                    </div>
-
-                    {/* Volume Notice Banner */}
-                    <div className="volume-notice-banner">
-                      <p>
-                        We are only showing you a few of your top results here. If you want to see
-                        more go check out the full report in Team Manager.
-                      </p>
-                    </div>
-
-                    {/* Binary Tree Visualization */}
-                    <div className="binary-tree-container">
-                      {/* Root Node: BC 001 */}
-                      <div className="tree-node node-bc001">
-                        <div className="node-header">
-                          <span className="node-label">BC 001</span>
-                          <span className="node-cvp">
-                            {hideCommission ? 'Est. CVP: •••• / ••••' : 'Est. CVP: 0.00 / 1000'}
-                          </span>
-                        </div>
-                        <div className="node-bars-row">
-                          <div className="node-leg-bar">
-                            <span className="leg-name">Left</span>
-                            <div className="bar-track">
-                              <div className="bar-fill pink-fill" style={{ width: '8%' }} />
-                            </div>
-                          </div>
-                          <div className="node-leg-bar">
-                            <span className="leg-name">Right</span>
-                            <div className="bar-track">
-                              <div className="bar-fill teal-fill" style={{ width: '8%' }} />
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Tree Branch Lines (SVG) */}
-                      <div className="tree-branch-svg-wrapper">
-                        <svg
-                          width="100%"
-                          height="44"
-                          viewBox="0 0 400 44"
-                          preserveAspectRatio="none"
-                          className="tree-svg-lines"
-                        >
-                          {/* Center Stem */}
-                          <line x1="200" y1="0" x2="200" y2="18" stroke="#94a3b8" strokeWidth="2" />
-                          {/* Horizontal Crossbar */}
-                          <line x1="90" y1="18" x2="310" y2="18" stroke="#94a3b8" strokeWidth="2" />
-                          {/* Left Stem down to BC 002 */}
-                          <line x1="90" y1="18" x2="90" y2="44" stroke="#94a3b8" strokeWidth="2" />
-                          {/* Right Stem down to BC 003 */}
-                          <line x1="310" y1="18" x2="310" y2="44" stroke="#94a3b8" strokeWidth="2" />
-                        </svg>
-                      </div>
-
-                      {/* Child Row: BC 002 & BC 003 */}
-                      <div className="tree-child-row">
-                        {/* Child Left: BC 002 */}
-                        <div className="tree-node node-child">
-                          <div className="node-header">
-                            <span className="node-label">BC 002</span>
-                          </div>
-                          <div className="node-bars-row">
-                            <div className="node-leg-bar">
-                              <span className="leg-name">Left</span>
-                              <div className="bar-track">
-                                <div className="bar-fill grey-fill" style={{ width: '0%' }} />
-                              </div>
-                            </div>
-                            <div className="node-leg-bar">
-                              <span className="leg-name">Right</span>
-                              <div className="bar-track">
-                                <div className="bar-fill grey-fill" style={{ width: '0%' }} />
-                              </div>
-                            </div>
-                          </div>
-                          <div className="node-cvp-footer">
-                            {hideCommission ? 'Est. CVP: •••• / ••••' : 'Est. CVP: 0.00 / 1000'}
-                          </div>
-                        </div>
-
-                        {/* Child Right: BC 003 */}
-                        <div className="tree-node node-child">
-                          <div className="node-header">
-                            <span className="node-label">BC 003</span>
-                          </div>
-                          <div className="node-bars-row">
-                            <div className="node-leg-bar">
-                              <span className="leg-name">Left</span>
-                              <div className="bar-track">
-                                <div className="bar-fill grey-fill" style={{ width: '0%' }} />
-                              </div>
-                            </div>
-                            <div className="node-leg-bar">
-                              <span className="leg-name">Right</span>
-                              <div className="bar-track">
-                                <div className="bar-fill grey-fill" style={{ width: '0%' }} />
-                              </div>
-                            </div>
-                          </div>
-                          <div className="node-cvp-footer">
-                            {hideCommission ? 'Est. CVP: •••• / ••••' : 'Est. CVP: 0.00 / 1000'}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* View Report Link */}
-                      <div className="volume-footer-link-wrap">
-                        <button
-                          type="button"
-                          className="view-report-link"
-                          onClick={() => setActiveModal('volumeReport')}
-                        >
-                          View Report
-                        </button>
-                      </div>
-                    </div>
+                  <div className="action-button-row">
+                    <button
+                      type="button"
+                      className="action-pill-btn"
+                      onClick={() =>
+                        handleCopyLink(
+                          `https://kashvimlm.com/share/${memberName.toLowerCase().replace(/\s+/g, '')}?site=${encodeURIComponent(
+                            selectedWebsite
+                          )}`,
+                          selectedWebsite
+                        )
+                      }
+                    >
+                      Copy
+                    </button>
+                    <button
+                      type="button"
+                      className="action-link-btn"
+                      onClick={() => setActiveModal('website')}
+                    >
+                      Manage Website
+                    </button>
                   </div>
                 </div>
 
-                {/* Right 1/3 Column: KASHVIMLM News */}
-                <div className="kashvimlm-middle-right-col">
-                  <div className="kashvimlm-panel-card news-card">
-                    <div className="panel-card-header">
-                      <h3 className="panel-card-title">KASHVIMLM News</h3>
-                    </div>
+                {/* Action Group 2: Select Customer Type */}
+                <div className="action-col">
+                  <div className="kashvimlm-select-wrapper">
+                    <select
+                      value={selectedCustomerType}
+                      onChange={(e) => setSelectedCustomerType(e.target.value)}
+                      className="kashvimlm-select-input"
+                    >
+                      <option value="Select Customer Type">Select Customer Type</option>
+                      <option value="Preferred Customer (10% Off)">Preferred Customer (10% Off)</option>
+                      <option value="Brand Partner / Associate">Brand Partner / Associate</option>
+                      <option value="Retail Customer">Retail Customer</option>
+                    </select>
+                    <ChevronDown size={15} className="select-arrow-icon" />
+                  </div>
 
-                    {/* Featured Article Card */}
-                    <div
-                      className="featured-news-card"
+                  <div className="action-button-row">
+                    <button
+                      type="button"
+                      className="action-pill-btn"
+                      onClick={() =>
+                        handleCopyLink(
+                          `${window.location.origin}/join?ref=${memberId}`,
+                          'Distributor Referral'
+                        )
+                      }
+                    >
+                      Copy Referral Link
+                    </button>
+                    <button
+                      type="button"
+                      className="action-link-btn"
+                      onClick={() => setActiveModal('links')}
+                    >
+                      Manage Links
+                    </button>
+                  </div>
+                </div>
+
+                {/* Action Group 3: Quick Links */}
+                <div className="action-col col-quick-links">
+                  <span className="quick-links-label">Quick Links:</span>
+                  <div className="quick-links-grid">
+                    <button
+                      type="button"
+                      className="quick-link-box"
                       onClick={() => {
                         setModalData({
-                          title: 'All of Your Team Manager Reports Are Now Free',
-                          desc: 'Great news—we’ve made all 40+ Team Manager Reports available to every Brand Partner at no cost. Track volume trends, identify emerging leaders, and analyze downline activity with real-time enterprise reports.',
-                          img: reportsTabletImg,
+                          title: 'KASHVIMLM Connect',
+                          desc: 'KASHVIMLM Connect gives you access to social sharing tools, asset libraries, prospect tracking, and messaging templates.',
+                          type: 'connect',
                         });
-                        setActiveModal('news');
+                        setActiveModal('quickLink');
                       }}
                     >
-                      <div className="featured-news-image-wrapper">
-                        <img
-                          src={reportsTabletImg}
-                          alt="Team Manager Reports"
-                          className="featured-news-img"
-                        />
-                      </div>
-                      <div className="featured-news-body">
-                        <h4 className="featured-news-title">
-                          All of Your Team Manager Reports Are Now Free
-                        </h4>
-                        <p className="featured-news-desc">
-                          Great news—we’ve made all 40+ Team Manager Reports available to every Brand
-                          Partner at no cost.
-                        </p>
-                        <span className="read-more-link">Read More &gt;</span>
-                      </div>
-                    </div>
-
-                    {/* News List Items */}
-                    <div className="news-feed-list">
-                      {/* Item 1 */}
-                      <div
-                        className="news-feed-item"
-                        onClick={() => {
-                          setModalData({
-                            title: 'Ethics in Action Certification Is Moving to KASHVIMLM Connect',
-                            desc: 'The Ethics in Action Certification is now available directly in the KASHVIMLM Connect app. Complete interactive modules on mobile and earn verified distributor credentials.',
-                            img: newsThumb1,
-                          });
-                          setActiveModal('news');
-                        }}
-                      >
-                        <img src={newsThumb1} alt="News thumbnail" className="news-item-thumb" />
-                        <div className="news-item-text">
-                          <h5 className="news-item-title">
-                            Ethics in Action Certification Is Moving to US...
-                          </h5>
-                          <p className="news-item-snippet">
-                            The Ethics in Action Certification is now available in the KASHVIMLM Connect
-                            app.
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Item 2 */}
-                      <div
-                        className="news-feed-item"
-                        onClick={() => {
-                          setModalData({
-                            title: 'KASHVIMLM Connect Is Live',
-                            desc: 'KASHVIMLM Connect is officially live, bringing smarter sharing, stronger connections, and streamlined business tools together in one convenient mobile platform.',
-                            img: newsThumb1,
-                          });
-                          setActiveModal('news');
-                        }}
-                      >
-                        <img src={newsThumb1} alt="News thumbnail" className="news-item-thumb" />
-                        <div className="news-item-text">
-                          <h5 className="news-item-title">KASHVIMLM Connect Is Live</h5>
-                          <p className="news-item-snippet">
-                            KASHVIMLM Connect is officially live, bringing smarter sharing, stronger
-                            connections, and streamlined business tools togethe...
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Item 3 */}
-                      <div
-                        className="news-feed-item"
-                        onClick={() => {
-                          setModalData({
-                            title: 'New Ethics in Action Course',
-                            desc: 'Building your KASHVIMLM business the right way starts with integrity. Explore our refreshed 2026 Code of Conduct modules.',
-                            img: newsThumb2,
-                          });
-                          setActiveModal('news');
-                        }}
-                      >
-                        <img src={newsThumb2} alt="News thumbnail" className="news-item-thumb" />
-                        <div className="news-item-text">
-                          <h5 className="news-item-title">New Ethics in Action Course</h5>
-                          <p className="news-item-snippet">
-                            Building your KASHVIMLM business the right way starts with integrity.
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Item 4 */}
-                      <div
-                        className="news-feed-item"
-                        onClick={() => {
-                          setModalData({
-                            title: 'Join World Service Week 7-14 June',
-                            desc: 'Join The KASHVIMLM Foundation for our 10th annual World Service Week. Together with partners worldwide, we pack meals and support nutrition projects.',
-                            img: newsThumb2,
-                          });
-                          setActiveModal('news');
-                        }}
-                      >
-                        <img src={newsThumb2} alt="News thumbnail" className="news-item-thumb" />
-                        <div className="news-item-text">
-                          <h5 className="news-item-title">Join World Service Week 7-14 June</h5>
-                          <p className="news-item-snippet">
-                            Join The KASHVIMLM Foundation for our 10th annual World Service Week, 7-14
-                            June.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* View All News Link */}
-                    <div className="news-footer-link-wrap">
+                      KASHVIMLM Connect
+                    </button>
+                    <button
+                      type="button"
+                      className="quick-link-box"
+                      onClick={() => setActiveNavIcon('shop')}
+                    >
+                      Shop
+                    </button>
+                    <button
+                      type="button"
+                      className="quick-link-box"
+                      onClick={() => {
+                        setActiveModal('volumeReport');
+                      }}
+                    >
+                      Team Manager
+                    </button>
+                    <button
+                      type="button"
+                      className="quick-link-box"
+                      onClick={() => {
+                        setModalData({
+                          title: 'Distributor Forms & Downloads',
+                          desc: 'Official compliance documents, Auto-Order authorization forms, GST declaration, and Direct Deposit enrollment sheets.',
+                          type: 'forms',
+                        });
+                        setActiveModal('quickLink');
+                      }}
+                    >
+                      Forms
+                    </button>
+                    {isAuthorizedAdmin && (
                       <button
                         type="button"
-                        className="view-all-news-link"
-                        onClick={() => {
-                          setModalData({
-                            title: 'KASHVIMLM Corporate News Archive',
-                            desc: 'Explore all updates, product launches, global convention announcements, and distributor recognitions.',
-                          });
-                          setActiveModal('news');
-                        }}
+                        className="quick-link-box quick-link-funding-portal"
+                        onClick={() => navigate('/admin/funding-portal')}
+                        style={{ background: '#eff6ff', borderColor: '#2563eb', color: '#1d4ed8', fontWeight: 700 }}
                       >
-                        View All &gt;
+                        Funding Portal
                       </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Section 5: My Contests Full Width Banner (Prague 2026 Activity Contest) */}
-              <section className="kashvimlm-contest-card">
-                <div
-                  className="contest-banner-bg"
-                  style={{ backgroundImage: `url(${pragueContestImg})` }}
-                >
-                  <div className="contest-overlay-gradient" />
-
-                  {/* Left Content Box */}
-                  <div className="contest-left-content">
-                    <h2 className="contest-title">2026 Activity Contest</h2>
-                    <p className="contest-desc">
-                      There is a new contest that you may qualify for. Opt-in now to start working
-                      toward exciting rewards.
-                    </p>
-
-                    <button
-                      type="button"
-                      className={`contest-optin-btn ${isContestOptedIn ? 'opted-in' : ''}`}
-                      onClick={() => {
-                        setIsContestOptedIn((prev) => {
-                          const next = !prev;
-                          showToast(
-                            next
-                              ? '🎉 Congratulations! You have opted in to the 2026 Prague Activity Contest.'
-                              : 'Opt-in status updated.'
-                          );
-                          return next;
-                        });
-                      }}
-                    >
-                      {isContestOptedIn ? '✓ Opted In' : 'Opt-in'}
-                    </button>
-                  </div>
-
-                  {/* Right Floating Tooltip Card */}
-                  <div className="contest-right-floating-card">
-                    <h4 className="contest-card-subheading">How to Qualify?</h4>
-                    <p className="contest-card-p">
-                      Every new enrollment, every Subscribe &amp; Save order, every rank advancement
-                      on your team moves you closer to Prague. Stack a few small wins each week and
-                      you'll hit 150 travel credits before you know it.
-                    </p>
-                    <button
-                      type="button"
-                      className="see-contest-details-link"
-                      onClick={() => setActiveModal('contest')}
-                    >
-                      See Contest Details &gt;
-                    </button>
+                    )}
                   </div>
                 </div>
               </section>
 
-              {/* Section 6: Bottom Row (My Agenda & The Spotlight) */}
-              <div className="kashvimlm-bottom-grid">
-                {/* Card 1: My Agenda */}
-                <div className="kashvimlm-panel-card agenda-card">
-                  <div className="panel-card-header">
-                    <h3 className="panel-card-title">My Agenda</h3>
-                  </div>
+              {/* Section 3: Navigation Tabs (Home / Training) */}
+              <div className="kashvimlm-tabs-row">
+                <button
+                  type="button"
+                  className={`kashvimlm-nav-tab ${activeTab === 'home' ? 'active' : ''}`}
+                  onClick={() => setActiveTab('home')}
+                >
+                  Home
+                </button>
+                <button
+                  type="button"
+                  className={`kashvimlm-nav-tab ${activeTab === 'training' ? 'active' : ''}`}
+                  onClick={() => setActiveTab('training')}
+                >
+                  Training
+                </button>
+              </div>
 
-                  <div className="agenda-today-section">
-                    <span className="agenda-today-label">Today</span>
-                    <h4 className="agenda-date-big">{todayDateStr}</h4>
-                    <p className="agenda-day-text">{todayDayStr}</p>
-                    <p className="agenda-cycle-text">Cycle: 1/1A</p>
-                  </div>
-
-                  <div className="agenda-events-status">
-                    <p className="no-events-text">There are no events today</p>
-                  </div>
-
-                  <div className="agenda-next-event-section">
-                    <span className="next-event-label">Next Event</span>
-                    <p className="no-upcoming-text">No upcoming events</p>
-                  </div>
-
-                  <div className="agenda-btn-wrap">
-                    <button
-                      type="button"
-                      className="btn-view-calendar"
-                      onClick={() => setActiveModal('calendar')}
-                    >
-                      <span>View Calendar</span>
-                      <Calendar size={16} />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Card 2: The Spotlight (Product Carousel) */}
-                <div className="kashvimlm-panel-card spotlight-card">
-                  <div className="panel-card-header">
-                    <h3 className="panel-card-title">The Spotlight</h3>
-                  </div>
-
-                  <div className="spotlight-product-body">
-                    {/* Product Image */}
-                    <div className="spotlight-image-col">
-                      <img
-                        src={spotlightProducts[spotlightIndex].image}
-                        alt={spotlightProducts[spotlightIndex].name}
-                        className="spotlight-product-img"
-                      />
-                    </div>
-
-                    {/* Product Details */}
-                    <div className="spotlight-details-col">
-                      <h4 className="spotlight-product-name">
-                        {spotlightProducts[spotlightIndex].name}
-                      </h4>
-                      <p className="spotlight-price">{spotlightProducts[spotlightIndex].price}</p>
-                      <p className="spotlight-volume">
-                        Volume: <strong>{spotlightProducts[spotlightIndex].volume}</strong>
-                      </p>
-                      <p className="spotlight-desc-snip">
-                        {spotlightProducts[spotlightIndex].desc}
+              {/* TAB 1: HOME VIEW */}
+              {activeTab === 'home' && (
+                <>
+                  {/* JumpStart Your Business Banner */}
+                  <section className="kashvimlm-jumpstart-card">
+                    <div className="jumpstart-header">
+                      <div className="jumpstart-title-wrap">
+                        <h3 className="jumpstart-title">JumpStart Your Business</h3>
+                        <span className="start-here-badge">Start Here</span>
+                      </div>
+                      <p className="jumpstart-desc">
+                        Here are a few key activities that will help you start your business off right.
                       </p>
                     </div>
+
+                    <div className="jumpstart-cards-grid">
+                      {/* Step 1 */}
+                      <div
+                        className={`jumpstart-step-card ${completedSteps.orientation ? 'completed' : ''}`}
+                        onClick={() => {
+                          setModalData({
+                            key: 'orientation',
+                            title: 'Complete your Associate Orientation',
+                            time: 'About 10 minutes',
+                            desc: 'Discover how KASHVIMLM compensation works, learn how to place your first order, and tour your Team Manager portal.',
+                          });
+                          setActiveModal('jumpStart');
+                        }}
+                      >
+                        <div className="step-card-content">
+                          <h4 className="step-card-title">
+                            {completedSteps.orientation && <Check size={14} className="step-done-check" />}
+                            Complete your Associate Orientation
+                          </h4>
+                          <span className="step-card-time">About 10 minutes</span>
+                        </div>
+                        <ChevronRight size={18} className="step-card-arrow" />
+                      </div>
+
+                      {/* Step 2 */}
+                      <div
+                        className={`jumpstart-step-card ${completedSteps.website ? 'completed' : ''}`}
+                        onClick={() => {
+                          setModalData({
+                            key: 'website',
+                            title: 'Personalize your KASHVIMLM website',
+                            time: 'About 5 minutes',
+                            desc: 'Add your profile photo, custom greeting, and favorite products to your complimentary personal KASHVIMLM e-store.',
+                          });
+                          setActiveModal('jumpStart');
+                        }}
+                      >
+                        <div className="step-card-content">
+                          <h4 className="step-card-title">
+                            {completedSteps.website && <Check size={14} className="step-done-check" />}
+                            Personalize your KASHVIMLM website
+                          </h4>
+                          <span className="step-card-time">About 5 minutes</span>
+                        </div>
+                        <ChevronRight size={18} className="step-card-arrow" />
+                      </div>
+
+                      {/* Step 3 */}
+                      <div
+                        className={`jumpstart-step-card ${completedSteps.sms ? 'completed' : ''}`}
+                        onClick={() => {
+                          setModalData({
+                            key: 'sms',
+                            title: 'Opt in for text messages',
+                            time: 'About 2 minutes',
+                            desc: 'Receive instant notifications regarding order shipments, weekly commission checks, and major incentive announcements.',
+                          });
+                          setActiveModal('jumpStart');
+                        }}
+                      >
+                        <div className="step-card-content">
+                          <h4 className="step-card-title">
+                            {completedSteps.sms && <Check size={14} className="step-done-check" />}
+                            Opt in for text messages
+                          </h4>
+                          <span className="step-card-time">About 2 minutes</span>
+                        </div>
+                        <ChevronRight size={18} className="step-card-arrow" />
+                      </div>
+
+                      {/* Step 4 */}
+                      <div
+                        className={`jumpstart-step-card ${completedSteps.ethics ? 'completed' : ''}`}
+                        onClick={() => {
+                          setModalData({
+                            key: 'ethics',
+                            title: 'Complete your Ethics Certification',
+                            time: 'About 20 minutes',
+                            desc: 'Understand international direct selling compliance, truthful health claims, and proper brand representation guidelines.',
+                          });
+                          setActiveModal('jumpStart');
+                        }}
+                      >
+                        <div className="step-card-content">
+                          <h4 className="step-card-title">
+                            {completedSteps.ethics && <Check size={14} className="step-done-check" />}
+                            Complete your Ethics Certification
+                          </h4>
+                          <span className="step-card-time">About 20 minutes</span>
+                        </div>
+                        <ChevronRight size={18} className="step-card-arrow" />
+                      </div>
+
+                      {/* Step 5 */}
+                      <div
+                        className={`jumpstart-step-card ${completedSteps.app ? 'completed' : ''}`}
+                        onClick={() => {
+                          setModalData({
+                            key: 'app',
+                            title: 'Download the KASHVIMLM Hub App',
+                            time: 'About 5 minutes',
+                            desc: 'Manage your business on iOS or Android. Track team volume, send digital carts, and view real-time commission.',
+                          });
+                          setActiveModal('jumpStart');
+                        }}
+                      >
+                        <div className="step-card-content">
+                          <h4 className="step-card-title">
+                            {completedSteps.app && <Check size={14} className="step-done-check" />}
+                            Download the KASHVIMLM Hub App
+                          </h4>
+                          <span className="step-card-time">About 5 minutes</span>
+                        </div>
+                        <ChevronRight size={18} className="step-card-arrow" />
+                      </div>
+                    </div>
+                  </section>
+
+                  {/* Section 4: Middle Grid (Priority Contact + Volume + KASHVIMLM News) */}
+                  <div className="kashvimlm-middle-layout">
+                    {/* Left 2/3 Column: Priority Contact & Volume */}
+                    <div className="kashvimlm-middle-left-col">
+                      {/* Priority Contact Card */}
+                      <div className="kashvimlm-panel-card priority-contact-card">
+                        <div className="panel-card-header">
+                          <h3 className="panel-card-title">Priority Contact</h3>
+                          <p className="panel-card-subtitle">Who to reach out this week</p>
+                        </div>
+
+                        {/* Filter Pills */}
+                        <div className="contact-filter-pills">
+                          {['All', 'Pacesetter', 'New Sales', 'Close To Check'].map((filter) => (
+                            <button
+                              key={filter}
+                              type="button"
+                              className={`contact-pill ${contactFilter === filter ? 'active' : ''}`}
+                              onClick={() => setContactFilter(filter)}
+                            >
+                              {filter}
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Caught Up State */}
+                        <div className="caught-up-state">
+                          <div className="caught-up-circle">
+                            <Check size={28} className="caught-up-check-icon" />
+                          </div>
+                          <h4 className="caught-up-title">You're all caught up</h4>
+                          <p className="caught-up-desc">
+                            No priority contacts this week. A great moment to plan ahead — review your
+                            team activity or set a goal for next week.
+                          </p>
+                          <button
+                            type="button"
+                            className="btn-view-team"
+                            onClick={() => setActiveModal('team')}
+                          >
+                            View team
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Volume Card */}
+                      <div className="kashvimlm-panel-card volume-card">
+                        <div className="panel-card-header">
+                          <h3 className="panel-card-title">Volume</h3>
+                          <p className="panel-card-subtitle">Your weekly commission progress</p>
+                        </div>
+
+                        {/* Volume Notice Banner */}
+                        <div className="volume-notice-banner">
+                          <p>
+                            We are only showing you a few of your top results here. If you want to see
+                            more go check out the full report in Team Manager.
+                          </p>
+                        </div>
+
+                        {/* Binary Tree Visualization */}
+                        <div className="binary-tree-container">
+                          {/* Root Node: BC 001 */}
+                          <div className="tree-node node-bc001">
+                            <div className="node-header">
+                              <span className="node-label">BC 001</span>
+                              <span className="node-cvp">
+                                {hideCommission ? 'Est. CVP: •••• / ••••' : 'Est. CVP: 0.00 / 1000'}
+                              </span>
+                            </div>
+                            <div className="node-bars-row">
+                              <div className="node-leg-bar">
+                                <span className="leg-name">Left</span>
+                                <div className="bar-track">
+                                  <div className="bar-fill pink-fill" style={{ width: '8%' }} />
+                                </div>
+                              </div>
+                              <div className="node-leg-bar">
+                                <span className="leg-name">Right</span>
+                                <div className="bar-track">
+                                  <div className="bar-fill teal-fill" style={{ width: '8%' }} />
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Tree Branch Lines (SVG) */}
+                          <div className="tree-branch-svg-wrapper">
+                            <svg
+                              width="100%"
+                              height="44"
+                              viewBox="0 0 400 44"
+                              preserveAspectRatio="none"
+                              className="tree-svg-lines"
+                            >
+                              {/* Center Stem */}
+                              <line x1="200" y1="0" x2="200" y2="18" stroke="#94a3b8" strokeWidth="2" />
+                              {/* Horizontal Crossbar */}
+                              <line x1="90" y1="18" x2="310" y2="18" stroke="#94a3b8" strokeWidth="2" />
+                              {/* Left Stem down to BC 002 */}
+                              <line x1="90" y1="18" x2="90" y2="44" stroke="#94a3b8" strokeWidth="2" />
+                              {/* Right Stem down to BC 003 */}
+                              <line x1="310" y1="18" x2="310" y2="44" stroke="#94a3b8" strokeWidth="2" />
+                            </svg>
+                          </div>
+
+                          {/* Child Row: BC 002 & BC 003 */}
+                          <div className="tree-child-row">
+                            {/* Child Left: BC 002 */}
+                            <div className="tree-node node-child">
+                              <div className="node-header">
+                                <span className="node-label">BC 002</span>
+                              </div>
+                              <div className="node-bars-row">
+                                <div className="node-leg-bar">
+                                  <span className="leg-name">Left</span>
+                                  <div className="bar-track">
+                                    <div className="bar-fill grey-fill" style={{ width: '0%' }} />
+                                  </div>
+                                </div>
+                                <div className="node-leg-bar">
+                                  <span className="leg-name">Right</span>
+                                  <div className="bar-track">
+                                    <div className="bar-fill grey-fill" style={{ width: '0%' }} />
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="node-cvp-footer">
+                                {hideCommission ? 'Est. CVP: •••• / ••••' : 'Est. CVP: 0.00 / 1000'}
+                              </div>
+                            </div>
+
+                            {/* Child Right: BC 003 */}
+                            <div className="tree-node node-child">
+                              <div className="node-header">
+                                <span className="node-label">BC 003</span>
+                              </div>
+                              <div className="node-bars-row">
+                                <div className="node-leg-bar">
+                                  <span className="leg-name">Left</span>
+                                  <div className="bar-track">
+                                    <div className="bar-fill grey-fill" style={{ width: '0%' }} />
+                                  </div>
+                                </div>
+                                <div className="node-leg-bar">
+                                  <span className="leg-name">Right</span>
+                                  <div className="bar-track">
+                                    <div className="bar-fill grey-fill" style={{ width: '0%' }} />
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="node-cvp-footer">
+                                {hideCommission ? 'Est. CVP: •••• / ••••' : 'Est. CVP: 0.00 / 1000'}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* View Report Link */}
+                          <div className="volume-footer-link-wrap">
+                            <button
+                              type="button"
+                              className="view-report-link"
+                              onClick={() => setActiveModal('volumeReport')}
+                            >
+                              View Report
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Right 1/3 Column: KASHVIMLM News */}
+                    <div className="kashvimlm-middle-right-col">
+                      <div className="kashvimlm-panel-card news-card">
+                        <div className="panel-card-header">
+                          <h3 className="panel-card-title">KASHVIMLM News</h3>
+                        </div>
+
+                        {/* Featured Article Card */}
+                        <div
+                          className="featured-news-card"
+                          onClick={() => {
+                            setModalData({
+                              title: 'All of Your Team Manager Reports Are Now Free',
+                              desc: 'Great news—we’ve made all 40+ Team Manager Reports available to every Brand Partner at no cost. Track volume trends, identify emerging leaders, and analyze downline activity with real-time enterprise reports.',
+                              img: reportsTabletImg,
+                            });
+                            setActiveModal('news');
+                          }}
+                        >
+                          <div className="featured-news-image-wrapper">
+                            <img
+                              src={reportsTabletImg}
+                              alt="Team Manager Reports"
+                              className="featured-news-img"
+                            />
+                          </div>
+                          <div className="featured-news-body">
+                            <h4 className="featured-news-title">
+                              All of Your Team Manager Reports Are Now Free
+                            </h4>
+                            <p className="featured-news-desc">
+                              Great news—we’ve made all 40+ Team Manager Reports available to every Brand
+                              Partner at no cost.
+                            </p>
+                            <span className="read-more-link">Read More &gt;</span>
+                          </div>
+                        </div>
+
+                        {/* News List Items */}
+                        <div className="news-feed-list">
+                          {/* Item 1 */}
+                          <div
+                            className="news-feed-item"
+                            onClick={() => {
+                              setModalData({
+                                title: 'Ethics in Action Certification Is Moving to KASHVIMLM Connect',
+                                desc: 'The Ethics in Action Certification is now available directly in the KASHVIMLM Connect app. Complete interactive modules on mobile and earn verified distributor credentials.',
+                                img: newsThumb1,
+                              });
+                              setActiveModal('news');
+                            }}
+                          >
+                            <img src={newsThumb1} alt="News thumbnail" className="news-item-thumb" />
+                            <div className="news-item-text">
+                              <h5 className="news-item-title">
+                                Ethics in Action Certification Is Moving to US...
+                              </h5>
+                              <p className="news-item-snippet">
+                                The Ethics in Action Certification is now available in the KASHVIMLM Connect
+                                app.
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Item 2 */}
+                          <div
+                            className="news-feed-item"
+                            onClick={() => {
+                              setModalData({
+                                title: 'KASHVIMLM Connect Is Live',
+                                desc: 'KASHVIMLM Connect is officially live, bringing smarter sharing, stronger connections, and streamlined business tools together in one convenient mobile platform.',
+                                img: newsThumb1,
+                              });
+                              setActiveModal('news');
+                            }}
+                          >
+                            <img src={newsThumb1} alt="News thumbnail" className="news-item-thumb" />
+                            <div className="news-item-text">
+                              <h5 className="news-item-title">KASHVIMLM Connect Is Live</h5>
+                              <p className="news-item-snippet">
+                                KASHVIMLM Connect is officially live, bringing smarter sharing, stronger
+                                connections, and streamlined business tools togethe...
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Item 3 */}
+                          <div
+                            className="news-feed-item"
+                            onClick={() => {
+                              setModalData({
+                                title: 'New Ethics in Action Course',
+                                desc: 'Building your KASHVIMLM business the right way starts with integrity. Explore our refreshed 2026 Code of Conduct modules.',
+                                img: newsThumb2,
+                              });
+                              setActiveModal('news');
+                            }}
+                          >
+                            <img src={newsThumb2} alt="News thumbnail" className="news-item-thumb" />
+                            <div className="news-item-text">
+                              <h5 className="news-item-title">New Ethics in Action Course</h5>
+                              <p className="news-item-snippet">
+                                Building your KASHVIMLM business the right way starts with integrity.
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Item 4 */}
+                          <div
+                            className="news-feed-item"
+                            onClick={() => {
+                              setModalData({
+                                title: 'Join World Service Week 7-14 June',
+                                desc: 'Join The KASHVIMLM Foundation for our 10th annual World Service Week. Together with partners worldwide, we pack meals and support nutrition projects.',
+                                img: newsThumb2,
+                              });
+                              setActiveModal('news');
+                            }}
+                          >
+                            <img src={newsThumb2} alt="News thumbnail" className="news-item-thumb" />
+                            <div className="news-item-text">
+                              <h5 className="news-item-title">Join World Service Week 7-14 June</h5>
+                              <p className="news-item-snippet">
+                                Join The KASHVIMLM Foundation for our 10th annual World Service Week, 7-14
+                                June.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* View All News Link */}
+                        <div className="news-footer-link-wrap">
+                          <button
+                            type="button"
+                            className="view-all-news-link"
+                            onClick={() => {
+                              setModalData({
+                                title: 'KASHVIMLM Corporate News Archive',
+                                desc: 'Explore all updates, product launches, global convention announcements, and distributor recognitions.',
+                              });
+                              setActiveModal('news');
+                            }}
+                          >
+                            View All &gt;
+                          </button>
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
-                  {/* Carousel Controls */}
-                  <div className="spotlight-carousel-controls">
-                    <button
-                      type="button"
-                      className="carousel-arrow-btn"
-                      onClick={() =>
-                        setSpotlightIndex((prev) =>
-                          prev === 0 ? spotlightProducts.length - 1 : prev - 1
-                        )
-                      }
-                      aria-label="Previous Spotlight Product"
+                  {/* Section 5: My Contests Full Width Banner (Prague 2026 Activity Contest) */}
+                  <section className="kashvimlm-contest-card">
+                    <div
+                      className="contest-banner-bg"
+                      style={{ backgroundImage: `url(${pragueContestImg})` }}
                     >
-                      <ChevronLeft size={18} />
-                    </button>
+                      <div className="contest-overlay-gradient" />
 
-                    <div className="carousel-dots-wrap">
-                      {spotlightProducts.map((p, idx) => (
+                      {/* Left Content Box */}
+                      <div className="contest-left-content">
+                        <h2 className="contest-title">2026 Activity Contest</h2>
+                        <p className="contest-desc">
+                          There is a new contest that you may qualify for. Opt-in now to start working
+                          toward exciting rewards.
+                        </p>
+
                         <button
-                          key={p.id}
                           type="button"
-                          className={`carousel-dot ${spotlightIndex === idx ? 'active' : ''}`}
-                          onClick={() => setSpotlightIndex(idx)}
-                          aria-label={`Go to product ${idx + 1}`}
-                        />
-                      ))}
+                          className={`contest-optin-btn ${isContestOptedIn ? 'opted-in' : ''}`}
+                          onClick={() => {
+                            setIsContestOptedIn((prev) => {
+                              const next = !prev;
+                              showToast(
+                                next
+                                  ? '🎉 Congratulations! You have opted in to the 2026 Prague Activity Contest.'
+                                  : 'Opt-in status updated.'
+                              );
+                              return next;
+                            });
+                          }}
+                        >
+                          {isContestOptedIn ? '✓ Opted In' : 'Opt-in'}
+                        </button>
+                      </div>
+
+                      {/* Right Floating Tooltip Card */}
+                      <div className="contest-right-floating-card">
+                        <h4 className="contest-card-subheading">How to Qualify?</h4>
+                        <p className="contest-card-p">
+                          Every new enrollment, every Subscribe &amp; Save order, every rank advancement
+                          on your team moves you closer to Prague. Stack a few small wins each week and
+                          you'll hit 150 travel credits before you know it.
+                        </p>
+                        <button
+                          type="button"
+                          className="see-contest-details-link"
+                          onClick={() => setActiveModal('contest')}
+                        >
+                          See Contest Details &gt;
+                        </button>
+                      </div>
+                    </div>
+                  </section>
+
+                  {/* Section 6: Bottom Row (My Agenda & The Spotlight) */}
+                  <div className="kashvimlm-bottom-grid">
+                    {/* Card 1: My Agenda */}
+                    <div className="kashvimlm-panel-card agenda-card">
+                      <div className="panel-card-header">
+                        <h3 className="panel-card-title">My Agenda</h3>
+                      </div>
+
+                      <div className="agenda-today-section">
+                        <span className="agenda-today-label">Today</span>
+                        <h4 className="agenda-date-big">{todayDateStr}</h4>
+                        <p className="agenda-day-text">{todayDayStr}</p>
+                        <p className="agenda-cycle-text">Cycle: 1/1A</p>
+                      </div>
+
+                      <div className="agenda-events-status">
+                        <p className="no-events-text">There are no events today</p>
+                      </div>
+
+                      <div className="agenda-next-event-section">
+                        <span className="next-event-label">Next Event</span>
+                        <p className="no-upcoming-text">No upcoming events</p>
+                      </div>
+
+                      <div className="agenda-btn-wrap">
+                        <button
+                          type="button"
+                          className="btn-view-calendar"
+                          onClick={() => setActiveModal('calendar')}
+                        >
+                          <span>View Calendar</span>
+                          <Calendar size={16} />
+                        </button>
+                      </div>
                     </div>
 
-                    <button
-                      type="button"
-                      className="carousel-arrow-btn"
-                      onClick={() =>
-                        setSpotlightIndex((prev) =>
-                          prev === spotlightProducts.length - 1 ? 0 : prev + 1
-                        )
-                      }
-                      aria-label="Next Spotlight Product"
-                    >
-                      <ChevronRight size={18} />
-                    </button>
+                    {/* Card 2: The Spotlight (Product Carousel) */}
+                    <div className="kashvimlm-panel-card spotlight-card">
+                      <div className="panel-card-header">
+                        <h3 className="panel-card-title">The Spotlight</h3>
+                      </div>
+
+                      <div className="spotlight-product-body">
+                        {/* Product Image */}
+                        <div className="spotlight-image-col">
+                          <img
+                            src={spotlightProducts[spotlightIndex].image}
+                            alt={spotlightProducts[spotlightIndex].name}
+                            className="spotlight-product-img"
+                          />
+                        </div>
+
+                        {/* Product Details */}
+                        <div className="spotlight-details-col">
+                          <h4 className="spotlight-product-name">
+                            {spotlightProducts[spotlightIndex].name}
+                          </h4>
+                          <p className="spotlight-price">{spotlightProducts[spotlightIndex].price}</p>
+                          <p className="spotlight-volume">
+                            Volume: <strong>{spotlightProducts[spotlightIndex].volume}</strong>
+                          </p>
+                          <p className="spotlight-desc-snip">
+                            {spotlightProducts[spotlightIndex].desc}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Carousel Controls */}
+                      <div className="spotlight-carousel-controls">
+                        <button
+                          type="button"
+                          className="carousel-arrow-btn"
+                          onClick={() =>
+                            setSpotlightIndex((prev) =>
+                              prev === 0 ? spotlightProducts.length - 1 : prev - 1
+                            )
+                          }
+                          aria-label="Previous Spotlight Product"
+                        >
+                          <ChevronLeft size={18} />
+                        </button>
+
+                        <div className="carousel-dots-wrap">
+                          {spotlightProducts.map((p, idx) => (
+                            <button
+                              key={p.id}
+                              type="button"
+                              className={`carousel-dot ${spotlightIndex === idx ? 'active' : ''}`}
+                              onClick={() => setSpotlightIndex(idx)}
+                              aria-label={`Go to product ${idx + 1}`}
+                            />
+                          ))}
+                        </div>
+
+                        <button
+                          type="button"
+                          className="carousel-arrow-btn"
+                          onClick={() =>
+                            setSpotlightIndex((prev) =>
+                              prev === spotlightProducts.length - 1 ? 0 : prev + 1
+                            )
+                          }
+                          aria-label="Next Spotlight Product"
+                        >
+                          <ChevronRight size={18} />
+                        </button>
+                      </div>
+
+                      {/* Action Buttons */}
+                      <div className="spotlight-actions-row">
+                        <button
+                          type="button"
+                          className="btn-share-product"
+                          onClick={() => {
+                            setModalData(spotlightProducts[spotlightIndex]);
+                            setActiveModal('share');
+                          }}
+                        >
+                          Share Product
+                        </button>
+
+                        <button
+                          type="button"
+                          className="link-go-to-shop"
+                          onClick={() => setActiveNavIcon('shop')}
+                        >
+                          Go to Shop
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* TAB 2: TRAINING VIEW */}
+              {activeTab === 'training' && (
+                <section className="kashvimlm-training-view">
+                  <div className="training-hero-banner">
+                    <div className="training-hero-text">
+                      <span className="training-badge">KASHVIMLM ACADEMY</span>
+                      <h2 className="training-heading">Distributor Learning &amp; Certification</h2>
+                      <p className="training-subtext">
+                        Master direct selling strategies, ethical marketing guidelines, and customer acquisition
+                        tactics that empower successful apparel and technology entrepreneurs.
+                      </p>
+                    </div>
                   </div>
 
-                  {/* Action Buttons */}
-                  <div className="spotlight-actions-row">
-                    <button
-                      type="button"
-                      className="btn-share-product"
-                      onClick={() => {
-                        setModalData(spotlightProducts[spotlightIndex]);
-                        setActiveModal('share');
-                      }}
-                    >
-                      Share Product
-                    </button>
+                  <div className="training-modules-grid">
+                    <div className="training-card">
+                      <div className="training-icon-box bg-blue">
+                        <BookOpen size={24} />
+                      </div>
+                      <h4 className="training-card-title">Associate Orientation Masterclass</h4>
+                      <p className="training-card-desc">
+                        Comprehensive walk-through of Business Center placement, CVP calculation, and
+                        autoship benefits.
+                      </p>
+                      <button
+                        type="button"
+                        className="training-cta-btn"
+                        onClick={() => {
+                          setCompletedSteps((prev) => ({ ...prev, orientation: true }));
+                          showToast('Orientation module marked completed!');
+                        }}
+                      >
+                        {completedSteps.orientation ? '✓ Completed' : 'Start Lesson (10 min)'}
+                      </button>
+                    </div>
 
-                    <button
-                      type="button"
-                      className="link-go-to-shop"
-                      onClick={() => setActiveNavIcon('shop')}
-                    >
-                      Go to Shop
-                    </button>
+                    <div className="training-card">
+                      <div className="training-icon-box bg-green">
+                        <Shield size={24} />
+                      </div>
+                      <h4 className="training-card-title">Ethics &amp; Truthful Claims</h4>
+                      <p className="training-card-desc">
+                        Learn compliant advertising standards, social media disclaimers, and honest
+                        representation of earnings.
+                      </p>
+                      <button
+                        type="button"
+                        className="training-cta-btn"
+                        onClick={() => {
+                          setCompletedSteps((prev) => ({ ...prev, ethics: true }));
+                          showToast('Ethics certification module completed!');
+                        }}
+                      >
+                        {completedSteps.ethics ? '✓ Certified' : 'Complete Certification (20 min)'}
+                      </button>
+                    </div>
+
+                    <div className="training-card">
+                      <div className="training-icon-box bg-purple">
+                        <TrendingUp size={24} />
+                      </div>
+                      <h4 className="training-card-title">Social Sharing with KASHVIMLM Connect</h4>
+                      <p className="training-card-desc">
+                        How to send curated product baskets, generate personalized links, and follow up
+                        with interested prospects.
+                      </p>
+                      <button
+                        type="button"
+                        className="training-cta-btn"
+                        onClick={() => showToast('Opened KASHVIMLM Connect training video!')}
+                      >
+                        Watch Tutorial (7 min)
+                      </button>
+                    </div>
                   </div>
-                </div>
-              </div>
-            </>
-          )}
-
-          {/* TAB 2: TRAINING VIEW */}
-          {activeTab === 'training' && (
-            <section className="kashvimlm-training-view">
-              <div className="training-hero-banner">
-                <div className="training-hero-text">
-                  <span className="training-badge">KASHVIMLM ACADEMY</span>
-                  <h2 className="training-heading">Distributor Learning &amp; Certification</h2>
-                  <p className="training-subtext">
-                    Master direct selling strategies, ethical marketing guidelines, and customer acquisition
-                    tactics that empower successful apparel and technology entrepreneurs.
-                  </p>
-                </div>
-              </div>
-
-              <div className="training-modules-grid">
-                <div className="training-card">
-                  <div className="training-icon-box bg-blue">
-                    <BookOpen size={24} />
-                  </div>
-                  <h4 className="training-card-title">Associate Orientation Masterclass</h4>
-                  <p className="training-card-desc">
-                    Comprehensive walk-through of Business Center placement, CVP calculation, and
-                    autoship benefits.
-                  </p>
-                  <button
-                    type="button"
-                    className="training-cta-btn"
-                    onClick={() => {
-                      setCompletedSteps((prev) => ({ ...prev, orientation: true }));
-                      showToast('Orientation module marked completed!');
-                    }}
-                  >
-                    {completedSteps.orientation ? '✓ Completed' : 'Start Lesson (10 min)'}
-                  </button>
-                </div>
-
-                <div className="training-card">
-                  <div className="training-icon-box bg-green">
-                    <Shield size={24} />
-                  </div>
-                  <h4 className="training-card-title">Ethics &amp; Truthful Claims</h4>
-                  <p className="training-card-desc">
-                    Learn compliant advertising standards, social media disclaimers, and honest
-                    representation of earnings.
-                  </p>
-                  <button
-                    type="button"
-                    className="training-cta-btn"
-                    onClick={() => {
-                      setCompletedSteps((prev) => ({ ...prev, ethics: true }));
-                      showToast('Ethics certification module completed!');
-                    }}
-                  >
-                    {completedSteps.ethics ? '✓ Certified' : 'Complete Certification (20 min)'}
-                  </button>
-                </div>
-
-                <div className="training-card">
-                  <div className="training-icon-box bg-purple">
-                    <TrendingUp size={24} />
-                  </div>
-                  <h4 className="training-card-title">Social Sharing with KASHVIMLM Connect</h4>
-                  <p className="training-card-desc">
-                    How to send curated product baskets, generate personalized links, and follow up
-                    with interested prospects.
-                  </p>
-                  <button
-                    type="button"
-                    className="training-cta-btn"
-                    onClick={() => showToast('Opened KASHVIMLM Connect training video!')}
-                  >
-                    Watch Tutorial (7 min)
-                  </button>
-                </div>
-              </div>
-            </section>
-          )}
+                </section>
+              )}
             </>
           )}
 
@@ -1695,9 +1728,8 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
                   <button
                     key={m.code}
                     type="button"
-                    className={`market-choice-item ${
-                      selectedMarket.code === m.code ? 'selected' : ''
-                    }`}
+                    className={`market-choice-item ${selectedMarket.code === m.code ? 'selected' : ''
+                      }`}
                     onClick={() => {
                       setSelectedMarket(m);
                       setActiveModal(null);

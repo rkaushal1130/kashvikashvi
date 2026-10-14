@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   User,
   Lock,
@@ -24,6 +25,8 @@ import './Profile.css';
  * - Displays Member Profile Dashboard upon successful login.
  */
 function Profile({ defaultNav }) {
+  const navigate = useNavigate();
+
   // Check persisted auth session from localStorage
   const [isLoggedIn, setIsLoggedIn] = useState(() => {
     try {
@@ -140,8 +143,8 @@ function Profile({ defaultNav }) {
 
     const displayName = isOwnerDemo
       ? (loginForm.username.includes('@') || loginForm.username.toLowerCase().includes('r@hul')
-          ? loginForm.username
-          : 'Rahul kaushal')
+        ? loginForm.username
+        : 'Rahul kaushal')
       : (loginForm.username === 'kashvi' ? 'Kashvi Sharma' : loginForm.username);
 
     const userData = {
@@ -198,10 +201,10 @@ function Profile({ defaultNav }) {
     const sponsorName = isRahul
       ? 'Rahul Kaushal'
       : isAmit
-      ? 'Amit Verma'
-      : isRohit
-      ? 'Rohit Singh'
-      : `Sponsor (${cleanSponsorId})`;
+        ? 'Amit Verma'
+        : isRohit
+          ? 'Rohit Singh'
+          : `Sponsor (${cleanSponsorId})`;
 
     const newMemberId = `KV-${Math.floor(1008 + Math.random() * 8990)}`;
     const userData = {
@@ -235,7 +238,7 @@ function Profile({ defaultNav }) {
       const existing = JSON.parse(localStorage.getItem('kashvi_downline_team') || '[]');
       existing.unshift(downlineItem);
       localStorage.setItem('kashvi_downline_team', JSON.stringify(existing));
-    } catch {}
+    } catch { }
 
     // Register with backend tree API if available
     if (api.enrollMember) {
@@ -244,7 +247,7 @@ function Profile({ defaultNav }) {
         firstName: registerForm.fullName.split(' ')[0],
         lastName: registerForm.fullName.split(' ').slice(1).join(' ') || 'Member',
         sponsorCode: cleanSponsorId,
-      }).catch(() => {});
+      }).catch(() => { });
     }
 
     setAuthSuccessMsg(`Registration successful! You have joined under ${sponsorName} (${cleanSponsorId}). Launching portal...`);
@@ -269,6 +272,7 @@ function Profile({ defaultNav }) {
       sponsorId: '',
       rememberMe: true,
     });
+    navigate("/login", { replace: true });
   };
 
   // Autofill Demo Account (Owner Profile: R@hul11 / KV-1001)
@@ -576,14 +580,14 @@ function Profile({ defaultNav }) {
                     >
                       ✓ Verified Sponsor:{' '}
                       {registerForm.sponsorId.toUpperCase() === 'KV-1001' ||
-                      registerForm.sponsorId === '88767139' ||
-                      registerForm.sponsorId.toLowerCase().includes('rahul')
+                        registerForm.sponsorId === '88767139' ||
+                        registerForm.sponsorId.toLowerCase().includes('rahul')
                         ? 'Rahul Kaushal (KV-1001) - You will join directly under Rahul'
                         : registerForm.sponsorId.toUpperCase() === 'KV-1002'
-                        ? 'Amit Verma (KV-1002) - You will join under Amit'
-                        : registerForm.sponsorId.toUpperCase() === 'KV-1003'
-                        ? 'Rohit Singh (KV-1003) - You will join under Rohit'
-                        : `Sponsor (${registerForm.sponsorId.toUpperCase()})`}
+                          ? 'Amit Verma (KV-1002) - You will join under Amit'
+                          : registerForm.sponsorId.toUpperCase() === 'KV-1003'
+                            ? 'Rohit Singh (KV-1003) - You will join under Rohit'
+                            : `Sponsor (${registerForm.sponsorId.toUpperCase()})`}
                     </span>
                   ) : (
                     <span className="auth-sponsor-hint">

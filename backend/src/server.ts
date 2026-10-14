@@ -15,7 +15,7 @@ async function startServer(): Promise<void> {
       if (env.NODE_ENV === 'production') {
         throw dbError;
       }
-      logger.warn('⚠️ Database connection could not be established. Ensure PostgreSQL is running.');
+      logger.warn('⚠️ Database connection could not be established. Run "npm run db:start" in a separate terminal (or use "npm run dev:all"), or ensure PostgreSQL is running.');
     }
 
     server.listen(env.PORT, () => {

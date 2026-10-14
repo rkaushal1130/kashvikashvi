@@ -97,20 +97,36 @@ cp .env.example .env
 npm run prisma:generate
 ```
 
-### 4. Run Migrations & Seed (When PostgreSQL is connected)
+### 4. Start PostgreSQL Database
+
+You can run the embedded PostgreSQL instance (requires no Docker or local postgres service):
+
+```bash
+npm run db:start
+```
+
+### 5. Run Migrations & Seed (When PostgreSQL is connected)
 
 ```bash
 npm run prisma:migrate
 npm run prisma:seed
 ```
 
-### 5. Start Development Server
+### 6. Start Development Server
+
+You can run the server in a separate terminal:
 
 ```bash
 npm run dev
 ```
 
-The server will start at `http://localhost:5000` with hot-reload enabled via `tsx`.
+Or run database and server together in a single command:
+
+```bash
+npm run dev:all
+```
+
+The server will start at `http://localhost:5001` with hot-reload enabled via `tsx`.
 
 ---
 

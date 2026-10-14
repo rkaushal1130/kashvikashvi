@@ -137,7 +137,13 @@ export function AuthProvider({ children }) {
     // loop: /auth/me 401 -> apiClient silent refresh -> handle401 -> this event ->
     // /auth/me -> ... which burned the API rate limit within minutes for anyone
     // visiting the app while signed out.
-    const handleAuthChange = () => {
+    const handleAuthChange = (e) => {
+      if (e?.detail?.type === 'logout') {
+        setCurrentUser(null);
+        setIsAuthenticated(false);
+        setLoading(false);
+        return;
+      }
       refreshUser();
     };
 
@@ -231,10 +237,11 @@ export function AuthProvider({ children }) {
       apiClient.clearToken();
       localStorage.removeItem('kashvi_token');
       localStorage.removeItem('kashvi_auth');
+      localStorage.removeItem('kashvi_current_user');
       setCurrentUser(null);
       setIsAuthenticated(false);
       setLoading(false);
-      window.dispatchEvent(new Event('kashvi_auth_change'));
+      window.dispatchEvent(new CustomEvent('kashvi_auth_change', { detail: { type: 'logout' } }));
     }
   };
 
