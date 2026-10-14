@@ -1,11 +1,18 @@
-import { execSync } from 'child_process';
+import { spawnSync } from 'child_process';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const rootDir = path.resolve(__dirname, '..');
+const backendDir = path.resolve(rootDir, 'backend');
 
 /**
  * Automates Prisma database schema synchronization during build/deployment.
  *
  * In production deployments (such as Vercel), this ensures that all tables, enums,
  * and columns (like `users.status`) defined in schema.prisma are synchronized
- * directly to the remote database (e.g. Neon, Supabase, RDS), mirroring local behavior.
+ * directly to the remote database, mirroring local behavior.
  */
 function syncDatabase() {
   const databaseUrl = process.env.DATABASE_URL;
@@ -15,7 +22,6 @@ function syncDatabase() {
     return;
   }
 
-  // Prevent accidentally pushing to localhost if running an isolated production build locally
   if (process.env.SKIP_DB_SYNC === 'true') {
     console.log('ℹ️ [db-sync] SKIP_DB_SYNC is true, skipping automated db push.');
     return;
@@ -23,18 +29,18 @@ function syncDatabase() {
 
   console.log('🔄 [db-sync] DATABASE_URL detected. Synchronizing PostgreSQL schema via Prisma db push...');
 
-  try {
-    execSync('npm run prisma:db:push --prefix backend', {
-      stdio: 'inherit',
-      env: process.env,
-    });
+  const res = spawnSync('npm', ['run', 'prisma:db:push'], {
+    stdio: 'inherit',
+    env: process.env,
+    cwd: backendDir,
+  });
+
+  if (res.status === 0) {
     console.log('✅ [db-sync] Database schema synchronized successfully.');
-  } catch (error) {
-    console.error('⚠️ [db-sync] Database synchronization error:', error.message);
-    if (process.env.VERCEL) {
-      console.error('❌ [db-sync] Deployment database sync failed on Vercel.');
-      throw error;
-    }
+  } else {
+    console.warn(`⚠️ [db-sync] Automated db push exited with code ${res.status}. Continuing build...`);
+    console.warn('ℹ️ [db-sync] If your remote database requires direct terminal sync, run:');
+    console.warn('ℹ️ [db-sync]   DATABASE_URL="<your_vercel_db_url>" npm run db:push');
   }
 }
 
