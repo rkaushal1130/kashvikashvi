@@ -66,6 +66,7 @@ async function main() {
     dbProcess = spawn('npx', ['tsx', path.resolve(__dirname, 'test-pg.ts')], {
       stdio: 'inherit',
       cwd: path.resolve(__dirname, '..'),
+      shell: true,
     });
 
     const ready = await waitForPort(5432);
@@ -81,6 +82,7 @@ async function main() {
   serverProcess = spawn('npx', ['tsx', 'watch', 'src/server.ts'], {
     stdio: 'inherit',
     cwd: path.resolve(__dirname, '..'),
+    shell: true,
   });
 
   serverProcess.on('exit', (code) => {

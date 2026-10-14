@@ -253,7 +253,7 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
   );
 
   // Member data (Owner: Rahul Kaushal)
-  const memberName =
+  const rawMemberName =
     effectiveUser?.distributorProfile?.name ||
     effectiveUser?.distributorProfile?.displayName ||
     effectiveUser?.distributorProfile?.fullName ||
@@ -261,21 +261,28 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
     effectiveUser?.displayName ||
     effectiveUser?.fullName ||
     'NA';
-  const memberId =
+  const memberName = typeof rawMemberName === 'object' ? (rawMemberName?.name || rawMemberName?.fullName || 'NA') : rawMemberName;
+
+  const rawMemberId =
     effectiveUser?.distributorProfile?.distributorCode ||
     effectiveUser?.memberId ||
     effectiveUser?.distributorId ||
     'NA';
-  const memberSince =
+  const memberId = typeof rawMemberId === 'object' ? (rawMemberId?.code || rawMemberId?.id || 'NA') : rawMemberId;
+
+  const rawMemberSince =
     effectiveUser?.distributorProfile?.joinDate ||
     effectiveUser?.memberSince ||
     effectiveUser?.since ||
     'NA';
-  const memberRank =
+  const memberSince = typeof rawMemberSince === 'object' ? (rawMemberSince?.date || rawMemberSince?.name || 'NA') : rawMemberSince;
+
+  const rawMemberRank =
     effectiveUser?.distributorProfile?.currentRank ||
     effectiveUser?.tier ||
     effectiveUser?.rank ||
     'NA';
+  const memberRank = typeof rawMemberRank === 'object' ? (rawMemberRank?.name || rawMemberRank?.title || 'NA') : rawMemberRank;
 
   // Format today's date dynamically
   const todayDateStr = new Intl.DateTimeFormat('en-US', {
@@ -315,64 +322,6 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
           </div>
         </div>
 
-        {/* 5 Prominent Quick Navigation Buttons */}
-        <div className="kashvimlm-quick-nav-bar">
-          <button
-            type="button"
-            className={`quick-nav-pill-btn ${activeNavIcon === 'dashboard' ? 'active' : ''}`}
-            onClick={() => {
-              setActiveNavIcon('dashboard');
-              setActiveTab('home');
-              navigate('/dashboard');
-            }}
-          >
-            <BarChart3 size={16} />
-            <span>Dashboard</span>
-          </button>
-          <button
-            type="button"
-            className={`quick-nav-pill-btn ${activeNavIcon === 'enroll' ? 'active' : ''}`}
-            onClick={() => setActiveNavIcon('enroll')}
-          >
-            <UserPlus size={16} />
-            <span>Enrollment</span>
-          </button>
-          <button
-            type="button"
-            className={`quick-nav-pill-btn ${activeNavIcon === 'network_tree' ? 'active' : ''}`}
-            onClick={() => setActiveNavIcon('network_tree')}
-          >
-            <Network size={16} />
-            <span>Tree</span>
-          </button>
-          <button
-            type="button"
-            className={`quick-nav-pill-btn ${activeNavIcon === 'manage_products' ? 'active' : ''}`}
-            onClick={() => setActiveNavIcon('manage_products')}
-          >
-            <PackagePlus size={16} />
-            <span>Add Product</span>
-          </button>
-          <button
-            type="button"
-            className={`quick-nav-pill-btn ${activeNavIcon === 'shop' ? 'active' : ''}`}
-            onClick={() => setActiveNavIcon('shop')}
-          >
-            <ShoppingCart size={16} />
-            <span>See Products</span>
-          </button>
-          {isAuthorizedAdmin && (
-            <button
-              type="button"
-              className="quick-nav-pill-btn admin-funding-portal-btn"
-              onClick={() => navigate('/admin/funding-portal')}
-              title="Open Admin Funding Portal"
-            >
-              <Landmark size={16} />
-              <span>Funding Portal</span>
-            </button>
-          )}
-        </div>
 
         <div className="kashvimlm-top-navbar-right">
           {/* Select Market Button */}
