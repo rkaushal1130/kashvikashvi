@@ -228,4 +228,173 @@ describe('PRODUCT MODULE AUTOMATED TESTS (Supertest + Vitest)', () => {
       expect(productSortEnum.safeParse('invalid_sort').success).toBe(false);
     });
   });
+
+  describe('7. Bulk Operations & RBAC Protection', () => {
+    it('should allow Admin to execute bulk-delete', async () => {
+      vi.spyOn(ProductService, 'bulkDeleteProducts').mockResolvedValue({ count: 2 } as any);
+
+      const res = await request(app)
+        .post('/api/v1/products/bulk-delete')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ ids: ['id-1', 'id-2'] })
+        .expect(200);
+
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.count).toBe(2);
+    });
+
+    it('should forbid regular distributor from executing bulk-delete (HTTP 403)', async () => {
+      const res = await request(app)
+        .post('/api/v1/products/bulk-delete')
+        .set('Authorization', `Bearer ${distributorToken}`)
+        .send({ ids: ['id-1', 'id-2'] })
+        .expect(403);
+
+      expect(res.body.success).toBe(false);
+      expect(res.body.code).toBe('AUTH_FORBIDDEN');
+    });
+
+    it('should reject unauthenticated bulk-delete request (HTTP 401)', async () => {
+      const res = await request(app)
+        .post('/api/v1/products/bulk-delete')
+        .send({ ids: ['id-1'] })
+        .expect(401);
+
+      expect(res.body.success).toBe(false);
+    });
+
+    it('should allow Admin to reset catalog pricing to zero', async () => {
+      vi.spyOn(ProductService, 'resetZeroProducts').mockResolvedValue({ count: 10 } as any);
+
+      const res = await request(app)
+        .post('/api/v1/products/reset-zero')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.count).toBe(10);
+    });
+
+    it('should forbid regular distributor from resetting catalog (HTTP 403)', async () => {
+      const res = await request(app)
+        .post('/api/v1/products/reset-zero')
+        .set('Authorization', `Bearer ${distributorToken}`)
+        .expect(403);
+
+      expect(res.body.success).toBe(false);
+      expect(res.body.code).toBe('AUTH_FORBIDDEN');
+    });
+
+    it('should allow Admin to load placeholder catalog', async () => {
+      vi.spyOn(ProductService, 'loadPlaceholders').mockResolvedValue(ProductService.FALLBACK_PRODUCTS as any);
+
+      const res = await request(app)
+        .post('/api/v1/products/load-placeholders')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+
+      expect(res.body.success).toBe(true);
+    });
+
+    it('should forbid regular distributor from loading placeholders (HTTP 403)', async () => {
+      const res = await request(app)
+        .post('/api/v1/products/load-placeholders')
+        .set('Authorization', `Bearer ${distributorToken}`)
+        .expect(403);
+
+      expect(res.body.success).toBe(false);
+      expect(res.body.code).toBe('AUTH_FORBIDDEN');
+    });
+  });
+
+  describe('8. PUT Product & Tamper Resistance', () => {
+    it('should allow Admin to full-update product (PUT /:id)', async () => {
+      const updated = {
+        id: productId,
+        name: 'Updated Product Name',
+        wholesalePrice: 40,
+        mrp: 60,
+        bv: 30,
+        stock: 100,
+      };
+      vi.spyOn(ProductService, 'updateProduct').mockResolvedValue(updated as any);
+
+      const res = await request(app)
+        .put(`/api/v1/products/${productId}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          wholesalePrice: 40,
+          mrp: 60,
+          bv: 30,
+          stock: 100,
+        })
+        .expect(200);
+
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.name).toBe('Updated Product Name');
+    });
+
+    it('should forbid distributor from PUT product (HTTP 403)', async () => {
+      const res = await request(app)
+        .put(`/api/v1/products/${productId}`)
+        .set('Authorization', `Bearer ${distributorToken}`)
+        .send({ wholesalePrice: 10 })
+        .expect(403);
+
+      expect(res.body.success).toBe(false);
+      expect(res.body.code).toBe('AUTH_FORBIDDEN');
+    });
+
+    it('should prevent distributor from bypassing authorization with client-supplied body roles', async () => {
+      // Distributor attempts to supply { role: 'ADMIN', isOwner: true } in the request body
+      const res = await request(app)
+        .patch(`/api/v1/products/${productId}`)
+        .set('Authorization', `Bearer ${distributorToken}`)
+        .send({
+          role: 'ADMIN',
+          isOwner: true,
+          wholesalePrice: 5,
+        })
+        .expect(403);
+
+      expect(res.body.success).toBe(false);
+      expect(res.body.code).toBe('AUTH_FORBIDDEN');
+    });
+  });
+
+  describe('9. Public Catalog Browsing Independence', () => {
+    it('should allow unauthenticated access to GET /categories', async () => {
+      const res = await request(app)
+        .get('/api/v1/products/categories')
+        .expect(200);
+
+      expect(res.body.success).toBe(true);
+      expect(Array.isArray(res.body.data)).toBe(true);
+    });
+
+    it('should allow distributor access to GET /categories', async () => {
+      const res = await request(app)
+        .get('/api/v1/products/categories')
+        .set('Authorization', `Bearer ${distributorToken}`)
+        .expect(200);
+
+      expect(res.body.success).toBe(true);
+    });
+
+    it('should allow unauthenticated access to GET /:slug', async () => {
+      vi.spyOn(ProductService, 'getProductBySlug').mockResolvedValue({
+        id: productId,
+        slug: 'activefit-graduated-compression-hosiery-pro',
+        name: 'ActiveFit Graduated Compression Hosiery Pro',
+      } as any);
+
+      const res = await request(app)
+        .get('/api/v1/products/activefit-graduated-compression-hosiery-pro')
+        .expect(200);
+
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.slug).toBe('activefit-graduated-compression-hosiery-pro');
+    });
+  });
 });
+

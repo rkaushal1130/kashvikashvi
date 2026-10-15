@@ -127,31 +127,31 @@ export class SponsorService {
    * Helper: Calculates available binary positions ('LEFT', 'RIGHT', both, or empty).
    */
   public static calculateAvailablePositions(sponsor: SponsorRecord): ('LEFT' | 'RIGHT')[] {
-    const distCode = (sponsor.distributorId || sponsor.distributorCode || '').toUpperCase();
-    if (distCode.includes('1001') || distCode.includes('RAHUL')) {
-      return ['RIGHT'];
-    }
-
     const primaryNode = sponsor.mlmNodes?.[0];
     const availablePositions: ('LEFT' | 'RIGHT')[] = [];
 
-    if (primaryNode && primaryNode.children) {
+    if (primaryNode && Array.isArray(primaryNode.children)) {
       const occupiedPositions = new Set(
         primaryNode.children
           .map((c) => c.placementPosition)
           .filter((pos): pos is 'LEFT' | 'RIGHT' => Boolean(pos))
       );
 
-      if (!occupiedPositions.has('RIGHT')) {
-        availablePositions.push('RIGHT');
-      }
       if (!occupiedPositions.has('LEFT')) {
         availablePositions.push('LEFT');
       }
-    } else {
-      availablePositions.push('RIGHT', 'LEFT');
+      if (!occupiedPositions.has('RIGHT')) {
+        availablePositions.push('RIGHT');
+      }
+      return availablePositions;
     }
 
+    const distCode = (sponsor.distributorId || sponsor.distributorCode || '').toUpperCase();
+    if (distCode.includes('1001') || distCode.includes('RAHUL')) {
+      return ['RIGHT'];
+    }
+
+    availablePositions.push('LEFT', 'RIGHT');
     return availablePositions;
   }
 

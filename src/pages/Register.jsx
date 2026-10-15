@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
+import { api } from '../services/api.js';
 import {
   User,
   Mail,
@@ -14,6 +15,7 @@ import {
   CheckCircle2,
   Loader2,
   Sparkles,
+  ShieldCheck,
 } from 'lucide-react';
 import './Login.css';
 
@@ -48,13 +50,77 @@ export function Register() {
   const [isDuplicateEmail, setIsDuplicateEmail] = useState(false);
   const [successData, setSuccessData] = useState(null);
 
+  // Live Sponsor Verification State
+  const [sponsorStatus, setSponsorStatus] = useState({
+    state: 'VALIDATING', // 'IDLE' | 'VALIDATING' | 'VALID' | 'INVALID'
+    sponsor: null,
+    error: null,
+  });
+
+  // Verify sponsor against backend
+  const verifySponsor = useCallback(async (code) => {
+    const clean = (code || '').trim();
+    if (!clean) {
+      setSponsorStatus({ state: 'INVALID', sponsor: null, error: 'Sponsor ID is required.' });
+      return;
+    }
+
+    setSponsorStatus((prev) => ({ ...prev, state: 'VALIDATING', error: null }));
+    try {
+      const res = await api.validateSponsor(clean);
+      if (res && res.success && res.data?.sponsor) {
+        if (res.data.sponsor.status !== 'ACTIVE') {
+          setSponsorStatus({
+            state: 'INVALID',
+            sponsor: null,
+            error: 'The sponsor account is currently inactive.',
+          });
+        } else {
+          setSponsorStatus({
+            state: 'VALID',
+            sponsor: res.data.sponsor,
+            error: null,
+          });
+          // Preserve sponsor ID in storage
+          try {
+            localStorage.setItem('kashvi_active_sponsor', res.data.sponsor.distributorId);
+          } catch {
+            // Safe storage fallback
+          }
+        }
+      } else {
+        setSponsorStatus({
+          state: 'INVALID',
+          sponsor: null,
+          error: res?.message || 'Invalid sponsor ID. Account not found.',
+        });
+      }
+    } catch (err) {
+      const errMsg = err?.message || 'Invalid or inactive sponsor ID.';
+      setSponsorStatus({
+        state: 'INVALID',
+        sponsor: null,
+        error: errMsg,
+      });
+    }
+  }, []);
+
+  // Live validation on mount or when referralCode changes (debounced)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      verifySponsor(formData.referralCode);
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [formData.referralCode, verifySponsor]);
+
   // Sync referral code if URL query parameter changes or arrives
   useEffect(() => {
     if (refFromUrl) {
       setFormData((prev) => ({ ...prev, referralCode: refFromUrl }));
       setHasUrlRef(true);
+      verifySponsor(refFromUrl);
     }
-  }, [refFromUrl]);
+  }, [refFromUrl, verifySponsor]);
 
   // If already authenticated and not in middle of showing success, navigate straight to dashboard
   useEffect(() => {
@@ -122,6 +188,13 @@ export function Register() {
       errors.confirmPassword = 'Passwords do not match.';
     }
 
+    // Sponsor Validation
+    if (!formData.referralCode.trim()) {
+      errors.referralCode = 'Sponsor ID is required.';
+    } else if (sponsorStatus.state === 'INVALID') {
+      errors.referralCode = sponsorStatus.error || 'Invalid or inactive sponsor ID.';
+    }
+
     return errors;
   };
 
@@ -133,6 +206,21 @@ export function Register() {
 
     setGeneralError(null);
     setIsDuplicateEmail(false);
+
+    // Pre-flight sponsor validation checks
+    if (sponsorStatus.state === 'VALIDATING') {
+      setGeneralError('Please wait while we verify your sponsor ID...');
+      return;
+    }
+
+    if (sponsorStatus.state === 'INVALID') {
+      setFieldErrors((prev) => ({
+        ...prev,
+        referralCode: sponsorStatus.error || 'Invalid or inactive sponsor ID.',
+      }));
+      setGeneralError('A valid active sponsor is required to register. Please check your referral link.');
+      return;
+    }
 
     // Client-side validation
     const clientErrors = validateForm();
@@ -385,6 +473,101 @@ export function Register() {
                 {fieldErrors.referralCode}
               </span>
             )}
+
+            {/* Live Sponsor Verification Card */}
+            {sponsorStatus.state === 'VALID' && sponsorStatus.sponsor && (
+              <div
+                style={{
+                  marginTop: '10px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  padding: '10px 14px',
+                  background: '#f0fdf4',
+                  border: '1px solid #bbf7d0',
+                  borderRadius: '10px',
+                }}
+              >
+                <CheckCircle2 size={18} style={{ color: '#16a34a', flexShrink: 0 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: '11px', color: '#15803d', fontWeight: 600 }}>
+                    Sponsored by
+                  </div>
+                  <div style={{ fontSize: '13px', fontWeight: 700, color: '#166534' }}>
+                    {sponsorStatus.sponsor.name}{' '}
+                    <span
+                      style={{
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        color: '#15803d',
+                        background: '#dcfce7',
+                        padding: '1px 6px',
+                        borderRadius: '4px',
+                        marginLeft: '4px',
+                      }}
+                    >
+                      {sponsorStatus.sponsor.distributorId}
+                    </span>
+                  </div>
+                </div>
+                <span
+                  style={{
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    color: '#15803d',
+                    background: '#dcfce7',
+                    padding: '3px 8px',
+                    borderRadius: '12px',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  Verified Active
+                </span>
+              </div>
+            )}
+
+            {sponsorStatus.state === 'VALIDATING' && (
+              <div
+                style={{
+                  marginTop: '10px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '8px 12px',
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '8px',
+                  fontSize: '12px',
+                  color: '#64748b',
+                }}
+              >
+                <Loader2 size={14} className="animate-spin" style={{ color: '#3b82f6' }} />
+                <span>Checking sponsor ID...</span>
+              </div>
+            )}
+
+            {sponsorStatus.state === 'INVALID' && (
+              <div
+                style={{
+                  marginTop: '10px',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: '8px',
+                  padding: '10px 12px',
+                  background: '#fef2f2',
+                  border: '1px solid #fecaca',
+                  borderRadius: '8px',
+                  fontSize: '12px',
+                  color: '#991b1b',
+                }}
+              >
+                <AlertCircle size={16} style={{ color: '#dc2626', flexShrink: 0, marginTop: '1px' }} />
+                <div>
+                  <strong>Invalid Sponsor:</strong>{' '}
+                  {sponsorStatus.error || 'The sponsor ID is not valid or active.'}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Password & Confirm Password Grid */}
@@ -460,8 +643,27 @@ export function Register() {
           <button
             type="submit"
             className="submit-auth-btn"
-            disabled={loading || Boolean(successData)}
-            style={{ marginTop: '8px' }}
+            disabled={
+              loading ||
+              Boolean(successData) ||
+              sponsorStatus.state === 'INVALID' ||
+              sponsorStatus.state === 'VALIDATING'
+            }
+            style={{
+              marginTop: '8px',
+              opacity:
+                loading ||
+                sponsorStatus.state === 'INVALID' ||
+                sponsorStatus.state === 'VALIDATING'
+                  ? 0.65
+                  : 1,
+              cursor:
+                loading ||
+                sponsorStatus.state === 'INVALID' ||
+                sponsorStatus.state === 'VALIDATING'
+                  ? 'not-allowed'
+                  : 'pointer',
+            }}
           >
             {loading ? (
               <>

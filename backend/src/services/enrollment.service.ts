@@ -1309,7 +1309,7 @@ export class EnrollmentService {
         });
 
         // 9. Process Starter Kit Initial Order
-        const pkgPrice = enrollment.packagePrice || new Prisma.Decimal('249.99');
+        const pkgPrice = enrollment.packagePrice || new Prisma.Decimal('1.00');
         const pkgBV = enrollment.packageBV || new Prisma.Decimal('200.00');
         const orderNumber = `ORD-${Math.floor(100000 + Math.random() * 900000)}`;
 

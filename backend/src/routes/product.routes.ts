@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { ProductController } from '../controllers/product.controller';
 import { authenticate } from '../middleware/auth';
-import { authorizeRoles } from '../middleware/role';
+import { requireProductManagementAccess } from '../middleware/role';
 import { validate } from '../middleware/validate';
 import {
   createProductSchema,
@@ -13,6 +13,11 @@ import {
 
 const router = Router();
 
+// ==========================================
+// PUBLIC CATALOG BROWSING ENDPOINTS
+// Accessible to distributors, retail customers, and visitors
+// ==========================================
+
 // GET /api/v1/products/categories - List database-driven categories
 router.get('/categories', ProductController.getCategories);
 
@@ -23,38 +28,77 @@ router.get(
   ProductController.getProducts
 );
 
-// GET /api/v1/products/:slug - Retrieve product by slug or ID
+// ==========================================
+// ADMIN & AUTHORIZED OWNER ONLY MANAGEMENT ENDPOINTS
+// Strictly protected: 401 for unauthenticated, 403 for regular distributors / sponsored users
+// ==========================================
+
+// Bulk Delete Products
+router.post(
+  '/bulk-delete',
+  authenticate,
+  requireProductManagementAccess,
+  ProductController.bulkDelete
+);
+
+// Reset Catalog Pricing and BV to Zero
+router.post(
+  '/reset-zero',
+  authenticate,
+  requireProductManagementAccess,
+  ProductController.resetZero
+);
+
+// Load / Restore Placeholder Catalog
+router.post(
+  '/load-placeholders',
+  authenticate,
+  requireProductManagementAccess,
+  ProductController.loadPlaceholders
+);
+
+// GET /api/v1/products/:slug - Retrieve product by slug or ID (Public read)
 router.get(
   '/:slug',
   validate({ params: productSlugParamSchema }),
   ProductController.getProductBySlug
 );
 
-// Admin-Only: POST /api/v1/products - Create a new product
+// Create a new product
 router.post(
   '/',
   authenticate,
-  authorizeRoles('ADMIN', 'SUPER_ADMIN'),
+  requireProductManagementAccess,
   validate({ body: createProductSchema }),
   ProductController.createProduct
 );
 
-// Admin-Only: PATCH /api/v1/products/:id - Update product
+// Full update / replace product
+router.put(
+  '/:id',
+  authenticate,
+  requireProductManagementAccess,
+  validate({ params: productIdParamSchema, body: updateProductSchema }),
+  ProductController.putProduct
+);
+
+// Partial update product (pricing, BV, stock, status)
 router.patch(
   '/:id',
   authenticate,
-  authorizeRoles('ADMIN', 'SUPER_ADMIN'),
+  requireProductManagementAccess,
   validate({ params: productIdParamSchema, body: updateProductSchema }),
   ProductController.updateProduct
 );
 
-// Admin-Only: DELETE /api/v1/products/:id - Soft-delete product
+// Soft-delete product
 router.delete(
   '/:id',
   authenticate,
-  authorizeRoles('ADMIN', 'SUPER_ADMIN'),
+  requireProductManagementAccess,
   validate({ params: productIdParamSchema }),
   ProductController.deleteProduct
 );
 
 export const productRouter = router;
+

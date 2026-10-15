@@ -19,10 +19,12 @@ import {
   BookOpen,
   LogOut,
   Shield,
+  ShieldAlert,
   TrendingUp,
   Globe,
   Network,
   Landmark,
+  Wallet,
 } from 'lucide-react';
 import './DistributorDashboard.css';
 
@@ -31,6 +33,7 @@ import EnrollmentView from './EnrollmentView';
 import ShopView from './ShopView';
 import ProductManagerView from './ProductManagerView';
 import NetworkTreePage from '../../pages/NetworkTreePage';
+import ClientFundingView from './ClientFundingView';
 import { getStoredCatalog } from '../../data/productCatalog';
 import { api } from '../../services/api.js';
 import { useAuth } from '../../context/AuthContext.jsx';
@@ -240,16 +243,19 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
     },
   };
 
+  const canManageProducts = Boolean(
+    auth?.canManageProducts ||
+    auth?.isAdmin ||
+    auth?.isOwner ||
+    effectiveUser?.role?.toUpperCase() === 'ADMIN' ||
+    effectiveUser?.role?.toUpperCase() === 'SUPER_ADMIN' ||
+    effectiveUser?.isOwner === true
+  );
+
   const isAuthorizedAdmin = Boolean(
     auth?.isAdmin ||
     effectiveUser?.role?.toUpperCase() === 'ADMIN' ||
-    effectiveUser?.role?.toUpperCase() === 'SUPER_ADMIN' ||
-    effectiveUser?.role?.toUpperCase() === 'OWNER' ||
-    effectiveUser?.isOwner ||
-    effectiveUser?.memberId === 'KV-1001' ||
-    effectiveUser?.distributorId === 'KV-1001' ||
-    effectiveUser?.name?.toLowerCase().includes('rahul') ||
-    effectiveUser?.email?.toLowerCase().includes('admin')
+    effectiveUser?.role?.toUpperCase() === 'SUPER_ADMIN'
   );
 
   // Member data (Owner: Rahul Kaushal)
@@ -526,22 +532,24 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
             <span className="rail-tooltip">Shop</span>
           </button>
 
-          {/* 4. Product Management */}
-          <button
-            type="button"
-            className={`rail-icon-btn ${activeNavIcon === 'manage_products' ? 'active' : ''}`}
-            onClick={() => {
-              setActiveNavIcon('manage_products');
-              if (location.pathname !== '/dashboard' && location.pathname !== '/profile') {
-                navigate('/dashboard');
-              }
-            }}
-            title="Product Management"
-            aria-label="Product Management"
-          >
-            <PackagePlus size={20} />
-            <span className="rail-tooltip">Product Management</span>
-          </button>
+          {/* 4. Product Management (Admin / Authorized Owner Only) */}
+          {canManageProducts && (
+            <button
+              type="button"
+              className={`rail-icon-btn ${activeNavIcon === 'manage_products' ? 'active' : ''}`}
+              onClick={() => {
+                setActiveNavIcon('manage_products');
+                if (location.pathname !== '/dashboard' && location.pathname !== '/profile') {
+                  navigate('/dashboard');
+                }
+              }}
+              title="Product Management"
+              aria-label="Product Management"
+            >
+              <PackagePlus size={20} />
+              <span className="rail-tooltip">Product Management</span>
+            </button>
+          )}
 
           {/* 5. Network Tree */}
           <button
@@ -558,7 +566,24 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
             <span className="rail-tooltip">Network Tree</span>
           </button>
 
-          {/* 6. Admin Funding Portal */}
+          {/* 6. Client Funding & Bank Account Portal */}
+          <button
+            type="button"
+            className={`rail-icon-btn ${activeNavIcon === 'funding' ? 'active' : ''}`}
+            onClick={() => {
+              setActiveNavIcon('funding');
+              if (location.pathname !== '/dashboard' && location.pathname !== '/profile') {
+                navigate('/dashboard');
+              }
+            }}
+            title="Funding & Bank Portal"
+            aria-label="Funding & Bank Portal"
+          >
+            <Wallet size={20} />
+            <span className="rail-tooltip">Funding & Bank Portal</span>
+          </button>
+
+          {/* 7. Admin Corporate Funding Portal */}
           {isAuthorizedAdmin && (
             <button
               type="button"
@@ -1620,15 +1645,64 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
           )}
 
           {/* ===================================================================
-              ROLE 4: PRODUCT & PRICING MANAGER (ID Owner Only)
+              ROLE 4: PRODUCT & PRICING MANAGER (Admin / Authorized Owner Only)
               =================================================================== */}
           {activeNavIcon === 'manage_products' && (
-            <ProductManagerView
-              user={effectiveUser}
-              catalog={catalog}
-              onUpdateCatalog={setCatalog}
-              onNavigate={setActiveNavIcon}
-            />
+            canManageProducts ? (
+              <ProductManagerView
+                user={effectiveUser}
+                catalog={catalog}
+                onUpdateCatalog={setCatalog}
+                onNavigate={setActiveNavIcon}
+              />
+            ) : (
+              <div style={{
+                maxWidth: '520px',
+                margin: '60px auto',
+                padding: '36px 32px',
+                background: '#ffffff',
+                borderRadius: '16px',
+                border: '1px solid #fee2e2',
+                textAlign: 'center',
+                boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.01)'
+              }}>
+                <div style={{
+                  width: '64px',
+                  height: '64px',
+                  borderRadius: '50%',
+                  background: '#fef2f2',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  margin: '0 auto 16px',
+                  color: '#ef4444'
+                }}>
+                  <ShieldAlert size={32} />
+                </div>
+                <h2 style={{ fontSize: '22px', fontWeight: 800, color: '#0f172a', marginBottom: '8px', letterSpacing: '-0.02em' }}>
+                  403 — Access Denied
+                </h2>
+                <p style={{ fontSize: '14px', color: '#64748b', lineHeight: '1.6', marginBottom: '24px' }}>
+                  The <strong>Product &amp; Pricing Management Center</strong> is restricted exclusively to authorized administrators and explicitly verified business center owners. Regular distributors and sponsored users cannot access this area.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setActiveNavIcon('dashboard')}
+                  style={{
+                    padding: '10px 24px',
+                    background: '#2563eb',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '8px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    boxShadow: '0 4px 12px rgba(37, 99, 235, 0.2)'
+                  }}
+                >
+                  Return to Dashboard
+                </button>
+              </div>
+            )
           )}
 
           {/* ===================================================================
@@ -1636,6 +1710,13 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
               =================================================================== */}
           {activeNavIcon === 'network_tree' && (
             <NetworkTreePage embedded={true} />
+          )}
+
+          {/* ===================================================================
+              ROLE 6: CLIENT FUNDING & BANK ACCOUNT PORTAL
+              =================================================================== */}
+          {activeNavIcon === 'funding' && (
+            <ClientFundingView user={effectiveUser} />
           )}
         </main>
       </div>

@@ -1011,3 +1011,332 @@
   to { transform: rotate(360deg); }
 }
 
+/* --------------------------------------------------------------------------
+   Razorpay Enrollment Payment Modal
+   -------------------------------------------------------------------------- */
+.enroll-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.enroll-payment-modal-card {
+  background: #ffffff;
+  border-radius: 16px;
+  max-width: 580px;
+  width: 100%;
+  box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.25);
+  border: 1px solid #e2e8f0;
+  overflow: hidden;
+  animation: slideUp 0.25s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.enroll-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  background: linear-gradient(135deg, #005086 0%, #00365c 100%);
+  color: #ffffff;
+}
+
+.modal-header-icon-title {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.razorpay-logo-badge {
+  width: 44px;
+  height: 44px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #38bdf8;
+}
+
+.enroll-payment-modal-card .modal-title {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0;
+  color: #ffffff;
+}
+
+.enroll-payment-modal-card .modal-subtitle {
+  font-size: 12.5px;
+  color: #93c5fd;
+  margin: 3px 0 0 0;
+}
+
+.enroll-modal-close-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: #ffffff;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.enroll-modal-close-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.enroll-payment-body {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.payment-summary-box {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 16px 20px;
+}
+
+.summary-top-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 12px;
+  border-bottom: 1px dashed #cbd5e1;
+}
+
+.summary-kit-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #64748b;
+  letter-spacing: 0.5px;
+}
+
+.summary-kit-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 2px 0 0 0;
+}
+
+.summary-kit-price-tag {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  color: #005086;
+  font-weight: 800;
+}
+
+.summary-kit-price-tag .currency-symbol {
+  font-size: 16px;
+}
+
+.summary-kit-price-tag .price-num {
+  font-size: 26px;
+}
+
+.summary-details-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px 16px;
+  margin-top: 12px;
+}
+
+.summary-detail-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.summary-detail-item .detail-label {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.summary-detail-item .detail-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.gateway-select-card {
+  border: 2px solid #0284c7;
+  background-color: #f0f9ff;
+  border-radius: 12px;
+  padding: 16px;
+  position: relative;
+}
+
+.gateway-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.gateway-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rzp-pill {
+  background: #005086;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 2px 7px;
+  border-radius: 4px;
+  letter-spacing: 0.5px;
+}
+
+.secure-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: #0369a1;
+  font-weight: 600;
+}
+
+.gateway-card-desc {
+  font-size: 12.5px;
+  color: #334155;
+  margin: 0 0 10px 0;
+  line-height: 1.4;
+}
+
+.gateway-methods-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.method-chip {
+  background: #ffffff;
+  border: 1px solid #bae6fd;
+  color: #0284c7;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+.payment-error-alert {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 12.5px;
+}
+
+.payment-actions-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.btn-pay-razorpay {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px;
+  background: linear-gradient(135deg, #0284c7 0%, #005086 100%);
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 4px 12px rgba(2, 132, 199, 0.3);
+}
+
+.btn-pay-razorpay:hover:not(:disabled) {
+  opacity: 0.95;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(2, 132, 199, 0.4);
+}
+
+.btn-pay-razorpay:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.test-sandbox-divider {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  color: #94a3b8;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  margin: 4px 0;
+}
+
+.test-sandbox-divider::before,
+.test-sandbox-divider::after {
+  content: '';
+  flex: 1;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.test-sandbox-divider span {
+  padding: 0 10px;
+}
+
+.btn-pay-demo-simulation {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 11px;
+  background: #f1f5f9;
+  border: 1px dashed #cbd5e1;
+  color: #475569;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-pay-demo-simulation:hover:not(:disabled) {
+  background: #e2e8f0;
+  color: #1e293b;
+  border-color: #94a3b8;
+}
+

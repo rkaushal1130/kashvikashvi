@@ -28,6 +28,9 @@ const envSchema = z.object({
   RAZORPAYX_KEY_SECRET: z.string().optional(),
   RAZORPAYX_WEBHOOK_SECRET: z.string().optional(),
   RAZORPAYX_ACCOUNT_NUMBER: z.string().optional(),
+  RAZORPAY_KEY_ID: z.string().optional(),
+  RAZORPAY_KEY_SECRET: z.string().optional(),
+  RAZORPAY_WEBHOOK_SECRET: z.string().optional(),
 });
 
 const parseEnv = () => {

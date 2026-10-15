@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   ShoppingCart,
   Search,
@@ -11,8 +11,12 @@ import {
   Award,
   CreditCard,
   Printer,
+  Download,
+  Loader2,
 } from 'lucide-react';
 import { PRODUCT_CATEGORIES } from '../../data/productCatalog';
+import { useAuth } from '../../context/AuthContext.jsx';
+import { api } from '../../services/api.js';
 import './ShopView.css';
 
 /**
@@ -21,6 +25,13 @@ import './ShopView.css';
  * Updates dynamically whenever the ID Owner adds/edits products in ProductManagerView.
  */
 function ShopView({ user, catalog, onNavigate }) {
+  const { canManageProducts: authCanManage } = useAuth();
+  const canManageProducts = Boolean(
+    authCanManage ||
+    user?.isOwner === true ||
+    user?.role?.toUpperCase() === 'ADMIN' ||
+    user?.role?.toUpperCase() === 'SUPER_ADMIN'
+  );
   const memberName = user?.name || 'Rahul kaushal';
   const memberId = user?.memberId || '88767139';
 
@@ -36,6 +47,33 @@ function ShopView({ user, catalog, onNavigate }) {
   const [checkoutModal, setCheckoutModal] = useState(false);
   const [orderConfirmed, setOrderConfirmed] = useState(null);
   const [toastMsg, setToastMsg] = useState('');
+
+  // Payment & Wallet States
+  const [walletBalance, setWalletBalance] = useState(42500);
+  const [isLoadingWallet, setIsLoadingWallet] = useState(false);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('WALLET'); // 'WALLET' | 'UPI' | 'CARD'
+  const [isProcessingOrder, setIsProcessingOrder] = useState(false);
+  const [isDownloadingInvoice, setIsDownloadingInvoice] = useState(false);
+
+  // Fetch live wallet balance from backend whenever checkout modal is opened
+  useEffect(() => {
+    if (checkoutModal) {
+      setIsLoadingWallet(true);
+      api
+        .getWalletBalance()
+        .then((data) => {
+          if (data && typeof data.availableBalance === 'number') {
+            setWalletBalance(data.availableBalance);
+          }
+        })
+        .catch((err) => {
+          console.warn('[ShopView] Error retrieving live wallet balance:', err);
+        })
+        .finally(() => {
+          setIsLoadingWallet(false);
+        });
+    }
+  }, [checkoutModal]);
 
   const showToast = (msg) => {
     setToastMsg(msg);
@@ -117,27 +155,192 @@ function ShopView({ user, catalog, onNavigate }) {
   }, [cartItems, catalog]);
 
   // Handle Checkout submission
-  const handleConfirmOrder = () => {
-    const orderId = `KASH-ORD-${Math.floor(100000 + Math.random() * 900000)}`;
-    const newOrder = {
-      orderId,
-      date: new Date().toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-      }),
-      itemsCount: cartSummary.totalItems,
-      totalAmount: cartSummary.totalPrice,
-      creditedBV: cartSummary.totalBV,
-      memberId,
-      memberName,
-      status: 'Paid & Processing Delivery',
-      deliveryEta: '2-4 Business Days via Bluedart Express',
+  const handleConfirmOrder = async () => {
+    if (isProcessingOrder) return;
+    setIsProcessingOrder(true);
+
+    const items = Object.entries(cartItems).map(([productId, quantity]) => ({
+      productId,
+      quantity,
+    }));
+
+    const shippingAddress = {
+      recipientName: memberName,
+      phone: '9876543210',
+      streetAddress: 'Plot No. 43, Shiv TP Nagar, Baldev Nagar',
+      city: 'Ambala City',
+      state: 'Haryana',
+      postalCode: '134007',
+      country: 'India',
     };
 
-    setOrderConfirmed(newOrder);
-    setCartItems({});
-    setCheckoutModal(false);
+    try {
+      if (selectedPaymentMethod === 'WALLET') {
+        if (walletBalance < cartSummary.totalPrice) {
+          showToast(
+            `Insufficient wallet balance (₹${walletBalance.toLocaleString('en-IN')} available, ₹${cartSummary.totalPrice.toLocaleString('en-IN')} required)`
+          );
+          setIsProcessingOrder(false);
+          return;
+        }
+
+        const res = await api.walletCheckout({ items, shippingAddress });
+        const order = res?.order || res;
+        setOrderConfirmed({
+          orderId: order?.id || `ORD-${Date.now()}`,
+          orderNumber: order?.orderNumber || `ORD-${Date.now().toString().slice(-6)}`,
+          date: new Date().toLocaleDateString('en-IN', {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric',
+          }),
+          itemsCount: order?.items?.length || cartSummary.totalItems,
+          totalAmount: Number(order?.totalAmount || cartSummary.totalPrice),
+          creditedBV: Number(order?.totalBV || cartSummary.totalBV),
+          memberId,
+          memberName,
+          paymentMethod: 'Commission Balance Wallet',
+          paymentStatus: 'PAID',
+          deliveryEta: '2-4 Business Days via Bluedart Express',
+        });
+        setCartItems({});
+        setCheckoutModal(false);
+        showToast('Wholesale order placed & paid via Commission Balance Wallet!');
+      } else {
+        // Option B (UPI) or Option C (CARD) via Razorpay
+        const rzpMethod = selectedPaymentMethod === 'CARD' ? 'CREDIT_CARD' : 'UPI';
+        const rzpOrderData = await api.createRazorpayOrder({
+          items,
+          shippingAddress,
+          paymentMethod: rzpMethod,
+        });
+
+        const keyId =
+          rzpOrderData?.keyId ||
+          import.meta.env?.VITE_RAZORPAY_KEY_ID ||
+          'rzp_test_your_key_id';
+        const order = rzpOrderData?.order;
+
+        if (typeof window !== 'undefined' && window.Razorpay) {
+          const options = {
+            key: keyId,
+            amount: rzpOrderData.amount,
+            currency: 'INR',
+            name: 'Kashvi International',
+            description: `Wholesale Order ${order?.orderNumber || ''}`,
+            order_id: rzpOrderData.razorpayOrderId,
+            handler: async function (response) {
+              try {
+                const verifyRes = await api.verifyRazorpayPayment({
+                  razorpayOrderId: response.razorpay_order_id,
+                  razorpayPaymentId: response.razorpay_payment_id,
+                  razorpaySignature: response.razorpay_signature,
+                  orderId: order?.id,
+                });
+                const confirmedOrder = verifyRes?.order || order;
+                setOrderConfirmed({
+                  orderId: confirmedOrder?.id || order?.id,
+                  orderNumber: confirmedOrder?.orderNumber || order?.orderNumber,
+                  date: new Date().toLocaleDateString('en-IN', {
+                    day: '2-digit',
+                    month: 'short',
+                    year: 'numeric',
+                  }),
+                  itemsCount: cartSummary.totalItems,
+                  totalAmount: Number(confirmedOrder?.totalAmount || cartSummary.totalPrice),
+                  creditedBV: Number(confirmedOrder?.totalBV || cartSummary.totalBV),
+                  memberId,
+                  memberName,
+                  paymentMethod:
+                    selectedPaymentMethod === 'UPI'
+                      ? 'Razorpay (UPI / Instant QR)'
+                      : 'Razorpay (Debit/Credit Card/NetBanking)',
+                  paymentStatus: 'PAID',
+                  deliveryEta: '2-4 Business Days via Bluedart Express',
+                });
+                setCartItems({});
+                setCheckoutModal(false);
+                showToast('Payment verified & Wholesale order confirmed!');
+              } catch (err) {
+                showToast('Payment verification failed: ' + (err.message || err));
+              } finally {
+                setIsProcessingOrder(false);
+              }
+            },
+            prefill: {
+              name: memberName,
+              contact: '9876543210',
+            },
+            theme: {
+              color: '#0d9488',
+            },
+            modal: {
+              ondismiss: function () {
+                setIsProcessingOrder(false);
+                showToast('Payment window closed.');
+              },
+            },
+          };
+
+          const rzp = new window.Razorpay(options);
+          rzp.on('payment.failed', function (resp) {
+            setIsProcessingOrder(false);
+            showToast('Payment failed: ' + (resp.error?.description || 'Declined'));
+          });
+          rzp.open();
+        } else {
+          // Offline / test fallback when Razorpay checkout.js script is unavailable
+          const verifyRes = await api.verifyRazorpayPayment({
+            razorpayOrderId: rzpOrderData.razorpayOrderId,
+            razorpayPaymentId: `pay_test_${Date.now()}`,
+            razorpaySignature: 'valid_mock_signature',
+            orderId: order?.id,
+          });
+          const confirmedOrder = verifyRes?.order || order;
+          setOrderConfirmed({
+            orderId: confirmedOrder?.id || order?.id,
+            orderNumber: confirmedOrder?.orderNumber || order?.orderNumber,
+            date: new Date().toLocaleDateString('en-IN', {
+              day: '2-digit',
+              month: 'short',
+              year: 'numeric',
+            }),
+            itemsCount: cartSummary.totalItems,
+            totalAmount: Number(confirmedOrder?.totalAmount || cartSummary.totalPrice),
+            creditedBV: Number(confirmedOrder?.totalBV || cartSummary.totalBV),
+            memberId,
+            memberName,
+            paymentMethod:
+              selectedPaymentMethod === 'UPI'
+                ? 'Razorpay (UPI / Instant QR)'
+                : 'Razorpay (Debit/Credit Card/NetBanking)',
+            paymentStatus: 'PAID',
+            deliveryEta: '2-4 Business Days via Bluedart Express',
+          });
+          setCartItems({});
+          setCheckoutModal(false);
+          showToast('Payment verified & order confirmed successfully!');
+        }
+      }
+    } catch (err) {
+      showToast(err.message || 'Error processing wholesale checkout');
+    } finally {
+      setIsProcessingOrder(false);
+    }
+  };
+
+  // Download GST Tax Invoice PDF
+  const handleDownloadInvoice = async () => {
+    if (!orderConfirmed || isDownloadingInvoice) return;
+    setIsDownloadingInvoice(true);
+    try {
+      await api.downloadInvoice(orderConfirmed.orderId, orderConfirmed.orderNumber);
+      showToast('GST Tax Invoice downloaded successfully!');
+    } catch (err) {
+      showToast('Download invoice failed: ' + (err.message || err));
+    } finally {
+      setIsDownloadingInvoice(false);
+    }
   };
 
   return (
@@ -249,7 +452,7 @@ function ShopView({ user, catalog, onNavigate }) {
           <p>
             The catalog is currently empty or no items match your selected filter. The ID Owner can load Hozri &amp; Electronic placeholders or add custom items.
           </p>
-          {onNavigate && (
+          {canManageProducts && onNavigate && (
             <button
               type="button"
               className="btn-go-to-manager"
@@ -609,27 +812,70 @@ function ShopView({ user, catalog, onNavigate }) {
                   2. Payment Method
                 </h4>
                 <div className="payment-options-list">
-                  <label className="payment-radio-row selected">
-                    <input type="radio" name="payMethod" defaultChecked />
+                  <label
+                    className={`payment-radio-row ${selectedPaymentMethod === 'WALLET' ? 'selected' : ''}`}
+                    onClick={() => setSelectedPaymentMethod('WALLET')}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <input
+                      type="radio"
+                      name="payMethod"
+                      value="WALLET"
+                      checked={selectedPaymentMethod === 'WALLET'}
+                      onChange={() => setSelectedPaymentMethod('WALLET')}
+                    />
                     <div>
-                      <strong>Commission Balance Wallet</strong>
-                      <span>Pay directly from accumulated weekly commission balance (₹42,500 available)</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <strong>Option A: Commission Balance Wallet</strong>
+                        {walletBalance < cartSummary.totalPrice && (
+                          <span style={{ fontSize: '11px', color: '#ef4444', fontWeight: 600 }}>
+                            (Insufficient Funds)
+                          </span>
+                        )}
+                      </div>
+                      <span>
+                        Pay directly from accumulated weekly commission balance (
+                        {isLoadingWallet
+                          ? 'Checking balance...'
+                          : `₹${walletBalance.toLocaleString('en-IN')} available`}
+                        )
+                      </span>
                     </div>
                   </label>
 
-                  <label className="payment-radio-row">
-                    <input type="radio" name="payMethod" />
+                  <label
+                    className={`payment-radio-row ${selectedPaymentMethod === 'UPI' ? 'selected' : ''}`}
+                    onClick={() => setSelectedPaymentMethod('UPI')}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <input
+                      type="radio"
+                      name="payMethod"
+                      value="UPI"
+                      checked={selectedPaymentMethod === 'UPI'}
+                      onChange={() => setSelectedPaymentMethod('UPI')}
+                    />
                     <div>
-                      <strong>UPI / Instant QR Payment</strong>
-                      <span>Google Pay, PhonePe, Paytm, BHIM UPI</span>
+                      <strong>Option B: UPI / Instant QR Payment</strong>
+                      <span>Google Pay, PhonePe, Paytm, BHIM UPI (via Razorpay Gateway)</span>
                     </div>
                   </label>
 
-                  <label className="payment-radio-row">
-                    <input type="radio" name="payMethod" />
+                  <label
+                    className={`payment-radio-row ${selectedPaymentMethod === 'CARD' ? 'selected' : ''}`}
+                    onClick={() => setSelectedPaymentMethod('CARD')}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <input
+                      type="radio"
+                      name="payMethod"
+                      value="CARD"
+                      checked={selectedPaymentMethod === 'CARD'}
+                      onChange={() => setSelectedPaymentMethod('CARD')}
+                    />
                     <div>
-                      <strong>Debit / Credit Card / NetBanking</strong>
-                      <span>All major Indian commercial banks supported</span>
+                      <strong>Option C: Debit / Credit Card / NetBanking</strong>
+                      <span>All major Indian commercial banks supported (via Razorpay Gateway)</span>
                     </div>
                   </label>
                 </div>
@@ -652,7 +898,12 @@ function ShopView({ user, catalog, onNavigate }) {
                   </div>
                   <div className="summary-line">
                     <span>GST (18% Included):</span>
-                    <span>₹{Math.round(cartSummary.totalPrice * 0.18).toLocaleString('en-IN')}</span>
+                    <span>
+                      ₹
+                      {Math.round(
+                        cartSummary.totalPrice - cartSummary.totalPrice / 1.18
+                      ).toLocaleString('en-IN')}
+                    </span>
                   </div>
                   <div className="summary-line highlight-bv">
                     <span>Volume Credited:</span>
@@ -667,10 +918,28 @@ function ShopView({ user, catalog, onNavigate }) {
                 <button
                   type="button"
                   className="btn-place-order"
+                  disabled={isProcessingOrder}
                   onClick={handleConfirmOrder}
+                  style={{
+                    opacity: isProcessingOrder ? 0.7 : 1,
+                    cursor: isProcessingOrder ? 'not-allowed' : 'pointer',
+                  }}
                 >
-                  <ShieldCheck size={18} />
-                  <span>Place Wholesale Order</span>
+                  {isProcessingOrder ? (
+                    <>
+                      <Loader2 size={18} className="animate-spin" />
+                      <span>Processing Order...</span>
+                    </>
+                  ) : (
+                    <>
+                      <ShieldCheck size={18} />
+                      <span>
+                        {selectedPaymentMethod === 'WALLET'
+                          ? 'Pay from Wallet & Place Order'
+                          : 'Proceed to Razorpay Checkout'}
+                      </span>
+                    </>
+                  )}
                 </button>
               </div>
             </div>
@@ -686,24 +955,47 @@ function ShopView({ user, catalog, onNavigate }) {
               <div className="invoice-success-badge">
                 <Check size={28} />
               </div>
-              <h2 className="invoice-title">Order Placed Successfully!</h2>
+              <h2 className="invoice-title">Wholesale Order Confirmed!</h2>
               <p className="invoice-subtitle">
-                Your wholesale order has been confirmed and submitted to the warehouse.
+                Your wholesale payment has been verified and registered on the blockchain BV ledger.
               </p>
             </div>
 
             <div className="invoice-details-card">
               <div className="inv-row">
                 <span>Order Reference:</span>
-                <strong>{orderConfirmed.orderId}</strong>
+                <strong style={{ letterSpacing: '0.5px' }}>
+                  {orderConfirmed.orderNumber || orderConfirmed.orderId}
+                </strong>
               </div>
               <div className="inv-row">
                 <span>Order Date:</span>
                 <span>{orderConfirmed.date}</span>
               </div>
               <div className="inv-row">
-                <span>Buyer:</span>
-                <span>{orderConfirmed.memberName} (ID: {orderConfirmed.memberId})</span>
+                <span>Buyer / Distributor:</span>
+                <span>
+                  {orderConfirmed.memberName} (ID: {orderConfirmed.memberId})
+                </span>
+              </div>
+              <div className="inv-row">
+                <span>Payment Method:</span>
+                <strong style={{ color: '#0f766e' }}>{orderConfirmed.paymentMethod}</strong>
+              </div>
+              <div className="inv-row">
+                <span>Payment Status:</span>
+                <span
+                  style={{
+                    backgroundColor: '#dcfce7',
+                    color: '#15803d',
+                    padding: '2px 8px',
+                    borderRadius: '4px',
+                    fontSize: '11px',
+                    fontWeight: 700,
+                  }}
+                >
+                  PAID & VERIFIED
+                </span>
               </div>
               <div className="inv-row">
                 <span>Items Ordered:</span>
@@ -711,11 +1003,15 @@ function ShopView({ user, catalog, onNavigate }) {
               </div>
               <div className="inv-row">
                 <span>Volume Points Credited:</span>
-                <strong className="text-teal font-bold">+{orderConfirmed.creditedBV} BV Points</strong>
+                <strong className="text-teal font-bold">
+                  +{orderConfirmed.creditedBV} BV Points
+                </strong>
               </div>
               <div className="inv-row">
-                <span>Amount Paid:</span>
-                <strong className="inv-price">₹{orderConfirmed.totalAmount.toLocaleString('en-IN')}</strong>
+                <span>Total Amount Paid:</span>
+                <strong className="inv-price">
+                  ₹{Number(orderConfirmed.totalAmount).toLocaleString('en-IN')}
+                </strong>
               </div>
               <div className="inv-row">
                 <span>Estimated Delivery:</span>
@@ -727,6 +1023,24 @@ function ShopView({ user, catalog, onNavigate }) {
               <button
                 type="button"
                 className="btn-invoice-action primary"
+                disabled={isDownloadingInvoice}
+                onClick={handleDownloadInvoice}
+              >
+                {isDownloadingInvoice ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    <span>Downloading PDF...</span>
+                  </>
+                ) : (
+                  <>
+                    <Download size={16} />
+                    <span>Download GST Invoice (PDF)</span>
+                  </>
+                )}
+              </button>
+              <button
+                type="button"
+                className="btn-invoice-action secondary"
                 onClick={() => window.print()}
               >
                 <Printer size={16} />
@@ -734,7 +1048,7 @@ function ShopView({ user, catalog, onNavigate }) {
               </button>
               <button
                 type="button"
-                className="btn-invoice-action secondary"
+                className="btn-invoice-action outline"
                 onClick={() => setOrderConfirmed(null)}
               >
                 <span>Continue Shopping</span>

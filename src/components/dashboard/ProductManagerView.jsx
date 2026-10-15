@@ -26,6 +26,8 @@ import {
   saveStoredCatalog,
   HOZRI_ELECTRONIC_PLACEHOLDERS
 } from '../../data/productCatalog';
+import { useAuth } from '../../context/AuthContext.jsx';
+import { api } from '../../services/api.js';
 import hozriTshirtImg from '../../assets/home/hozri_tshirt.png';
 import hozriInnerwearImg from '../../assets/home/hozri_innerwear.png';
 import hozriSocksImg from '../../assets/home/hozri_socks.png';
@@ -49,37 +51,24 @@ const PRESET_IMAGES = [
 
 /**
  * Product & Pricing Management Center
- * Restricted to the verified ID Owner (Rahul kaushal / ID: 88767139).
+ * Restricted to verified Administrators and explicitly authorized Business Center Owners.
  * Allows adding new products, updating distributor wholesale prices, MRP, and BV points.
  */
 function ProductManagerView({ user, catalog, onUpdateCatalog, onNavigate }) {
-  const memberName = user?.name || 'R@hul11';
-  const memberId = user?.memberId || 'KV-1001';
+  const { canManageProducts: authCanManage, isAdmin, isOwner } = useAuth();
 
-  // Normalize helper to match variations like R@hul, R@hul11, Rahul, etc.
-  const normalizeOwnerStr = (val) =>
-    (val || '').toString().toLowerCase().replace(/[@4]/g, 'a').replace(/[^a-z0-9]/g, '');
-
-  // ID Owner verification: ID KV-1001 / 88767139 (Rahul kaushal / R@hul11)
-  const isIdOwner =
-    memberId === '88767139' ||
-    memberId === 'KV-1001' ||
-    memberId === '18618331' ||
-    user?.memberId === 'KV-1001' ||
-    user?.memberId === '88767139' ||
-    normalizeOwnerStr(memberId).includes('kv1001') ||
-    normalizeOwnerStr(user?.memberId).includes('kv1001') ||
-    normalizeOwnerStr(user?.username).includes('rahul') ||
-    normalizeOwnerStr(user?.name).includes('rahul') ||
-    normalizeOwnerStr(memberName).includes('rahul') ||
-    user?.name === 'R@hul11' ||
-    user?.username === 'R@hul11' ||
-    user?.username === '@R@hul11' ||
+  // Strict role and ownership verification from authenticated session
+  const isAuthorized = Boolean(
+    authCanManage ||
+    isAdmin ||
+    isOwner ||
     user?.isOwner === true ||
-    user?.role === 'ADMIN' ||
-    user?.role === 'admin' ||
-    user?.role === 'owner' ||
-    true; // Always authorized for owner management
+    user?.role?.toUpperCase() === 'ADMIN' ||
+    user?.role?.toUpperCase() === 'SUPER_ADMIN'
+  );
+
+  const memberName = user?.name || user?.fullName || 'Business Center Owner';
+  const memberId = user?.memberId || user?.distributorId || 'KV-1001';
 
   // Active Tab: 'add' (Add Product Form) | 'table' (Catalog & Price Manager)
   const [activeTab, setActiveTab] = useState('table');
@@ -142,18 +131,24 @@ function ProductManagerView({ user, catalog, onUpdateCatalog, onNavigate }) {
   };
 
   // One-Click Bulk Deletion of Selected Items
-  const handleDeleteSelected = () => {
+  const handleDeleteSelected = async () => {
     if (selectedProductIds.length === 0) return;
     const count = selectedProductIds.length;
-    const updatedCatalog = catalog.filter((p) => !selectedProductIds.includes(p.id));
+    const idsToDelete = [...selectedProductIds];
+    const updatedCatalog = catalog.filter((p) => !idsToDelete.includes(p.id));
     onUpdateCatalog(updatedCatalog);
     saveStoredCatalog(updatedCatalog);
     setSelectedProductIds([]);
     showToast(`Deleted ${count} item(s) in one click!`);
+    try {
+      await api.bulkDeleteProducts(idsToDelete);
+    } catch (err) {
+      console.warn('[ProductManager] Bulk delete remote failed:', err);
+    }
   };
 
   // One-Click Deletion of ALL Items (Makes catalog data 0)
-  const handleDeleteAll = () => {
+  const handleDeleteAll = async () => {
     if (catalog.length === 0) {
       showToast('Catalog is already empty (0 items).');
       return;
@@ -163,15 +158,25 @@ function ProductManagerView({ user, catalog, onUpdateCatalog, onNavigate }) {
       saveStoredCatalog([]);
       setSelectedProductIds([]);
       showToast('All items deleted! Catalog data is now 0.');
+      try {
+        await api.resetZeroProducts();
+      } catch (err) {
+        console.warn('[ProductManager] Reset zero remote failed:', err);
+      }
     }
   };
 
   // Populate Hozri and Electronic Placeholders with Data = 0
-  const handleLoadHozriAndElectronics = () => {
+  const handleLoadHozriAndElectronics = async () => {
     onUpdateCatalog(HOZRI_ELECTRONIC_PLACEHOLDERS);
     saveStoredCatalog(HOZRI_ELECTRONIC_PLACEHOLDERS);
     setSelectedProductIds([]);
     showToast('Loaded 8 Hozri & Electronic placeholders with all data set to 0!');
+    try {
+      await api.loadPlaceholders();
+    } catch (err) {
+      console.warn('[ProductManager] Load placeholders remote failed:', err);
+    }
   };
 
   // Quick fill placeholder templates in Add form
@@ -404,6 +409,24 @@ function ProductManagerView({ user, catalog, onUpdateCatalog, onNavigate }) {
     showToast(`Published "${createdItem.name}" to catalog!`);
     setActiveTab('table');
 
+    try {
+      api.addProduct({
+        sku: `SKU-${Date.now().toString().slice(-6)}`,
+        name: createdItem.name,
+        category: createdItem.category,
+        categoryId: 'a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d',
+        distributorPrice: createdItem.distributorPrice,
+        wholesalePrice: createdItem.distributorPrice,
+        mrp: createdItem.mrp,
+        bv: createdItem.volumeBV,
+        stock: createdItem.stock,
+        status: 'ACTIVE',
+        description: createdItem.shortDesc,
+      });
+    } catch (err) {
+      console.warn('[ProductManager] Remote addProduct error:', err);
+    }
+
     // Reset Form to 0
     setNewProduct({
       name: '',
@@ -462,6 +485,19 @@ function ProductManagerView({ user, catalog, onUpdateCatalog, onNavigate }) {
     onUpdateCatalog(updatedCatalog);
     saveStoredCatalog(updatedCatalog);
 
+    try {
+      api.updateProduct(productId, {
+        distributorPrice: changes.distributorPrice !== undefined ? parseFloat(changes.distributorPrice) : undefined,
+        wholesalePrice: changes.distributorPrice !== undefined ? parseFloat(changes.distributorPrice) : undefined,
+        mrp: changes.mrp !== undefined ? parseFloat(changes.mrp) : undefined,
+        bv: changes.volumeBV !== undefined ? parseFloat(changes.volumeBV) : undefined,
+        stock: changes.stock !== undefined ? parseInt(changes.stock, 10) : undefined,
+        status: changes.status !== undefined ? changes.status : undefined,
+      });
+    } catch (err) {
+      console.warn('[ProductManager] Remote updateProduct error:', err);
+    }
+
     // Clear inline tracking for this row
     setInlinePrices((prev) => {
       const copy = { ...prev };
@@ -479,25 +515,30 @@ function ProductManagerView({ user, catalog, onUpdateCatalog, onNavigate }) {
       onUpdateCatalog(updatedCatalog);
       saveStoredCatalog(updatedCatalog);
       showToast(`Removed "${productName}" from catalog.`);
+      try {
+        api.deleteProduct(productId);
+      } catch (err) {
+        console.warn('[ProductManager] Remote deleteProduct error:', err);
+      }
     }
   };
 
-  // IF ACCESS IS DENIED (NON-OWNER)
-  if (!isIdOwner) {
+  // IF ACCESS IS DENIED (NON-ADMIN / NON-OWNER)
+  if (!isAuthorized) {
     return (
       <div className="pm-container">
         <div className="pm-access-denied-card">
           <ShieldAlert size={56} className="denied-icon" />
-          <h2 className="denied-title">ID Owner Restricted Access</h2>
+          <h2 className="denied-title">403 — Access Denied</h2>
           <p className="denied-desc">
-            Product catalog modification, wholesale price adjustments, and new product creation are
-            strictly reserved for the Business Center ID Owner (ID: <strong>KV-1001 / 88767139</strong> / Rahul kaushal).
+            Product catalog modification, wholesale price adjustments, BV configuration, and new product creation are
+            strictly reserved for authorized administrators and explicitly verified business center owners. Regular distributors and sponsored users cannot access this area.
           </p>
           <div className="denied-action">
             <button
               type="button"
               className="btn-pm-back"
-              onClick={() => onNavigate('dashboard')}
+              onClick={() => onNavigate ? onNavigate('dashboard') : window.location.assign('/dashboard')}
             >
               Return to Dashboard
             </button>

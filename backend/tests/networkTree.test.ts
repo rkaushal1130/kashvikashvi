@@ -134,6 +134,91 @@ describe('BINARY MLM NETWORK TREE API & SECURITY TESTS (PROMPT 15)', () => {
     });
 
     it('should return tree hierarchy with Level 0 (root), Level 1 (LEFT + RIGHT), Level 2, and Level 3 with children and required fields (Prompt 7)', async () => {
+      vi.spyOn(prisma.distributorProfile, 'findFirst').mockResolvedValue({
+        id: 'dist-rahul-uuid',
+        distributorId: 'KV-1001',
+        distributorCode: 'KV-1001',
+        firstName: 'Rahul',
+        displayName: 'Rahul Kaushal',
+        status: 'ACTIVE',
+        currentRank: { name: 'Business Center' },
+        businessCenters: [{ mlmNode: { id: 'node-root-uuid' } }],
+        mlmNodes: [{ id: 'node-root-uuid', depth: 0 }],
+      } as any);
+
+      vi.spyOn(prisma.mLMNode, 'findMany')
+        .mockResolvedValueOnce([
+          {
+            id: 'node-amit-uuid',
+            placementParentId: 'node-root-uuid',
+            placementPosition: 'LEFT',
+            depth: 1,
+            distributor: {
+              id: 'dist-amit-uuid',
+              distributorId: 'KV-1002',
+              firstName: 'Amit',
+              status: 'ACTIVE',
+              currentRank: { name: 'Executive Director' },
+            },
+          },
+          {
+            id: 'node-rohit-uuid',
+            placementParentId: 'node-root-uuid',
+            placementPosition: 'RIGHT',
+            depth: 1,
+            distributor: {
+              id: 'dist-rohit-uuid',
+              distributorId: 'KV-1003',
+              firstName: 'Rohit',
+              status: 'ACTIVE',
+              currentRank: { name: 'Senior Director' },
+            },
+          },
+        ] as any)
+        .mockResolvedValueOnce([
+          {
+            id: 'node-neha-uuid',
+            placementParentId: 'node-amit-uuid',
+            placementPosition: 'LEFT',
+            depth: 2,
+            distributor: {
+              id: 'dist-neha-uuid',
+              distributorId: 'KV-1006',
+              firstName: 'Neha',
+              status: 'ACTIVE',
+              currentRank: { name: 'Director' },
+            },
+          },
+          {
+            id: 'node-pooja-uuid',
+            placementParentId: 'node-rohit-uuid',
+            placementPosition: 'RIGHT',
+            depth: 2,
+            distributor: {
+              id: 'dist-pooja-uuid',
+              distributorId: 'KV-1005',
+              firstName: 'Pooja',
+              status: 'ACTIVE',
+              currentRank: { name: 'Director' },
+            },
+          },
+        ] as any)
+        .mockResolvedValueOnce([
+          {
+            id: 'node-arjun-uuid',
+            placementParentId: 'node-neha-uuid',
+            placementPosition: 'LEFT',
+            depth: 3,
+            distributor: {
+              id: 'dist-arjun-uuid',
+              distributorId: 'KV-1012',
+              firstName: 'Arjun',
+              status: 'ACTIVE',
+              currentRank: { name: 'Associate' },
+            },
+          },
+        ] as any);
+
       const res = await request(app)
         .get('/api/v1/network-tree?depth=3')
         .set('Authorization', `Bearer ${rahulToken}`)
@@ -390,6 +475,19 @@ describe('BINARY MLM NETWORK TREE API & SECURITY TESTS (PROMPT 15)', () => {
     });
 
     it('should return matching distributor for ID query "KV-1002"', async () => {
+      vi.spyOn(prisma.distributorProfile, 'findMany').mockResolvedValueOnce([
+        {
+          id: 'db-dist-1002',
+          distributorId: 'KV-1002',
+          distributorCode: 'KV-1002',
+          firstName: 'Amit',
+          lastName: 'Patel',
+          displayName: 'Amit Patel',
+          status: 'ACTIVE',
+          currentRank: { name: 'Executive Director' },
+        },
+      ] as any);
+
       const res = await request(app)
         .get('/api/v1/network-tree/search?q=KV-1002')
         .set('Authorization', `Bearer ${rahulToken}`)

@@ -13,8 +13,9 @@ export const walletRouter = Router();
 
 walletRouter.use(authenticate);
 
-// GET /api/v1/wallet - Retrieve authenticated distributor's wallet
+// GET /api/v1/wallet and /api/v1/wallet/me - Retrieve authenticated distributor's wallet
 walletRouter.get('/', WalletController.getMyWallet);
+walletRouter.get('/me', WalletController.getMyWallet);
 
 // GET /api/v1/wallet/transactions - Retrieve paginated wallet transactions
 walletRouter.get(

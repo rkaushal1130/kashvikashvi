@@ -16,6 +16,15 @@ const router = Router();
 // All order endpoints require authentication
 router.use(authenticate);
 
+import { walletCheckoutSchema } from '../validators/payment.validators';
+
+// POST /api/v1/orders/wallet-checkout - Atomic Commission Balance Wallet checkout
+router.post(
+  '/wallet-checkout',
+  validate({ body: walletCheckoutSchema }),
+  OrderController.walletCheckout
+);
+
 // POST /api/v1/orders - Create an order with strict 10-step transactional verification
 router.post(
   '/',
@@ -28,6 +37,20 @@ router.get(
   '/',
   validate({ query: orderQuerySchema }),
   OrderController.getOrders
+);
+
+// GET /api/v1/orders/:id/invoice - Download GST Tax Invoice PDF
+router.get(
+  '/:id/invoice',
+  validate({ params: orderIdParamSchema }),
+  OrderController.downloadInvoice
+);
+
+// GET /api/v1/orders/:id/invoice-data - Get structured invoice data
+router.get(
+  '/:id/invoice-data',
+  validate({ params: orderIdParamSchema }),
+  OrderController.getInvoiceData
 );
 
 // GET /api/v1/orders/:id - Get order details

@@ -1,9 +1,67 @@
 import { NextFunction, Request, Response } from 'express';
 import { OrderService } from '../services/order.service';
 import { AuthoritativeBVService } from '../services/authoritativeBV.service';
+import { InvoiceService } from '../services/invoice.service';
+import { PaymentService } from '../services/payment.service';
 import { sendSuccess } from '../utils/apiResponse';
 
 export class OrderController {
+  /**
+   * Downloads the server-generated GST Tax Invoice PDF for an authorized order.
+   * GET /api/v1/orders/:id/invoice
+   */
+  public static async downloadInvoice(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params;
+      const { buffer, invoiceNumber } = await InvoiceService.generateInvoicePdf(
+        id,
+        req.user!.id,
+        req.user!.role
+      );
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="Invoice-${invoiceNumber}.pdf"`);
+      res.setHeader('Content-Length', buffer.length);
+      res.status(200).send(buffer);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Retrieves structured GST Invoice data for preview or printing.
+   * GET /api/v1/orders/:id/invoice-data
+   */
+  public static async getInvoiceData(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { id } = req.params;
+      const data = await InvoiceService.getInvoiceDataForOrder(id, req.user!.id, req.user!.role);
+      sendSuccess(res, {
+        message: 'Invoice data retrieved successfully.',
+        data,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Atomic Commission Balance Wallet checkout.
+   * POST /api/v1/orders/wallet-checkout
+   */
+  public static async walletCheckout(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const result = await PaymentService.walletCheckout(req.user!.id, req.body);
+      sendSuccess(res, {
+        statusCode: 201,
+        message: 'Order placed successfully and paid via Commission Balance Wallet.',
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   /**
    * Creates an order with strict 10-step transactional flow.
    * POST /api/v1/orders

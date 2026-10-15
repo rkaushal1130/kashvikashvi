@@ -65,6 +65,12 @@ router.get(
   NetworkTreeController.getMemberTree
 );
 
+/**
+ * POST /api/v1/network-tree/auto-place
+ * Automatically place distributor in binary tree under sponsor with spillover.
+ */
+router.post('/auto-place', authenticate, NetworkTreeController.autoPlace);
+
 // MLM Tree Audit Logging & Administrative Placement (Prompt 16)
 import { TreeAuditController } from '../controllers/treeAudit.controller';
 import { authorizeRoles } from '../middleware/role';

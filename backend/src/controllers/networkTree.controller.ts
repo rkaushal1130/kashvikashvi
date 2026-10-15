@@ -12,7 +12,8 @@ export class NetworkTreeController {
   public static async getMyTree(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const depth = req.query.depth ? parseInt(req.query.depth as string, 10) : 3;
-      const targetId = req.user?.id || 'KV-1001';
+      const isAdmin = req.user?.role === 'ADMIN' || req.user?.role === 'SUPER_ADMIN';
+      const targetId = isAdmin ? 'KV-1001' : (req.user?.id || 'KV-1001');
 
       const tree = await NetworkTreeService.getNetworkTree(targetId, depth);
 
@@ -214,6 +215,46 @@ export class NetworkTreeController {
 
       sendSuccess(res, {
         data: results,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Automatically places a distributor in the binary MLM tree under a sponsor.
+   * POST /api/v1/network-tree/auto-place
+   */
+  public static async autoPlace(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { distributorId, sponsorId, preferredLeg } = req.body;
+      const targetDistId = distributorId || req.user?.id;
+      const targetSponsorId = sponsorId || (req.user as any)?.sponsorId || 'KV-1001';
+
+      if (!targetDistId) {
+        throw AppError.badRequest('Distributor ID is required for placement.', 'DISTRIBUTOR_ID_REQUIRED');
+      }
+
+      const { TreePlacementService } = await import('../services/treePlacement.service');
+      const result = await TreePlacementService.autoPlaceUnderSponsor(
+        targetDistId,
+        targetSponsorId,
+        preferredLeg === 'LEFT' ? 'LEFT' : 'RIGHT'
+      );
+
+      await AuditService.recordLog({
+        userId: req.user?.id,
+        action: 'TREE_AUTO_PLACE',
+        entityType: 'NetworkTree',
+        entityId: targetDistId,
+        newValue: { targetDistId, targetSponsorId, preferredLeg, result },
+        ipAddress: req.ip,
+        userAgent: req.get('user-agent'),
+      });
+
+      sendSuccess(res, {
+        message: 'Distributor automatically placed successfully.',
+        data: result,
       });
     } catch (error) {
       next(error);

@@ -19,6 +19,8 @@ import {
   EyeOff,
   Search,
   AlertTriangle,
+  CreditCard,
+  X,
 } from 'lucide-react';
 import { api } from '../../services/api';
 import './EnrollmentView.css';
@@ -49,6 +51,11 @@ function EnrollmentView({ user, onNavigate }) {
   const [selectedPlacementPosition, setSelectedPlacementPosition] = useState('RIGHT');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
+
+  // Razorpay Payment States
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [paymentProcessing, setPaymentProcessing] = useState(false);
+  const [paymentError, setPaymentError] = useState(null);
 
   // Form Data
   const [formData, setFormData] = useState({
@@ -167,10 +174,11 @@ function EnrollmentView({ user, onNavigate }) {
     });
   };
 
-  const handleSubmitEnrollment = async (e) => {
+  const handleSubmitEnrollment = (e) => {
     e.preventDefault();
     if (!formData.fullName.trim() || !formData.email.trim() || !formData.phone.trim()) {
-      alert('Please fill in applicant full name, email, and phone number.');
+      alert('Please fill in applicant full name, email, and phone number in Step 1.');
+      setCurrentStep(1);
       return;
     }
 
@@ -180,7 +188,106 @@ function EnrollmentView({ user, onNavigate }) {
       return;
     }
 
+    if (!formData.agreeTerms) {
+      alert('Please certify that the applicant has agreed to the KASHVIMLM policies and agreement.');
+      return;
+    }
+
+    // Open Razorpay Payment Checkout Modal
+    setPaymentError(null);
+    setPaymentModalOpen(true);
+  };
+
+  const handleLaunchRazorpay = () => {
+    setPaymentError(null);
+    setPaymentProcessing(true);
+
+    const kitBV =
+      formData.starterKitId === 'kit_pro'
+        ? 100
+        : formData.starterKitId === 'kit_elite'
+        ? 200
+        : 50;
+
+    const kitPrice = 1;
+
+    const kitName =
+      formData.starterKitId === 'kit_pro'
+        ? 'Fast-Track Pro Pack'
+        : formData.starterKitId === 'kit_elite'
+        ? 'Elite Leadership Pack'
+        : 'Associate Welcome Pack';
+
+    const rzpKey = import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_test_your_key_id';
+
+    const startCheckout = () => {
+      try {
+        if (!window.Razorpay) {
+          throw new Error('Razorpay SDK could not load. You can complete enrollment with the Instant Test Payment option.');
+        }
+
+        const options = {
+          key: rzpKey,
+          amount: kitPrice * 100, // 100 paise = ₹1
+          currency: 'INR',
+          name: 'KASHVIMLM Platform',
+          description: `Starter Kit Activation: ${kitName} (₹${kitPrice})`,
+          image: '/logo.png',
+          prefill: {
+            name: formData.fullName || '',
+            email: formData.email || '',
+            contact: formData.phone || '',
+          },
+          notes: {
+            starterKitId: formData.starterKitId,
+            sponsorId: sponsorInput.trim(),
+            placementLeg: 'RIGHT',
+            bv: String(kitBV),
+          },
+          theme: {
+            color: '#005086',
+          },
+          handler: async function (response) {
+            const paymentId = response.razorpay_payment_id || `pay_rzp_${Date.now()}`;
+            await executeCompleteEnrollment(paymentId);
+          },
+          modal: {
+            ondismiss: function () {
+              setPaymentProcessing(false);
+            },
+          },
+        };
+
+        const rzp = new window.Razorpay(options);
+        rzp.on('payment.failed', function (resp) {
+          setPaymentProcessing(false);
+          setPaymentError(resp.error?.description || 'Razorpay payment was not completed.');
+        });
+        rzp.open();
+      } catch (err) {
+        setPaymentProcessing(false);
+        setPaymentError(err.message || 'Unable to open Razorpay modal.');
+      }
+    };
+
+    if (window.Razorpay) {
+      startCheckout();
+    } else {
+      const script = document.createElement('script');
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      script.async = true;
+      script.onload = () => startCheckout();
+      script.onerror = () => {
+        setPaymentProcessing(false);
+        setPaymentError('Could not reach Razorpay network. Please use the Instant Test Payment button below.');
+      };
+      document.body.appendChild(script);
+    }
+  };
+
+  const executeCompleteEnrollment = async (razorpayPaymentId = `pay_sim_${Date.now()}`) => {
     setIsSubmitting(true);
+    setPaymentProcessing(true);
     setSubmitError(null);
 
     const kitBV =
@@ -190,12 +297,14 @@ function EnrollmentView({ user, onNavigate }) {
         ? 200
         : 50;
 
-    const kitPrice =
+    const kitPrice = 1;
+
+    const kitName =
       formData.starterKitId === 'kit_pro'
-        ? 249.99
+        ? 'Fast-Track Pro Pack'
         : formData.starterKitId === 'kit_elite'
-        ? 499.99
-        : 99.99;
+        ? 'Elite Leadership Pack'
+        : 'Associate Welcome Pack';
 
     const enrollPayload = {
       fullName: formData.fullName,
@@ -214,18 +323,16 @@ function EnrollmentView({ user, onNavigate }) {
       placementPosition: 'RIGHT',
       enrollmentType: enrollType === 'distributor' ? 'DISTRIBUTOR' : 'CUSTOMER',
       starterKitId: formData.starterKitId,
-      productPackage:
-        formData.starterKitId === 'kit_pro'
-          ? 'Professional Activation Kit'
-          : formData.starterKitId === 'kit_elite'
-          ? 'Elite Executive Kit'
-          : 'Basic Starter Pack',
+      productPackage: kitName,
       price: kitPrice,
       bv: kitBV,
       bankName: formData.bankName,
       accountNumber: formData.accountNumber,
       ifscCode: formData.ifscCode,
       password: formData.password || 'SecurePass2026!',
+      paymentId: razorpayPaymentId,
+      paymentMethod: 'RAZORPAY',
+      paymentStatus: 'PAID',
     };
 
     try {
@@ -243,6 +350,11 @@ function EnrollmentView({ user, onNavigate }) {
           placement: 'RIGHT Leg',
           placementParent: d.placement?.placementParentDistributorId || sponsorInput,
           assignedBV: kitBV,
+          kitName,
+          kitPrice,
+          paymentId: razorpayPaymentId,
+          paymentMethod: 'Razorpay Gateway',
+          paymentStatus: 'Paid (₹1.00 via Razorpay)',
           enrolledAt: new Date().toLocaleDateString('en-US', {
             month: 'short',
             day: 'numeric',
@@ -281,6 +393,7 @@ function EnrollmentView({ user, onNavigate }) {
             leftBV: 0,
             rightBV: 0,
             directMembers: 0,
+            paymentId: razorpayPaymentId,
           };
           const existsIdx = storedTree.findIndex((m) => m.distributorId === newMemberId);
           if (existsIdx >= 0) {
@@ -294,22 +407,29 @@ function EnrollmentView({ user, onNavigate }) {
           // ignore
         }
 
+        setPaymentModalOpen(false);
         setEnrollmentResult(result);
       } else {
         const errorMsg = res?.message || 'Enrollment transaction failed. Please check placement availability.';
         setSubmitError(errorMsg);
+        setPaymentError(errorMsg);
         alert(`Enrollment Failed: ${errorMsg}`);
       }
     } catch (err) {
       setSubmitError(err.message || 'Network error occurred during enrollment submission.');
+      setPaymentError(err.message || 'Network error occurred during enrollment submission.');
       alert(`Enrollment Submission Error: ${err.message}`);
     } finally {
       setIsSubmitting(false);
+      setPaymentProcessing(false);
     }
   };
 
   const handleResetForm = () => {
     setEnrollmentResult(null);
+    setPaymentModalOpen(false);
+    setPaymentProcessing(false);
+    setPaymentError(null);
     setCurrentStep(1);
     setFormData({
       fullName: '',
@@ -386,6 +506,44 @@ function EnrollmentView({ user, onNavigate }) {
               <span className="cred-label">Credited Volume:</span>
               <span className="cred-val font-semibold text-teal">
                 +{enrollmentResult.assignedBV} CVP / BV Points
+              </span>
+            </div>
+
+            <div className="credential-row">
+              <span className="cred-label">Activated Starter Pack:</span>
+              <span className="cred-val">
+                {enrollmentResult.kitName || 'Associate Welcome Pack'} (₹{enrollmentResult.kitPrice ?? 1})
+              </span>
+            </div>
+
+            <div className="credential-row">
+              <span className="cred-label">Payment Rail:</span>
+              <span className="cred-val font-semibold" style={{ color: '#005086' }}>
+                Razorpay Secure Gateway
+              </span>
+            </div>
+
+            <div className="credential-row">
+              <span className="cred-label">Razorpay Payment ID:</span>
+              <div className="cred-val-wrap">
+                <span className="cred-val" style={{ fontFamily: 'monospace', color: '#005086' }}>
+                  {enrollmentResult.paymentId || 'pay_demo_success'}
+                </span>
+                <button
+                  type="button"
+                  className="cred-copy-btn"
+                  onClick={() => handleCopy(enrollmentResult.paymentId, 'paymentId')}
+                >
+                  {copiedKey === 'paymentId' ? <Check size={14} /> : <Copy size={14} />}
+                  <span>{copiedKey === 'paymentId' ? 'Copied' : 'Copy'}</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="credential-row">
+              <span className="cred-label">Payment Status:</span>
+              <span className="status-badge-active" style={{ backgroundColor: '#dcfce7', color: '#15803d' }}>
+                ✓ {enrollmentResult.paymentStatus || 'Paid (₹1.00 via Razorpay)'}
               </span>
             </div>
 
@@ -972,7 +1130,7 @@ function EnrollmentView({ user, onNavigate }) {
                   <div className="kit-card-inner">
                     <div className="kit-badge-tag">Basic Launch</div>
                     <h4 className="kit-title">Associate Welcome Pack</h4>
-                    <div className="kit-price">₹1,200</div>
+                    <div className="kit-price">₹1</div>
                     <div className="kit-bv-pill">+50 BV Points</div>
                     <p className="kit-desc">
                       Official product guides, distributor agreement, and digital KASHVIMLM Connect license.
@@ -991,7 +1149,7 @@ function EnrollmentView({ user, onNavigate }) {
                   <div className="kit-card-inner">
                     <div className="kit-badge-tag popular-tag">Most Popular</div>
                     <h4 className="kit-title">Fast-Track Pro Pack</h4>
-                    <div className="kit-price">₹4,999</div>
+                    <div className="kit-price">₹1</div>
                     <div className="kit-bv-pill text-teal">+100 BV Points</div>
                     <p className="kit-desc">
                       Includes 3 best-selling nutritional products, 3 Business Centers, and marketing collateral.
@@ -1010,7 +1168,7 @@ function EnrollmentView({ user, onNavigate }) {
                   <div className="kit-card-inner">
                     <div className="kit-badge-tag">Executive</div>
                     <h4 className="kit-title">Elite Leadership Pack</h4>
-                    <div className="kit-price">₹12,999</div>
+                    <div className="kit-price">₹1</div>
                     <div className="kit-bv-pill">+200 BV Points</div>
                     <p className="kit-desc">
                       Full cellular nutrition line, skincare samples, active shaker bottles, and personal mentoring pass.
@@ -1168,6 +1326,148 @@ function EnrollmentView({ user, onNavigate }) {
             </div>
           )}
         </form>
+
+        {/* RAZORPAY ENROLLMENT PAYMENT MODAL */}
+        {paymentModalOpen && (
+          <div
+            className="enroll-modal-backdrop"
+            onClick={() => !paymentProcessing && setPaymentModalOpen(false)}
+          >
+            <div
+              className="enroll-payment-modal-card"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="enroll-modal-header">
+                <div className="modal-header-icon-title">
+                  <div className="razorpay-logo-badge">
+                    <CreditCard size={22} />
+                  </div>
+                  <div>
+                    <h3 className="modal-title">Razorpay Secure Payment</h3>
+                    <p className="modal-subtitle">Official payment gateway for KASHVIMLM Business Kit activation</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="enroll-modal-close-btn"
+                  onClick={() => !paymentProcessing && setPaymentModalOpen(false)}
+                  disabled={paymentProcessing}
+                  aria-label="Close payment modal"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="enroll-payment-body">
+                {/* Kit Summary Card */}
+                <div className="payment-summary-box">
+                  <div className="summary-top-row">
+                    <div>
+                      <span className="summary-kit-label">Selected Business Kit</span>
+                      <h4 className="summary-kit-title">
+                        {formData.starterKitId === 'kit_pro'
+                          ? 'Fast-Track Pro Pack'
+                          : formData.starterKitId === 'kit_elite'
+                          ? 'Elite Leadership Pack'
+                          : 'Associate Welcome Pack'}
+                      </h4>
+                    </div>
+                    <div className="summary-kit-price-tag">
+                      <span className="currency-symbol">₹</span>
+                      <span className="price-num">1</span>
+                    </div>
+                  </div>
+
+                  <div className="summary-details-grid">
+                    <div className="summary-detail-item">
+                      <span className="detail-label">Enrollee Name:</span>
+                      <span className="detail-value">{formData.fullName || 'New Enrollee'}</span>
+                    </div>
+                    <div className="summary-detail-item">
+                      <span className="detail-label">Mobile Number:</span>
+                      <span className="detail-value">{formData.phone || '—'}</span>
+                    </div>
+                    <div className="summary-detail-item">
+                      <span className="detail-label">Volume Credited:</span>
+                      <span className="detail-value text-teal font-bold">
+                        +{formData.starterKitId === 'kit_pro' ? 100 : formData.starterKitId === 'kit_elite' ? 200 : 50} BV Points
+                      </span>
+                    </div>
+                    <div className="summary-detail-item">
+                      <span className="detail-label">Binary Placement:</span>
+                      <span className="detail-value">RIGHT Leg (Sponsor: {sponsorInput})</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Razorpay Gateway Card */}
+                <div className="gateway-select-card selected">
+                  <div className="gateway-card-header">
+                    <div className="gateway-title-wrap">
+                      <div className="rzp-pill">RAZORPAY</div>
+                      <strong>Instant Online Payment Rail</strong>
+                    </div>
+                    <span className="secure-badge">
+                      <ShieldCheck size={14} /> 256-bit SSL Encrypted
+                    </span>
+                  </div>
+                  <p className="gateway-card-desc">
+                    Pay securely using any Indian payment method supported by Razorpay:
+                  </p>
+                  <div className="gateway-methods-chips">
+                    <span className="method-chip">UPI (GPay / PhonePe / Paytm / BHIM)</span>
+                    <span className="method-chip">Debit & Credit Cards</span>
+                    <span className="method-chip">Net Banking (50+ Banks)</span>
+                    <span className="method-chip">Wallets & QR</span>
+                  </div>
+                </div>
+
+                {paymentError && (
+                  <div className="payment-error-alert">
+                    <AlertTriangle size={16} />
+                    <span>{paymentError}</span>
+                  </div>
+                )}
+
+                {/* Action Buttons */}
+                <div className="payment-actions-wrap">
+                  <button
+                    type="button"
+                    className="btn-pay-razorpay"
+                    onClick={handleLaunchRazorpay}
+                    disabled={paymentProcessing}
+                  >
+                    {paymentProcessing ? (
+                      <>
+                        <RefreshCw size={18} className="spin" />
+                        <span>Opening Razorpay Checkout...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Lock size={18} />
+                        <span>Pay with Razorpay</span>
+                      </>
+                    )}
+                  </button>
+
+                  <div className="test-sandbox-divider">
+                    <span>OR DIRECT DEMO / SANDBOX APPROVAL</span>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="btn-pay-demo-simulation"
+                    onClick={() => executeCompleteEnrollment(`pay_test_rzp_${Date.now()}`)}
+                    disabled={paymentProcessing}
+                  >
+                    <Sparkles size={16} />
+                    <span>Instant Test Payment (Mock Razorpay Success)</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

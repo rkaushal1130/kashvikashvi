@@ -200,12 +200,7 @@ function Join() {
         ? 200
         : 50;
 
-    const kitPrice =
-      formData.starterKitId === 'kit_pro'
-        ? 249.99
-        : formData.starterKitId === 'kit_elite'
-        ? 499.99
-        : 99.99;
+    const kitPrice = 1;
 
     const payload = {
       fullName: formData.fullName,
@@ -805,7 +800,7 @@ function Join() {
                     <span className="package-badge popular">Most Popular</span>
                     <h5>Professional Activation Kit</h5>
                     <div className="package-pricing">
-                      <span className="package-price">$249.99</span>
+                      <span className="package-price">₹1</span>
                       <span className="package-bv">+100 BV Volume</span>
                     </div>
                     <p className="package-desc">
@@ -828,7 +823,7 @@ function Join() {
                     <span className="package-badge executive">Executive Plan</span>
                     <h5>Elite Executive Kit</h5>
                     <div className="package-pricing">
-                      <span className="package-price">$499.99</span>
+                      <span className="package-price">₹1</span>
                       <span className="package-bv">+200 BV Volume</span>
                     </div>
                     <p className="package-desc">
@@ -851,7 +846,7 @@ function Join() {
                     <span className="package-badge">Entry</span>
                     <h5>Basic Starter Pack</h5>
                     <div className="package-pricing">
-                      <span className="package-price">$99.99</span>
+                      <span className="package-price">₹1</span>
                       <span className="package-bv">+50 BV Volume</span>
                     </div>
                     <p className="package-desc">

@@ -46,6 +46,7 @@ function AppContent() {
     '/commissions',
     '/profile',
     '/admin',
+    '/manage-products',
   ].some((path) => location.pathname === path || location.pathname.startsWith(`${path}/`));
 
   const isDashboardView = isPortalRoute && isAuthenticated;
@@ -72,6 +73,14 @@ function AppContent() {
             }
           />
           <Route
+            path="/manage-products"
+            element={
+              <ProtectedRoute requireProductManagement>
+                <Dashboard defaultNav="manage_products" />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/network"
             element={
               <ProtectedRoute>
@@ -84,6 +93,14 @@ function AppContent() {
             element={
               <ProtectedRoute>
                 <Dashboard defaultNav="network_tree" />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/funding"
+            element={
+              <ProtectedRoute>
+                <Dashboard defaultNav="funding" />
               </ProtectedRoute>
             }
           />

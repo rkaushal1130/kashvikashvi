@@ -354,6 +354,7 @@ model User {
   passwordResetTokens PasswordResetToken[]
   newsArticles      News[]            @relation("NewsAuthor")
   initiatedFundingTransactions FundingTransaction[] @relation("AdminInitiatedFundingTransactions")
+  clientFundingOrders ClientFundingOrder[]
 
   @@index([email])
   @@index([userId])
@@ -643,6 +644,9 @@ model BankAccount {
   accountNumber      String
   routingNumber      String?           // Routing Number, IFSC, or SWIFT/BIC
   branchName         String?
+  providerVerificationId String?
+  verificationStatus String?
+  verificationMessage String?
   verifiedAt         DateTime?
   deletedAt          DateTime?
   createdAt          DateTime          @default(now())
@@ -1093,6 +1097,7 @@ model Wallet {
   distributor      DistributorProfile? @relation(fields: [distributorId], references: [id], onDelete: Cascade)
   user             User?               @relation(fields: [userId], references: [id], onDelete: Cascade)
   transactions     WalletTransaction[]
+  clientFundingOrders ClientFundingOrder[]
 
   @@index([distributorId])
   @@index([userId])
@@ -1122,6 +1127,7 @@ model WalletTransaction {
   payoutRequest     PayoutRequest?
   levelCommission   LevelCommission?        @relation("LevelCommissionWalletTx")
   commissionTransaction CommissionTransaction? @relation("CommissionTransactionWalletTx")
+  clientFundingOrder ClientFundingOrder?
 
   @@index([transactionNumber])
   @@index([walletId])
@@ -2056,4 +2062,34 @@ model WebhookEvent {
   @@index([status])
   @@index([processedAt])
   @@map("webhook_events")
+}
+
+// 62. ClientFundingOrder (Self-Service Client Wallet Funding via Payment Rails)
+model ClientFundingOrder {
+  id                    String                   @id @default(uuid())
+  userId                String
+  walletId              String
+  amount                Decimal                  @db.Decimal(12, 2)
+  currency              String                   @default("INR")
+  status                FundingTransactionStatus @default(CREATED)
+  paymentMethod         String                   // RAZORPAY_UPI, RAZORPAY_CARD, RAZORPAY_NETBANKING, BANK_WIRE
+  provider              String                   @default("RAZORPAY")
+  providerOrderId       String?                  @unique
+  providerPaymentId     String?                  @unique
+  idempotencyKey        String                   @unique
+  walletTransactionId   String?                  @unique
+  failureReason         String?
+  metadata              Json?
+  paidAt                DateTime?
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+
+  user                  User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  wallet                Wallet                   @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  walletTransaction     WalletTransaction?       @relation(fields: [walletTransactionId], references: [id])
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("client_funding_orders")
 }

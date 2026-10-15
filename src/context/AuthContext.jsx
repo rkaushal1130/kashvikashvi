@@ -111,13 +111,7 @@ export function AuthProvider({ children }) {
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
-          if (
-            parsed.isLoggedIn &&
-            parsed.user &&
-            (parsed.user.isOwner ||
-              parsed.user.email === 'rahulkaushal1109@gmail.com' ||
-              parsed.user.memberId === 'KV-1001')
-          ) {
+          if (parsed.isLoggedIn && parsed.user && token) {
             setCurrentUser(parsed.user);
             setIsAuthenticated(true);
             return parsed.user;
@@ -334,21 +328,15 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const isOwnerOrAdmin = Boolean(
-    currentUser?.role?.toUpperCase() === 'ADMIN' ||
-    currentUser?.role?.toUpperCase() === 'SUPER_ADMIN' ||
-    currentUser?.role?.toUpperCase() === 'OWNER' ||
-    currentUser?.isOwner ||
-    currentUser?.isAdmin ||
-    currentUser?.name?.toLowerCase().includes('rahul') ||
-    currentUser?.fullName?.toLowerCase().includes('rahul') ||
-    currentUser?.memberId === '61726731' ||
-    currentUser?.distributorId === '61726731' ||
-    currentUser?.memberId === 'KV-1001' ||
-    currentUser?.distributorId === 'KV-1001' ||
-    currentUser?.email?.toLowerCase().includes('admin') ||
-    currentUser?.email?.toLowerCase().includes('rahul')
+  // Strict Role & Permission evaluation based on server-verified identity
+  const userRole = (currentUser?.role || currentUser?.roleName || '').toString().toUpperCase();
+  const isAdmin = userRole === 'ADMIN' || userRole === 'SUPER_ADMIN';
+  const isOwner = Boolean(
+    currentUser?.isOwner === true ||
+    currentUser?.isBusinessCenterOwner === true ||
+    (currentUser?.role && typeof currentUser.role === 'object' && currentUser.role?.permissions?.manage_products)
   );
+  const canManageProducts = Boolean(isAdmin || isOwner);
 
   const value = {
     currentUser,
@@ -358,8 +346,9 @@ export function AuthProvider({ children }) {
     register,
     logout,
     refreshUser,
-    isAdmin: isOwnerOrAdmin,
-    isOwner: isOwnerOrAdmin,
+    isAdmin,
+    isOwner,
+    canManageProducts,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

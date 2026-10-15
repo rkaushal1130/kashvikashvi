@@ -814,4 +814,144 @@ export class TreePlacementService {
 
     return parentNode as ParentNodeInfo | null;
   }
+
+  /**
+   * Automatically finds the next available slot under a sponsor's tree
+   * and places the distributor into the binary tree.
+   *
+   * Separation of Sponsorship vs Tree Placement:
+   * - sponsorId is permanent (direct referral relationship).
+   * - placementParentId is the actual parent node in the binary tree (spillover if direct slot is taken).
+   * - Supports preferred leg ('LEFT' or 'RIGHT').
+   * - If preferred leg is specified, traverses down that leg to find the first open available position.
+   */
+  public static async autoPlaceUnderSponsor(
+    distributorId: string,
+    sponsorId: string,
+    preferredLeg: 'LEFT' | 'RIGHT' = 'RIGHT'
+  ): Promise<PlaceDistributorResult> {
+    // 1. Resolve sponsor node
+    const sponsorNode = await this.resolveNode(sponsorId);
+    if (!sponsorNode) {
+      logger.warn({ sponsorId }, 'Sponsor node not found in DB during autoPlaceUnderSponsor; falling back to dynamic placement.');
+      const { NetworkTreeService } = await import('./networkTree.service');
+      const dist = await this.resolveDistributor(distributorId);
+      NetworkTreeService.addEnrolledMember({
+        distributorId: dist?.distributorId || dist?.distributorCode || distributorId,
+        name: dist?.displayName || dist?.firstName || 'New Member',
+        status: 'ACTIVE',
+        position: preferredLeg,
+        sponsor: sponsorId,
+        placementParent: sponsorId,
+      });
+      return {
+        success: true,
+        message: 'Auto-placed member under sponsor successfully (dynamic mode).',
+        data: {
+          distributorId,
+          sponsorId,
+          placementParentId: sponsorId,
+          placementPosition: preferredLeg,
+        },
+      };
+    }
+
+    // 2. Check sponsor's immediate slots
+    let targetParentNodeId = sponsorNode.id;
+    let targetPosition: 'LEFT' | 'RIGHT' = preferredLeg;
+
+    let immediateChildren: Array<{ id: string; placementPosition: PlacementPosition | null }> = [];
+    try {
+      immediateChildren = await prisma.mLMNode.findMany({
+        where: { placementParentId: sponsorNode.id },
+        select: { id: true, placementPosition: true },
+      });
+    } catch {
+      // Offline fallback
+    }
+
+    const isLeftOccupied = immediateChildren.some((c) => c.placementPosition === 'LEFT');
+    const isRightOccupied = immediateChildren.some((c) => c.placementPosition === 'RIGHT');
+
+    if (preferredLeg === 'LEFT' && !isLeftOccupied) {
+      targetParentNodeId = sponsorNode.id;
+      targetPosition = 'LEFT';
+    } else if (preferredLeg === 'RIGHT' && !isRightOccupied) {
+      targetParentNodeId = sponsorNode.id;
+      targetPosition = 'RIGHT';
+    } else if (!isLeftOccupied) {
+      targetParentNodeId = sponsorNode.id;
+      targetPosition = 'LEFT';
+    } else if (!isRightOccupied) {
+      targetParentNodeId = sponsorNode.id;
+      targetPosition = 'RIGHT';
+    } else {
+      // Spillover traversal down preferred leg to find the first open available position
+      let currentNodeId = (preferredLeg === 'LEFT'
+        ? immediateChildren.find((c) => c.placementPosition === 'LEFT')
+        : immediateChildren.find((c) => c.placementPosition === 'RIGHT'))?.id;
+
+      if (!currentNodeId && immediateChildren.length > 0) {
+        currentNodeId = immediateChildren[0].id;
+      }
+
+      let found = false;
+      const visited = new Set<string>();
+
+      while (currentNodeId && !found && !visited.has(currentNodeId)) {
+        visited.add(currentNodeId);
+        try {
+          const children = await prisma.mLMNode.findMany({
+            where: { placementParentId: currentNodeId },
+            select: { id: true, placementPosition: true },
+          });
+
+          const leftChild = children.find((c) => c.placementPosition === 'LEFT');
+          const rightChild = children.find((c) => c.placementPosition === 'RIGHT');
+
+          if (preferredLeg === 'LEFT') {
+            if (!leftChild) {
+              targetParentNodeId = currentNodeId;
+              targetPosition = 'LEFT';
+              found = true;
+              break;
+            } else if (!rightChild) {
+              targetParentNodeId = currentNodeId;
+              targetPosition = 'RIGHT';
+              found = true;
+              break;
+            } else {
+              currentNodeId = leftChild.id;
+            }
+          } else {
+            if (!rightChild) {
+              targetParentNodeId = currentNodeId;
+              targetPosition = 'RIGHT';
+              found = true;
+              break;
+            } else if (!leftChild) {
+              targetParentNodeId = currentNodeId;
+              targetPosition = 'LEFT';
+              found = true;
+              break;
+            } else {
+              currentNodeId = rightChild.id;
+            }
+          }
+        } catch {
+          break;
+        }
+      }
+    }
+
+    // 3. Place distributor under the identified target parent
+    return await this.placeDistributor({
+      distributorId,
+      placementParentId: targetParentNodeId,
+      placementPosition: targetPosition,
+      sponsorId,
+      throwOnError: false,
+    });
+  }
 }
+

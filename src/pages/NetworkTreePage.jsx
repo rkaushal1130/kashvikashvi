@@ -11,6 +11,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   Clock,
+  Building,
 } from 'lucide-react';
 import NetworkTree from '../components/networkTree/NetworkTree';
 import TreeControls from '../components/networkTree/TreeControls';
@@ -58,7 +59,12 @@ function NetworkTreePage({ embedded = false }) {
   // 1. Authenticated User Session
   const { currentUser, isAuthenticated } = useAuth();
   const isAuthorized = Boolean(isAuthenticated);
-  const initialDistributorId = currentUser?.memberId || currentUser?.distributorId || 'KV-1001';
+  const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.role === 'SUPER_ADMIN' || Boolean(currentUser?.isOwner);
+  const initialDistributorId =
+    currentUser?.distributorId ||
+    currentUser?.distributorCode ||
+    currentUser?.memberId ||
+    'KV-1001';
 
   // Read URL member param for state persistence on refresh (?member=KV-1002)
   const urlMemberId = searchParams.get('member');
@@ -68,14 +74,15 @@ function NetworkTreePage({ embedded = false }) {
   const [currentRootId, setCurrentRootId] = useState(effectiveInitialRootId);
   const [depth, setDepth] = useState(3);
   const [breadcrumbs, setBreadcrumbs] = useState(() => {
+    const rootName = currentUser?.name || currentUser?.displayName || currentUser?.fullName || initialDistributorId;
     if (urlMemberId && urlMemberId !== initialDistributorId) {
       return [
-        { id: initialDistributorId, name: `${currentUser?.name || 'Rahul Kaushal'} (Root)` },
+        { id: initialDistributorId, name: `${rootName} (My Root)` },
         { id: urlMemberId, name: urlMemberId },
       ];
     }
     return [
-      { id: initialDistributorId, name: `${currentUser?.name || 'Rahul Kaushal'} (Root)` },
+      { id: initialDistributorId, name: `${rootName} (My Root)` },
     ];
   });
 
@@ -602,26 +609,43 @@ function NetworkTreePage({ embedded = false }) {
                   ← Back to Dashboard
                 </button>
               )}
-              <div className="tree-header-action-buttons">
-                <button
-                  type="button"
-                  className="btn-tree-audit-trail"
-                  onClick={() => handleOpenAuditLogs()}
-                  title="View immutable tree audit trail for all operations (Prompt 16)"
-                >
-                  <ShieldCheck size={14} className="text-emerald-600" />
-                  <span>Tree Audit Logs</span>
-                </button>
-                <button
-                  type="button"
-                  className="btn-tree-move-admin"
-                  onClick={() => handleOpenMoveModal()}
-                  title="Admin Move Distributor (Prompt 16: Requires reason, old/new parents & positions, generates immutable audit log)"
-                >
-                  <ArrowLeftRight size={14} />
-                  <span>Move Distributor</span>
-                </button>
-              </div>
+              {isAdmin && (
+                <div className="tree-header-action-buttons">
+                  <button
+                    type="button"
+                    className="btn-tree-audit-trail"
+                    onClick={() => {
+                      setCurrentRootId('KV-1001');
+                      setBreadcrumbs([{ id: 'KV-1001', name: 'Company Root (KV-1001)' }]);
+                      setSearchParams({ member: 'KV-1001' });
+                      fetchTreeData('KV-1001', depth);
+                    }}
+                    title="View Company Root Organization (Admin/Owner Only)"
+                    style={{ background: '#fef3c7', borderColor: '#fcd34d', color: '#92400e', fontWeight: 600 }}
+                  >
+                    <Building size={14} />
+                    <span>Company Root</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-tree-audit-trail"
+                    onClick={() => handleOpenAuditLogs()}
+                    title="View immutable tree audit trail for all operations (Admin Only)"
+                  >
+                    <ShieldCheck size={14} className="text-emerald-600" />
+                    <span>Tree Audit Logs</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-tree-move-admin"
+                    onClick={() => handleOpenMoveModal()}
+                    title="Admin Move Distributor (Admin Only)"
+                  >
+                    <ArrowLeftRight size={14} />
+                    <span>Move Distributor</span>
+                  </button>
+                </div>
+              )}
             </div>
             <h1 className="tree-page-title">Network Tree</h1>
             <p className="tree-page-subtitle">
@@ -688,15 +712,69 @@ function NetworkTreePage({ embedded = false }) {
         )}
 
         {error && !loading && (
-          <div className="tree-canvas-error-banner">
-            <p>{error}</p>
-            <button
-              type="button"
-              className="btn-retry"
-              onClick={() => fetchTreeData(currentRootId, depth)}
-            >
-              Retry
-            </button>
+          <div
+            className="tree-canvas-error-banner"
+            style={{
+              textAlign: 'center',
+              padding: '32px 24px',
+              maxWidth: '540px',
+              margin: '40px auto',
+              background: '#fff',
+              borderRadius: '14px',
+              boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+              border: '1px solid #fee2e2',
+            }}
+          >
+            <ShieldAlert size={44} style={{ color: '#ef4444', margin: '0 auto 12px' }} />
+            <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#991b1b', marginBottom: '8px' }}>
+              {error.includes('403') || error.includes('Forbidden') || error.includes('not authorized')
+                ? 'Access Restricted (403 Forbidden)'
+                : 'Unable to Load Network Tree'}
+            </h3>
+            <p style={{ color: '#64748b', fontSize: '13px', lineHeight: 1.5, marginBottom: '20px' }}>
+              {error}
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '12px' }}>
+              <button
+                type="button"
+                className="btn-retry"
+                onClick={() => {
+                  setCurrentRootId(initialDistributorId);
+                  const rootName = currentUser?.name || currentUser?.displayName || initialDistributorId;
+                  setBreadcrumbs([{ id: initialDistributorId, name: `${rootName} (My Root)` }]);
+                  setSearchParams({});
+                  fetchTreeData(initialDistributorId, depth);
+                }}
+                style={{
+                  background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+                  color: '#fff',
+                  padding: '9px 18px',
+                  borderRadius: '8px',
+                  fontWeight: 600,
+                  fontSize: '13px',
+                  border: 'none',
+                  cursor: 'pointer',
+                }}
+              >
+                Back to My Personal Network
+              </button>
+              <button
+                type="button"
+                onClick={() => fetchTreeData(currentRootId, depth)}
+                style={{
+                  background: '#f1f5f9',
+                  color: '#475569',
+                  padding: '9px 18px',
+                  borderRadius: '8px',
+                  fontWeight: 600,
+                  fontSize: '13px',
+                  border: '1px solid #cbd5e1',
+                  cursor: 'pointer',
+                }}
+              >
+                Retry
+              </button>
+            </div>
           </div>
         )}
 

@@ -57,6 +57,10 @@ apiRouter.use('/cart', cartRouter);
 // Order Management: /api/v1/orders
 apiRouter.use('/orders', orderRouter);
 
+// Razorpay Payment Gateway & Checkout: /api/v1/payments
+import { paymentRouter } from './payment.routes';
+apiRouter.use('/payments', paymentRouter);
+
 // Business Volume (BV) Ledger: /api/v1/bv
 apiRouter.use('/bv', bvRouter);
 
@@ -137,6 +141,12 @@ import { adminFundingRouter, adminTreasuryRouter, fundingWebhookRouter } from '.
 apiRouter.use('/admin/funding', adminFundingRouter);
 apiRouter.use('/admin/treasury', adminTreasuryRouter);
 apiRouter.use('/webhooks/funding', fundingWebhookRouter);
+
+// Client Funding & Bank Account Management: /api/v1/funding & /api/v1/client/funding
+import { clientFundingRouter } from './clientFunding.routes';
+apiRouter.use('/funding', clientFundingRouter);
+apiRouter.use('/client/funding', clientFundingRouter);
+apiRouter.use('/webhooks/client-funding', clientFundingRouter);
 
 export default apiRouter;
 

@@ -521,7 +521,7 @@ export class AuthService {
       }
     }
 
-    // 9. Zero-trust security: hardcoded safe status and balances
+    // 9. Zero-trust security: initial PENDING status until payment confirmation
     const userObj: any = {
       id: userId,
       userId: generatedUserId,
@@ -529,7 +529,7 @@ export class AuthService {
       passwordHash,
       roleName: role,
       role,
-      status: 'ACTIVE',
+      status: 'PENDING',
       phone,
       username: input.username?.trim(),
       firstName,
@@ -549,7 +549,8 @@ export class AuthService {
         firstName,
         lastName,
         displayName,
-        status: 'ACTIVE',
+        status: 'PENDING',
+        activatedAt: null,
         sponsorId: sponsorProfileId,
         currentRank: { name: 'Distributor' },
         lifetimePV: 0,
@@ -609,7 +610,7 @@ export class AuthService {
         firstName,
         lastName,
         displayName,
-        status: 'ACTIVE',
+        status: 'PENDING',
         joinedAt: new Date().toISOString(),
       });
     }
@@ -620,7 +621,7 @@ export class AuthService {
       sub: userId,
       email,
       role,
-      status: 'ACTIVE',
+      status: 'PENDING',
     });
 
     const refreshToken = signRefreshToken({
@@ -643,7 +644,7 @@ export class AuthService {
         userId: generatedUserId,
         email,
         role,
-        status: 'ACTIVE',
+        status: 'PENDING',
         firstName,
         lastName,
         name: displayName,
@@ -838,23 +839,23 @@ export class AuthService {
             firstName,
             lastName,
             displayName,
-            status: 'ACTIVE',
+            status: 'PENDING',
             sponsorId,
             lifetimePV: 0, // backend controlled
             lifetimeGV: 0, // backend controlled
             currentBB: 0,
             currentMatching: 0,
-            activatedAt: new Date(),
+            activatedAt: null,
           },
         });
 
-        // Create Default Primary Business Center (BC1)
+        // Create Default Primary Business Center (BC1) in pending status
         await tx.businessCenter.create({
           data: {
             distributorId: profile.id,
             centerNumber: 1,
             centerCode: `${distributorCode}-BC1`,
-            status: 'ACTIVE',
+            status: 'PENDING',
             leftVolume: 0,
             rightVolume: 0,
           },
@@ -1663,4 +1664,146 @@ export class AuthService {
       expiresIn: 900, // 15 minutes in seconds
     };
   }
+
+  /**
+   * Activates a distributor's account upon payment verification
+   * and automatically places them into the binary MLM tree under their sponsor.
+   */
+  public static async activateDistributorAndPlace(
+    distributorIdentifier: string,
+    paymentDetails?: { orderId?: string; starterKitId?: string; bv?: number; paymentMethod?: string }
+  ) {
+    const cleanId = (distributorIdentifier || '').trim();
+
+    // 1. Check in DB first if database is available
+    try {
+      const profile = await prisma.distributorProfile.findFirst({
+        where: {
+          OR: [
+            { id: cleanId },
+            { userId: cleanId },
+            { distributorId: { equals: cleanId, mode: 'insensitive' } },
+            { distributorCode: { equals: cleanId, mode: 'insensitive' } },
+          ],
+        },
+      });
+
+      if (profile) {
+        // Idempotency: If already active and already placed, return existing state
+        if (profile.status === 'ACTIVE') {
+          const existingNode = await prisma.mLMNode.findFirst({
+            where: { distributorId: profile.id },
+          });
+          if (existingNode) {
+            return {
+              success: true,
+              alreadyActivated: true,
+              distributorId: profile.distributorId || profile.distributorCode,
+              status: 'ACTIVE',
+              placement: {
+                nodeId: existingNode.id,
+                placementParentId: existingNode.placementParentId,
+                placementPosition: existingNode.placementPosition,
+              },
+            };
+          }
+        }
+
+        // Atomically activate distributor, user account, and business center
+        await prisma.$transaction(async (tx) => {
+          await tx.distributorProfile.update({
+            where: { id: profile.id },
+            data: { status: 'ACTIVE', activatedAt: new Date() },
+          });
+          await tx.user.update({
+            where: { id: profile.userId },
+            data: { status: 'ACTIVE' },
+          });
+          await tx.businessCenter.updateMany({
+            where: { distributorId: profile.id },
+            data: { status: 'ACTIVE' },
+          });
+        });
+
+        // Trigger auto-placement
+        const sponsorId = profile.sponsorId || 'KV-1001';
+        const { TreePlacementService } = await import('./treePlacement.service');
+        const placement = await TreePlacementService.autoPlaceUnderSponsor(profile.id, sponsorId, 'RIGHT');
+
+        return {
+          success: true,
+          distributorId: profile.distributorId || profile.distributorCode,
+          status: 'ACTIVE',
+          placement,
+        };
+      }
+    } catch {
+      // Offline fallback
+    }
+
+    // 2. In-memory & Dynamic Enrollees Fallback
+    let inMem = this.inMemoryUsers.get(cleanId) || this.inMemoryUsers.get(cleanId.toLowerCase());
+    if (!inMem) {
+      for (const u of this.inMemoryUsers.values()) {
+        if (
+          u.id === cleanId ||
+          u.distributorCode?.toUpperCase() === cleanId.toUpperCase() ||
+          u.email?.toLowerCase() === cleanId.toLowerCase()
+        ) {
+          inMem = u;
+          break;
+        }
+      }
+    }
+
+    const effectiveDistId = inMem?.distributorCode || cleanId;
+    const { NetworkTreeService } = await import('./networkTree.service');
+    const enrolled = NetworkTreeService.getEnrolledMembers().find(
+      (m) =>
+        m.distributorId.toUpperCase() === effectiveDistId.toUpperCase() ||
+        m.distributorId.toUpperCase() === cleanId.toUpperCase()
+    );
+
+    // Idempotency check for resilient store
+    if (inMem?.status === 'ACTIVE' && enrolled?.status === 'ACTIVE') {
+      return {
+        success: true,
+        alreadyActivated: true,
+        distributorId: effectiveDistId,
+        status: 'ACTIVE',
+        message: 'Distributor already activated and placed.',
+      };
+    }
+
+    if (inMem) {
+      inMem.status = 'ACTIVE';
+      if (inMem.distributorProfile) {
+        inMem.distributorProfile.status = 'ACTIVE';
+        inMem.distributorProfile.activatedAt = new Date().toISOString();
+      }
+    }
+
+    if (enrolled) {
+      enrolled.status = 'ACTIVE';
+      enrolled.distributorId = effectiveDistId;
+    } else {
+      NetworkTreeService.addEnrolledMember({
+        distributorId: effectiveDistId,
+        name: inMem?.displayName || 'Activated Distributor',
+        status: 'ACTIVE',
+        position: 'RIGHT',
+        sponsor: inMem?.sponsorId || 'KV-1001',
+        placementParent: inMem?.sponsorId || 'KV-1001',
+        bv: paymentDetails?.bv || 100,
+      });
+    }
+
+    return {
+      success: true,
+      distributorId: effectiveDistId,
+      status: 'ACTIVE',
+      message: 'Distributor activated and placed successfully.',
+    };
+  }
 }
+
