@@ -64,15 +64,27 @@ export const errorHandler = (
       }
       default:
         statusCode = 400;
-        message = 'Database operation failed';
+        message = err.message || 'Database operation failed';
         code = 'DATABASE_ERROR';
         break;
     }
   }
+  // Prisma Validation Errors
+  else if (err instanceof Prisma.PrismaClientValidationError) {
+    statusCode = 400;
+    message = 'Data validation failed for database operation.';
+    code = 'DATABASE_VALIDATION_ERROR';
+  }
+  // Prisma Initialization / Connection Errors
+  else if (err instanceof Prisma.PrismaClientInitializationError) {
+    statusCode = 503;
+    message = 'Database service is temporarily unavailable. Please retry shortly.';
+    code = 'DATABASE_UNAVAILABLE';
+  }
   // Standard unexpected errors
   else {
     statusCode = 500;
-    message = isProd ? 'Internal server error' : err.message;
+    message = isProd ? (err.message || 'Internal server error') : err.message;
     code = 'INTERNAL_SERVER_ERROR';
   }
 

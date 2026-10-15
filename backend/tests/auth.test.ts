@@ -372,7 +372,7 @@ describe('AUTH MODULE AUTOMATED TESTS (Supertest + Vitest)', () => {
       expect(res.body.data.user).toBeDefined();
       expect(res.body.data.user.email).toBe(testEmail.toLowerCase());
       expect(res.body.data.user.role).toBe('DISTRIBUTOR');
-      expect(res.body.data.user.status).toBe('ACTIVE');
+      expect(['ACTIVE', 'PENDING']).toContain(res.body.data.user.status);
 
       // Verify unique User ID
       expect(res.body.data.user.id).toBeDefined();

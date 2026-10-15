@@ -14,22 +14,29 @@ interface RequestMetadata {
 
 function isDbConnectionError(error: any): boolean {
   if (!error) return false;
+  if (error instanceof AppError) return false;
   const msg = ((error.message || '') + ' ' + (error.stack || '') + ' ' + String(error)).toLowerCase();
   return (
+    !(error instanceof AppError) ||
     error.name === 'PrismaClientInitializationError' ||
     error.name === 'PrismaClientRustPanicError' ||
-    error.code === 'P1000' ||
-    error.code === 'P1001' ||
-    error.code === 'P1002' ||
-    error.code === 'P1003' ||
-    error.code === 'P1008' ||
-    error.code === 'P1017' ||
+    error.name === 'PrismaClientUnknownRequestError' ||
+    error.name === 'PrismaClientValidationError' ||
+    error.name?.includes('Prisma') ||
+    error.code?.startsWith('P1') ||
+    error.code?.startsWith('P2') ||
+    error.code?.startsWith('P5') ||
     msg.includes("can't reach database") ||
     msg.includes('connection refused') ||
     msg.includes('econnrefused') ||
     msg.includes('etimedout') ||
     msg.includes('timeout') ||
-    msg.includes('socket has been closed')
+    msg.includes('socket has been closed') ||
+    msg.includes('database') ||
+    msg.includes('relation') ||
+    msg.includes('table') ||
+    msg.includes('column') ||
+    msg.includes('unconfigured')
   );
 }
 
@@ -849,13 +856,13 @@ export class AuthService {
           },
         });
 
-        // Create Default Primary Business Center (BC1) in pending status
+        // Create Default Primary Business Center (BC1) in pending/inactive status
         await tx.businessCenter.create({
           data: {
             distributorId: profile.id,
             centerNumber: 1,
             centerCode: `${distributorCode}-BC1`,
-            status: 'PENDING',
+            status: 'INACTIVE',
             leftVolume: 0,
             rightVolume: 0,
           },
@@ -936,7 +943,7 @@ export class AuthService {
           name: displayName,
           email: user.email,
           role: user.roleName,
-          status: user.status,
+          status: distributorProfileData?.status || user.status || 'PENDING',
           referralCode: memberCode,
           distributorCode: memberCode,
           memberId: memberCode,
@@ -1016,7 +1023,7 @@ export class AuthService {
         'AUTH_ACCOUNT_SUSPENDED'
       );
     }
-    if (user.status === 'INACTIVE' || user.status === 'TERMINATED' || user.status !== 'ACTIVE') {
+    if (user.status === 'INACTIVE' || user.status === 'TERMINATED' || (user.status !== 'ACTIVE' && user.status !== 'PENDING')) {
       throw AppError.accountInactive(
         'Your account is inactive or not eligible to sign in. Please contact support.',
         'AUTH_ACCOUNT_INACTIVE'
@@ -1140,7 +1147,7 @@ export class AuthService {
         'AUTH_ACCOUNT_SUSPENDED'
       );
     }
-    if (user.status !== 'ACTIVE') {
+    if (user.status !== 'ACTIVE' && user.status !== 'PENDING' && user.status !== 'PENDING_KYC') {
       throw AppError.accountInactive(
         'Your account is inactive or not eligible to sign in. Please contact support.',
         'AUTH_ACCOUNT_INACTIVE'

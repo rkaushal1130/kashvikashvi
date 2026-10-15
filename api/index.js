@@ -3090,8 +3090,9 @@ __export(auth_service_exports, {
 });
 function isDbConnectionError(error) {
   if (!error) return false;
+  if (error instanceof AppError) return false;
   const msg = ((error.message || "") + " " + (error.stack || "") + " " + String(error)).toLowerCase();
-  return error.name === "PrismaClientInitializationError" || error.name === "PrismaClientRustPanicError" || error.code === "P1000" || error.code === "P1001" || error.code === "P1002" || error.code === "P1003" || error.code === "P1008" || error.code === "P1017" || msg.includes("can't reach database") || msg.includes("connection refused") || msg.includes("econnrefused") || msg.includes("etimedout") || msg.includes("timeout") || msg.includes("socket has been closed");
+  return !(error instanceof AppError) || error.name === "PrismaClientInitializationError" || error.name === "PrismaClientRustPanicError" || error.name === "PrismaClientUnknownRequestError" || error.name === "PrismaClientValidationError" || error.name?.includes("Prisma") || error.code?.startsWith("P1") || error.code?.startsWith("P2") || error.code?.startsWith("P5") || msg.includes("can't reach database") || msg.includes("connection refused") || msg.includes("econnrefused") || msg.includes("etimedout") || msg.includes("timeout") || msg.includes("socket has been closed") || msg.includes("database") || msg.includes("relation") || msg.includes("table") || msg.includes("column") || msg.includes("unconfigured");
 }
 var import_crypto3, AuthService;
 var init_auth_service = __esm({
@@ -3800,7 +3801,7 @@ var init_auth_service = __esm({
                 distributorId: profile.id,
                 centerNumber: 1,
                 centerCode: `${distributorCode}-BC1`,
-                status: "PENDING",
+                status: "INACTIVE",
                 leftVolume: 0,
                 rightVolume: 0
               }
@@ -3866,7 +3867,7 @@ var init_auth_service = __esm({
               name: displayName,
               email: user.email,
               role: user.roleName,
-              status: user.status,
+              status: distributorProfileData?.status || user.status || "PENDING",
               referralCode: memberCode,
               distributorCode: memberCode,
               memberId: memberCode,
@@ -3934,7 +3935,7 @@ var init_auth_service = __esm({
             "AUTH_ACCOUNT_SUSPENDED"
           );
         }
-        if (user.status === "INACTIVE" || user.status === "TERMINATED" || user.status !== "ACTIVE") {
+        if (user.status === "INACTIVE" || user.status === "TERMINATED" || user.status !== "ACTIVE" && user.status !== "PENDING") {
           throw AppError.accountInactive(
             "Your account is inactive or not eligible to sign in. Please contact support.",
             "AUTH_ACCOUNT_INACTIVE"
@@ -4032,7 +4033,7 @@ var init_auth_service = __esm({
             "AUTH_ACCOUNT_SUSPENDED"
           );
         }
-        if (user.status !== "ACTIVE") {
+        if (user.status !== "ACTIVE" && user.status !== "PENDING" && user.status !== "PENDING_KYC") {
           throw AppError.accountInactive(
             "Your account is inactive or not eligible to sign in. Please contact support.",
             "AUTH_ACCOUNT_INACTIVE"
@@ -16868,13 +16869,21 @@ var errorHandler = (err, req, res, _next) => {
       }
       default:
         statusCode = 400;
-        message = "Database operation failed";
+        message = err.message || "Database operation failed";
         code = "DATABASE_ERROR";
         break;
     }
+  } else if (err instanceof import_client.Prisma.PrismaClientValidationError) {
+    statusCode = 400;
+    message = "Data validation failed for database operation.";
+    code = "DATABASE_VALIDATION_ERROR";
+  } else if (err instanceof import_client.Prisma.PrismaClientInitializationError) {
+    statusCode = 503;
+    message = "Database service is temporarily unavailable. Please retry shortly.";
+    code = "DATABASE_UNAVAILABLE";
   } else {
     statusCode = 500;
-    message = isProd ? "Internal server error" : err.message;
+    message = isProd ? err.message || "Internal server error" : err.message;
     code = "INTERNAL_SERVER_ERROR";
   }
   if (statusCode >= 500) {
@@ -17228,7 +17237,7 @@ var AuthController = class {
       };
       const refreshToken = req.cookies?.[REFRESH_COOKIE_NAME] || req.cookies?.refreshToken || req.body?.refreshToken;
       if (!refreshToken) {
-        throw AppError.unauthorized("Refresh token is missing or expired", "AUTH_TOKEN_MISSING");
+        throw AppError.unprocessableEntity("Refresh token is required", "AUTH_TOKEN_MISSING");
       }
       const result = await AuthService.refreshToken(refreshToken, metadata);
       if (result.tokens?.refreshToken) {
@@ -42596,7 +42605,7 @@ var ClientFundingService = class {
         success: true,
         alreadyProcessed: true,
         order: this.formatOrder(inMem),
-        walletBalance: 2500,
+        walletBalance: Number(inMem.amount),
         message: "Funding order already verified previously."
       };
     }
@@ -42604,17 +42613,19 @@ var ClientFundingService = class {
     inMem.providerPaymentId = razorpayPaymentId;
     inMem.paidAt = /* @__PURE__ */ new Date();
     inMem.walletTransactionId = `wtx_${Date.now()}`;
+    let calculatedBalance = Number(inMem.amount);
     try {
       const w = await WalletService.getWalletByUserId(userId);
       if (w) {
         w.availableBalance = SafeDecimal.add(w.availableBalance, inMem.amount);
+        calculatedBalance = Number(w.availableBalance);
       }
     } catch {
     }
     return {
       success: true,
       order: this.formatOrder(inMem),
-      walletBalance: 2500,
+      walletBalance: calculatedBalance,
       message: `Successfully credited \u20B9${SafeDecimal.round(inMem.amount, 2)} to your wallet.`
     };
   }

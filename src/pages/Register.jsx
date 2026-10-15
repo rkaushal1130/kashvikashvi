@@ -298,6 +298,8 @@ export function Register() {
         setGeneralError(
           'Network error: Unable to reach the server. Please verify that your backend server is running and accessible.'
         );
+      } else if (status >= 500 || /internal server error/i.test(message)) {
+        setGeneralError('Registration service temporarily busy. Please click "Create Account" again to complete your registration.');
       } else {
         setGeneralError(message || 'Registration failed. Please check your details and try again.');
       }

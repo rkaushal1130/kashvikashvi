@@ -156,7 +156,7 @@ export class AuthController {
         req.body?.refreshToken;
 
       if (!refreshToken) {
-        throw AppError.unauthorized('Refresh token is missing or expired', 'AUTH_TOKEN_MISSING');
+        throw AppError.unprocessableEntity('Refresh token is required', 'AUTH_TOKEN_MISSING');
       }
 
       const result = await AuthService.refreshToken(refreshToken, metadata);
