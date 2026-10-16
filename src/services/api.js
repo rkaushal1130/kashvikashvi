@@ -5,14 +5,22 @@
  */
 
 const getApiBaseUrl = () => {
+  const isBrowser = typeof window !== 'undefined';
+  const isLocalHost = isBrowser && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
   const envUrl = import.meta.env?.VITE_API_URL || import.meta.env?.VITE_BACKEND_URL;
   if (envUrl) {
-    const clean = envUrl.replace(/\/+$/, '');
-    return clean.endsWith('/api') ? `${clean}/v1` : clean;
+    const isEnvLocal = envUrl.includes('localhost') || envUrl.includes('127.0.0.1');
+    if (!isBrowser || isLocalHost || !isEnvLocal) {
+      const clean = envUrl.replace(/\/+$/, '');
+      return clean.endsWith('/api') ? `${clean}/v1` : clean;
+    }
   }
-  if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+
+  if (isBrowser && !isLocalHost) {
     return '/api/v1';
   }
+
   return 'http://localhost:5000/api/v1';
 };
 

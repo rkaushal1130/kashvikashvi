@@ -43,7 +43,12 @@ export const authApi = {
    */
   async refresh() {
     const token = apiClient.getToken();
-    if (token === 'kashvi_mock_owner_jwt_token_2026') {
+    if (
+      token &&
+      (token === 'kashvi_mock_owner_jwt_token_2026' ||
+        token.startsWith('kashvi_reg_token_') ||
+        token.startsWith('kashvi_mock_'))
+    ) {
       return { success: true, data: { accessToken: token } };
     }
     return apiClient.post('/auth/refresh', {});
@@ -54,7 +59,12 @@ export const authApi = {
    */
   async getMe() {
     const token = apiClient.getToken();
-    if (token === 'kashvi_mock_owner_jwt_token_2026') {
+    if (
+      token &&
+      (token === 'kashvi_mock_owner_jwt_token_2026' ||
+        token.startsWith('kashvi_reg_token_') ||
+        token.startsWith('kashvi_mock_'))
+    ) {
       const saved = localStorage.getItem('kashvi_auth');
       if (saved) {
         try {
