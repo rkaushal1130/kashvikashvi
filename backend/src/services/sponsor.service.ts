@@ -91,13 +91,40 @@ export class SponsorService {
       }
     }
 
+    if (!sponsor) {
+      try {
+        const { NetworkTreeService } = await import('./networkTree.service');
+        const enrollees = NetworkTreeService.getEnrolledMembers();
+        const enrollee = enrollees.find(
+          (m) =>
+            m.distributorId.toUpperCase() === identifier.toUpperCase() ||
+            (m.id && m.id.toUpperCase() === identifier.toUpperCase()) ||
+            (m.treeId && m.treeId.toUpperCase() === identifier.toUpperCase())
+        );
+        if (enrollee) {
+          sponsor = {
+            id: enrollee.id,
+            distributorId: enrollee.distributorId,
+            distributorCode: enrollee.distributorId,
+            firstName: enrollee.name.split(' ')[0] || 'Distributor',
+            lastName: enrollee.name.split(' ').slice(1).join(' ') || 'Member',
+            displayName: enrollee.name,
+            status: 'ACTIVE',
+            mlmNodes: [{ id: enrollee.id, children: [] }],
+          };
+        }
+      } catch {
+        // ignore
+      }
+    }
+
     // 2. Verify that the distributor exists
     if (!sponsor) {
       throw new AppError('Sponsor not found', 404, 'SPONSOR_NOT_FOUND');
     }
 
-    // 3. Verify distributor status
-    if (sponsor.status !== 'ACTIVE') {
+    // 3. Verify distributor status (allow ACTIVE and PENDING distributors to share their sponsor ID)
+    if (sponsor.status !== 'ACTIVE' && sponsor.status !== 'PENDING') {
       throw new AppError('Sponsor is inactive', 400, 'SPONSOR_INACTIVE');
     }
 

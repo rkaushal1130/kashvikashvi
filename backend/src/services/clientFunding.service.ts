@@ -303,7 +303,7 @@ export class ClientFundingService {
         return {
           success: true,
           order: this.formatOrder(updated.completedOrder),
-          walletBalance: updated.newBalance,
+          walletBalance: Number(updated.newBalance),
           message: `Successfully credited ₹${SafeDecimal.round(order.amount, 2)} to your wallet.`,
         };
       }
@@ -365,7 +365,7 @@ export class ClientFundingService {
     try {
       const w = await WalletService.getWalletByUserId(userId);
       if (w) {
-        w.availableBalance = SafeDecimal.add(w.availableBalance, inMem.amount);
+        w.availableBalance = Number(SafeDecimal.add(w.availableBalance, inMem.amount));
         calculatedBalance = Number(w.availableBalance);
       }
     } catch {

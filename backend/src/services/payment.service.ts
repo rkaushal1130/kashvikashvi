@@ -58,6 +58,7 @@ export class PaymentService {
     // Create the order in database with PAYMENT_PENDING status
     const order = await OrderService.createOrder(userId, {
       items: input.items,
+      fromCart: false,
       shippingAddressId: input.shippingAddressId,
       billingAddressId: input.billingAddressId,
       shippingAddress: input.shippingAddress,
@@ -634,7 +635,9 @@ export class PaymentService {
 
             try {
               const { AuthService } = await import('./auth.service');
-              await AuthService.activateDistributorAndPlace(paymentRecord.order.userId);
+              if (paymentRecord.order.userId) {
+                await AuthService.activateDistributorAndPlace(paymentRecord.order.userId);
+              }
             } catch (actErr: any) {
               logger.warn({ error: actErr.message, userId: paymentRecord.order.userId }, 'Distributor auto-placement trigger notification in webhook');
             }

@@ -1,4 +1,5 @@
 import { randomBytes, randomUUID } from 'crypto';
+import { PlacementPosition, AccountStatus, DistributorStatus } from '@prisma/client';
 import { prisma } from '../config/database';
 import { logger } from '../config/logger';
 import { AuthUser, JwtAccessPayload, JwtRefreshPayload } from '../types';
@@ -622,13 +623,42 @@ export class AuthService {
       });
     }
 
+    const treeId = `node-${distributorCode.toLowerCase()}`;
+    const preferredLeg: 'LEFT' | 'RIGHT' = (input.placementPosition as 'LEFT' | 'RIGHT') || 'RIGHT';
+
+    userObj.treeId = treeId;
+    userObj.placementParentId = sponsorDistCode;
+    userObj.placementPosition = preferredLeg;
+    userObj.paymentStatus = 'PENDING';
+
+    // Automatically place in NetworkTreeService with unique Tree ID
+    try {
+      const { NetworkTreeService } = await import('./networkTree.service');
+      NetworkTreeService.addEnrolledMember({
+        id: treeId,
+        distributorId: distributorCode,
+        name: displayName,
+        status: 'PENDING',
+        position: preferredLeg,
+        sponsor: sponsorDistCode,
+        sponsorName: sponsorFullName,
+        placementParent: sponsorDistCode,
+        placementParentName: sponsorFullName,
+        bv: 100,
+        email,
+        phone,
+      });
+    } catch (e: any) {
+      logger.warn({ err: e.message }, 'Resilient tree node creation notification');
+    }
+
     this.saveInMemoryUser(userObj);
 
     const accessToken = signAccessToken({
       sub: userId,
       email,
       role,
-      status: 'PENDING',
+      status: 'PENDING_KYC',
     });
 
     const refreshToken = signRefreshToken({
@@ -652,6 +682,7 @@ export class AuthService {
         email,
         role,
         status: 'PENDING',
+        paymentStatus: 'PENDING',
         firstName,
         lastName,
         name: displayName,
@@ -664,6 +695,9 @@ export class AuthService {
         distributorId: distributorCode,
         sponsorId: sponsorDistCode,
         sponsorProfileId,
+        treeId,
+        placementParentId: sponsorDistCode,
+        placementPosition: preferredLeg,
         sponsor: {
           id: sponsorProfileId,
           distributorCode: sponsorDistCode,
@@ -857,7 +891,7 @@ export class AuthService {
         });
 
         // Create Default Primary Business Center (BC1) in pending/inactive status
-        await tx.businessCenter.create({
+        const bc = await tx.businessCenter.create({
           data: {
             distributorId: profile.id,
             centerNumber: 1,
@@ -907,7 +941,88 @@ export class AuthService {
           }
         }
 
-        distributorProfileData = profile;
+        // Automatic Binary Tree Placement & Unique Tree ID Generation
+        let placementParentNode: any = null;
+        let placementPosition: PlacementPosition = (input.placementPosition as PlacementPosition) || 'RIGHT';
+
+        if (sponsorId) {
+          // Find sponsor's MLM node
+          const sponsorNode = await tx.mLMNode.findFirst({
+            where: { distributorId: sponsorId },
+            include: {
+              children: {
+                select: { id: true, placementPosition: true },
+              },
+            },
+            orderBy: { depth: 'asc' },
+          });
+
+          if (sponsorNode) {
+            const leftChild = sponsorNode.children.find((c: any) => c.placementPosition === 'LEFT');
+            const rightChild = sponsorNode.children.find((c: any) => c.placementPosition === 'RIGHT');
+
+            if (placementPosition === 'LEFT' && !leftChild) {
+              placementParentNode = sponsorNode;
+              placementPosition = 'LEFT';
+            } else if (placementPosition === 'RIGHT' && !rightChild) {
+              placementParentNode = sponsorNode;
+              placementPosition = 'RIGHT';
+            } else if (!leftChild) {
+              placementParentNode = sponsorNode;
+              placementPosition = 'LEFT';
+            } else if (!rightChild) {
+              placementParentNode = sponsorNode;
+              placementPosition = 'RIGHT';
+            } else {
+              // Spillover down the selected leg
+              let currentParent: any = sponsorNode;
+              while (currentParent) {
+                const legChildren: any[] = await tx.mLMNode.findMany({
+                  where: { placementParentId: currentParent.id },
+                  select: { id: true, placementPosition: true, depth: true, binaryPath: true },
+                });
+                const matchChild = legChildren.find((c: any) => c.placementPosition === placementPosition);
+                if (!matchChild) {
+                  placementParentNode = currentParent;
+                  break;
+                }
+                const nextParent = await tx.mLMNode.findUnique({
+                  where: { id: matchChild.id },
+                  select: { id: true, depth: true, binaryPath: true },
+                });
+                if (!nextParent) {
+                  placementParentNode = currentParent;
+                  break;
+                }
+                currentParent = nextParent;
+              }
+            }
+          }
+        }
+
+        const newDepth = placementParentNode ? placementParentNode.depth + 1 : 1;
+        const parentPath = placementParentNode?.binaryPath || 'ROOT';
+        const legIndicator = placementPosition === 'LEFT' ? 'L' : 'R';
+        const binaryPath = placementParentNode ? `${parentPath}/${legIndicator}` : 'ROOT';
+
+        // Create Unique Binary Tree Node (Tree ID)
+        const mlmNode = await tx.mLMNode.create({
+          data: {
+            distributorId: profile.id,
+            businessCenterId: bc.id,
+            placementParentId: placementParentNode ? placementParentNode.id : null,
+            placementPosition: placementParentNode ? placementPosition : null,
+            depth: newDepth,
+            binaryPath,
+          },
+        });
+
+        distributorProfileData = {
+          ...profile,
+          treeId: mlmNode.id,
+          placementParentId: placementParentNode?.id || null,
+          placementPosition,
+        };
       } else {
         const customer = await tx.customer.create({
           data: {
@@ -935,6 +1050,30 @@ export class AuthService {
 
       const memberCode = distributorProfileData?.distributorCode || distributorCode;
 
+      if (role === 'DISTRIBUTOR') {
+        try {
+          const { NetworkTreeService } = await import('./networkTree.service');
+          NetworkTreeService.addEnrolledMember({
+            id: distributorProfileData?.treeId || `node-${memberCode.toLowerCase()}`,
+            treeId: distributorProfileData?.treeId || `node-${memberCode.toLowerCase()}`,
+            distributorId: memberCode,
+            name: displayName,
+            status: distributorProfileData?.status || user.status || 'PENDING',
+            paymentStatus: 'PENDING',
+            position: (distributorProfileData?.placementPosition as any) || 'RIGHT',
+            sponsor: resolvedSponsor?.distributorCode || sponsorId || 'KV-1001',
+            sponsorName: resolvedSponsor?.displayName || 'Rahul Kaushal',
+            placementParent: distributorProfileData?.placementParentId || resolvedSponsor?.distributorCode || 'KV-1001',
+            placementParentName: resolvedSponsor?.displayName || 'Rahul Kaushal',
+            bv: 100,
+            email: user.email,
+            phone: user.phone || undefined,
+          });
+        } catch (e: any) {
+          logger.warn({ err: e.message }, 'Resilient tree sync notification');
+        }
+      }
+
       return {
         user: {
           id: user.id,
@@ -944,6 +1083,7 @@ export class AuthService {
           email: user.email,
           role: user.roleName,
           status: distributorProfileData?.status || user.status || 'PENDING',
+          paymentStatus: 'PENDING',
           referralCode: memberCode,
           distributorCode: memberCode,
           memberId: memberCode,
@@ -951,6 +1091,9 @@ export class AuthService {
           phone: user.phone,
           sponsorId: resolvedSponsor?.distributorCode || sponsorId || 'KV-1001',
           sponsorProfileId: sponsorId,
+          treeId: distributorProfileData?.treeId || undefined,
+          placementParentId: distributorProfileData?.placementParentId || undefined,
+          placementPosition: distributorProfileData?.placementPosition || undefined,
           sponsor: resolvedSponsor ? {
             id: resolvedSponsor.id,
             distributorCode: resolvedSponsor.distributorCode,
@@ -1147,7 +1290,7 @@ export class AuthService {
         'AUTH_ACCOUNT_SUSPENDED'
       );
     }
-    if (user.status !== 'ACTIVE' && user.status !== 'PENDING' && user.status !== 'PENDING_KYC') {
+    if (user.status !== 'ACTIVE' && (user.status as string) !== 'PENDING' && user.status !== 'PENDING_KYC') {
       throw AppError.accountInactive(
         'Your account is inactive or not eligible to sign in. Please contact support.',
         'AUTH_ACCOUNT_INACTIVE'
@@ -1732,16 +1875,31 @@ export class AuthService {
           });
         });
 
-        // Trigger auto-placement
-        const sponsorId = profile.sponsorId || 'KV-1001';
-        const { TreePlacementService } = await import('./treePlacement.service');
-        const placement = await TreePlacementService.autoPlaceUnderSponsor(profile.id, sponsorId, 'RIGHT');
+        // If node already exists from registration, link it; otherwise trigger auto-placement
+        let existingNode = await prisma.mLMNode.findFirst({
+          where: { distributorId: profile.id },
+        });
+
+        if (!existingNode) {
+          const sponsorId = profile.sponsorId || 'KV-1001';
+          const { TreePlacementService } = await import('./treePlacement.service');
+          await TreePlacementService.autoPlaceUnderSponsor(profile.id, sponsorId, 'RIGHT');
+          existingNode = await prisma.mLMNode.findFirst({
+            where: { distributorId: profile.id },
+          });
+        }
 
         return {
           success: true,
           distributorId: profile.distributorId || profile.distributorCode,
           status: 'ACTIVE',
-          placement,
+          paymentStatus: 'PAID',
+          treeId: existingNode?.id,
+          placement: existingNode ? {
+            nodeId: existingNode.id,
+            placementParentId: existingNode.placementParentId,
+            placementPosition: existingNode.placementPosition,
+          } : undefined,
         };
       }
     } catch {
@@ -1778,12 +1936,15 @@ export class AuthService {
         alreadyActivated: true,
         distributorId: effectiveDistId,
         status: 'ACTIVE',
+        paymentStatus: 'PAID',
+        treeId: enrolled?.id || inMem?.treeId,
         message: 'Distributor already activated and placed.',
       };
     }
 
     if (inMem) {
       inMem.status = 'ACTIVE';
+      inMem.paymentStatus = 'PAID';
       if (inMem.distributorProfile) {
         inMem.distributorProfile.status = 'ACTIVE';
         inMem.distributorProfile.activatedAt = new Date().toISOString();
@@ -1795,12 +1956,15 @@ export class AuthService {
       enrolled.distributorId = effectiveDistId;
     } else {
       NetworkTreeService.addEnrolledMember({
+        id: inMem?.treeId || `node-${effectiveDistId.toLowerCase()}`,
         distributorId: effectiveDistId,
         name: inMem?.displayName || 'Activated Distributor',
         status: 'ACTIVE',
-        position: 'RIGHT',
+        position: inMem?.placementPosition || 'RIGHT',
         sponsor: inMem?.sponsorId || 'KV-1001',
-        placementParent: inMem?.sponsorId || 'KV-1001',
+        sponsorName: inMem?.sponsor?.name || 'Rahul Kaushal',
+        placementParent: inMem?.placementParentId || inMem?.sponsorId || 'KV-1001',
+        placementParentName: inMem?.sponsor?.name || 'Rahul Kaushal',
         bv: paymentDetails?.bv || 100,
       });
     }
@@ -1809,6 +1973,8 @@ export class AuthService {
       success: true,
       distributorId: effectiveDistId,
       status: 'ACTIVE',
+      paymentStatus: 'PAID',
+      treeId: enrolled?.id || inMem?.treeId,
       message: 'Distributor activated and placed successfully.',
     };
   }

@@ -42,19 +42,31 @@ export function BinaryTreeNode({
     );
   }
 
-  // 2. ACTIVE Distributor Node
+  // 2. ACTIVE / REGISTERED Distributor Node
   const name = node.name || node.distributor?.displayName || node.distributor?.firstName || 'Distributor';
-  const id = node.distributorId || node.id || node.distributor?.distributorCode || 'KV-0000';
+  const id = node.distributorId || node.distributor?.distributorCode || 'KV-0000';
+  const treeId = node.treeId || node.id;
   const nodePosition = node.position || position;
   const nodeLevel = node.level || level;
   const status = (node.status || node.distributor?.status || 'ACTIVE').toUpperCase();
   const isActive = status === 'ACTIVE';
+
+  const rawPayment = node.paymentStatus || (isActive ? 'PAID' : 'PENDING');
+  const paymentStatus = rawPayment.toUpperCase();
+  const isPaid = paymentStatus === 'PAID';
+  const isFailed = paymentStatus === 'FAILED' || paymentStatus === 'CANCELLED';
+
+  const idColorClass = (isActive && isPaid)
+    ? 'id-active-paid'
+    : isFailed
+    ? 'id-failed'
+    : 'id-pending';
   const rank = node.rank || node.distributor?.rankName || 'Executive';
 
   return (
     <div className={`binary-node-container ${isRoot ? 'is-root' : ''}`}>
       <div
-        className={`binary-node-card active-card ${isActive ? 'status-active' : 'status-inactive'} ${
+        className={`binary-node-card active-card ${isActive && isPaid ? 'status-active' : 'status-inactive'} ${
           isSelected ? 'is-selected' : ''
         } ${isHighlighted ? 'is-highlighted' : ''}`}
         onClick={() => onClick && onClick(node)}
@@ -81,7 +93,14 @@ export function BinaryTreeNode({
             <h4 className="node-name" title={name}>
               {name}
             </h4>
-            <span className="node-id">{id}</span>
+            <span className={`node-id ${idColorClass}`} title={`Status: ${status} | Payment: ${paymentStatus}`}>
+              {id}
+            </span>
+            {treeId && (
+              <span className="node-tree-id-tag" title={`Tree ID: ${treeId}`} style={{ display: 'block', marginTop: '2px' }}>
+                Tree: {treeId}
+              </span>
+            )}
           </div>
         </div>
 
@@ -90,9 +109,12 @@ export function BinaryTreeNode({
           <span className="node-rank" title={rank}>
             {rank}
           </span>
-          <span className={`node-status-pill ${isActive ? 'pill-active' : 'pill-inactive'}`}>
+          <span className={`node-status-pill ${isActive && isPaid ? 'pill-active' : 'pill-inactive'}`}>
             <span className="status-dot" />
             <span>{status}</span>
+            <span className={`payment-pill payment-pill-${paymentStatus.toLowerCase()}`}>
+              {paymentStatus}
+            </span>
           </span>
         </div>
       </div>

@@ -77,7 +77,7 @@ export class PaymentController {
       const rawBody = (req as any).rawBody || JSON.stringify(req.body);
 
       const result = await PaymentService.processWebhook(rawBody, signature, req.body);
-      res.status(200).json({ success: true, received: true, ...result, data: result });
+      res.status(200).json({ success: true, ...result, data: result });
     } catch (error) {
       next(error);
     }

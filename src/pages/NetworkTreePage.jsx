@@ -277,13 +277,8 @@ function NetworkTreePage({ embedded = false }) {
 
         // Fallback to secondary endpoints if needed
         if (!data) {
-          if (targetId && targetId !== initialDistributorId) {
-            const res = await api.getMemberNetworkTree(targetId, maxDepth);
-            data = res?.root || res?.data?.root || res?.data || res;
-          } else {
-            const res = await api.getNetworkTree(maxDepth);
-            data = res?.root || res?.data?.root || res?.data || res;
-          }
+          const res = await api.getMemberNetworkTree(targetId, maxDepth);
+          data = res?.root || res?.data?.root || res?.data || res;
         }
 
         // Fallback to binary tree if needed

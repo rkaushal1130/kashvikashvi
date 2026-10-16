@@ -777,6 +777,60 @@ export const api = {
           },
         };
       }
+
+      // Check registered users in local storage (supports any member who registered)
+      try {
+        const rawUsers = localStorage.getItem('kashvi_registered_users');
+        if (rawUsers) {
+          const list = JSON.parse(rawUsers);
+          const found = list.find(
+            (u) =>
+              u.distributorId?.toUpperCase() === upper ||
+              u.distributorCode?.toUpperCase() === upper ||
+              u.referralCode?.toUpperCase() === upper ||
+              u.memberId?.toUpperCase() === upper ||
+              u.id?.toUpperCase() === upper
+          );
+          if (found) {
+            return {
+              success: true,
+              data: {
+                sponsor: {
+                  id: found.id || `dist-${found.distributorId?.toLowerCase()}`,
+                  distributorId: found.distributorId || found.distributorCode || found.memberId,
+                  name: found.name || found.fullName || `${found.firstName} ${found.lastName}`.trim(),
+                  status: found.status || 'ACTIVE',
+                },
+                availablePositions: ['LEFT', 'RIGHT'],
+              },
+            };
+          }
+        }
+        const enrollees = this.getStoredEnrolledMembers();
+        const foundMem = enrollees.find(
+          (m) =>
+            m.distributorId?.toUpperCase() === upper ||
+            m.treeId?.toUpperCase() === upper ||
+            m.id?.toUpperCase() === upper
+        );
+        if (foundMem) {
+          return {
+            success: true,
+            data: {
+              sponsor: {
+                id: foundMem.id,
+                distributorId: foundMem.distributorId,
+                name: foundMem.name,
+                status: foundMem.status || 'ACTIVE',
+              },
+              availablePositions: ['LEFT', 'RIGHT'],
+            },
+          };
+        }
+      } catch {
+        // ignore
+      }
+
       // Any other or invalid sponsor rejected
       return {
         success: false,
@@ -929,10 +983,30 @@ export const api = {
     };
   },
 
-  // 11. Binary MLM Network Tree API (Prompt 7)
-  async getNetworkTree(depth = 3) {
+  getCurrentDistributorId() {
     try {
-      const res = await fetch(`${API_BASE_URL}/network-tree?depth=${depth}`, {
+      const saved = localStorage.getItem('kashvi_auth');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        const user = parsed?.user;
+        if (user) {
+          return user.distributorId || user.distributorCode || user.memberId || 'KV-1001';
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return 'KV-1001';
+  },
+
+  // 11. Binary MLM Network Tree API (Prompt 7)
+  async getNetworkTree(depth = 3, targetId = null) {
+    const effectiveId = targetId || this.getCurrentDistributorId();
+    try {
+      const url = effectiveId && effectiveId !== 'KV-1001'
+        ? `${API_BASE_URL}/network-tree/member/${encodeURIComponent(effectiveId)}?depth=${depth}`
+        : `${API_BASE_URL}/network-tree?depth=${depth}`;
+      const res = await fetch(url, {
         headers: getAuthHeaders(),
       });
       const data = await res.json();
@@ -944,28 +1018,126 @@ export const api = {
     }
     // Fallback: Return standard modeled network tree
     return {
-      root: this.getModeledTree('KV-1001', depth),
+      root: this.getModeledTree(effectiveId, depth),
     };
   },
 
   getModeledTree(distributorId = 'KV-1001', maxDepth = 3, currentDepth = 1) {
     const enrollees = this.getStoredEnrolledMembers();
-    const activeEnrollees = enrollees.filter((m) => m.status === 'ACTIVE');
-    const normId = (distributorId || 'KV-1001').toUpperCase().trim();
+    const normId = (distributorId || this.getCurrentDistributorId() || 'KV-1001').toUpperCase().trim();
     const isOwner = normId.includes('1001') || normId.includes('RAHUL');
 
-    // If viewing an active enrolled member directly as root
+    // Retrieve local registered users list
+    let registeredUsers = [];
+    try {
+      const rawUsers = localStorage.getItem('kashvi_registered_users');
+      if (rawUsers) registeredUsers = JSON.parse(rawUsers);
+    } catch {
+      // ignore
+    }
+
+    // Merge enrollees with registered users to build complete directory
+    const directory = [...enrollees];
+    for (const u of registeredUsers) {
+      const uDistId = u.distributorId || u.distributorCode || u.memberId;
+      if (uDistId && !directory.some(d => d.distributorId?.toUpperCase() === uDistId.toUpperCase())) {
+        directory.push({
+          id: u.treeId || `node-${uDistId.toLowerCase()}`,
+          treeId: u.treeId || `node-${uDistId.toLowerCase()}`,
+          distributorId: uDistId,
+          name: u.name || u.fullName || `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'New Distributor',
+          status: u.status || 'PENDING',
+          paymentStatus: u.paymentStatus || 'PENDING',
+          rank: u.currentRank?.name || 'Associate',
+          position: u.placementPosition || 'RIGHT',
+          joinedDate: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+          sponsor: u.sponsorId || 'KV-1001',
+          sponsorName: u.sponsor?.name || 'Rahul Kaushal',
+          placementParent: u.placementParentId || u.sponsorId || 'KV-1001',
+          placementParentName: u.sponsor?.name || 'Rahul Kaushal',
+          businessCenter: 'BC-001',
+          bv: 100,
+        });
+      }
+    }
+
+    // Recursive helper to build subtrees
+    const buildSubtree = (parentId, depth) => {
+      if (depth >= maxDepth) return { left: null, right: null };
+      const children = directory.filter(
+        (m) =>
+          (m.placementParent && m.placementParent.toUpperCase() === parentId.toUpperCase()) ||
+          (!m.placementParent && m.sponsor && m.sponsor.toUpperCase() === parentId.toUpperCase())
+      );
+      const leftChild = children.find((m) => m.position === 'LEFT');
+      const rightChild = children.find((m) => m.position === 'RIGHT') || (children.length > 0 && !leftChild ? children[0] : null);
+
+      const mapChild = (mem, pos) => {
+        if (!mem) return null;
+        const sub = buildSubtree(mem.distributorId, depth + 1);
+        const memBV = Number(mem.bv) || 100;
+        const pStatus = mem.paymentStatus || (mem.status === 'ACTIVE' ? 'PAID' : 'PENDING');
+        const hasKids = Boolean(sub.left || sub.right);
+
+        return {
+          id: mem.id || `node-${mem.distributorId.toLowerCase()}`,
+          treeId: mem.treeId || mem.id || `node-${mem.distributorId.toLowerCase()}`,
+          distributorId: mem.distributorId,
+          name: mem.name,
+          rank: mem.rank || 'Associate',
+          status: mem.status || 'PENDING',
+          paymentStatus: pStatus,
+          joinedDate: mem.joinedDate || '16 Oct 2026',
+          sponsor: mem.sponsor || 'KV-1001',
+          sponsorName: mem.sponsorName || 'Rahul Kaushal',
+          placementParent: mem.placementParent || parentId,
+          placementParentName: mem.placementParentName || 'Sponsor',
+          position: pos,
+          businessCenter: 'BC-001',
+          businessCenterName: 'Corporate Headquarters',
+          directMembers: (sub.left ? 1 : 0) + (sub.right ? 1 : 0),
+          leftTeamCount: sub.left ? 1 : 0,
+          rightTeamCount: sub.right ? 1 : 0,
+          totalTeamCount: (sub.left ? 1 : 0) + (sub.right ? 1 : 0),
+          leftBV: 0,
+          rightBV: memBV,
+          personalBV: memBV,
+          totalBV: memBV,
+          hasChildren: hasKids,
+          hasDeeperMembers: false,
+          isExpanded: true,
+          left: sub.left,
+          right: sub.right,
+          children: [sub.left, sub.right].filter(Boolean),
+        };
+      };
+
+      return {
+        left: mapChild(leftChild, 'LEFT'),
+        right: mapChild(rightChild, 'RIGHT'),
+      };
+    };
+
+    // If viewing an enrolled or registered member directly as root
     if (!isOwner) {
-      const foundEnrollee = activeEnrollees.find(
-        (m) => m.distributorId.toUpperCase() === normId || m.name.toUpperCase().includes(normId)
+      const foundEnrollee = directory.find(
+        (m) =>
+          m.distributorId?.toUpperCase() === normId ||
+          m.name?.toUpperCase().includes(normId) ||
+          m.treeId?.toUpperCase() === normId ||
+          m.id?.toUpperCase() === normId
       );
       if (foundEnrollee) {
+        const sub = buildSubtree(foundEnrollee.distributorId, 1);
+        const pStatus = foundEnrollee.paymentStatus || (foundEnrollee.status === 'ACTIVE' ? 'PAID' : 'PENDING');
         return {
           id: foundEnrollee.id || `node-${foundEnrollee.distributorId.toLowerCase()}`,
+          treeId: foundEnrollee.treeId || foundEnrollee.id || `node-${foundEnrollee.distributorId.toLowerCase()}`,
           distributorId: foundEnrollee.distributorId,
           name: foundEnrollee.name,
           rank: foundEnrollee.rank || 'Associate',
-          status: foundEnrollee.status || 'ACTIVE',
+          status: foundEnrollee.status || 'PENDING',
+          paymentStatus: pStatus,
           joinedDate: foundEnrollee.joinedDate,
           sponsor: foundEnrollee.sponsor || 'KV-1001',
           sponsorName: foundEnrollee.sponsorName || 'Rahul Kaushal',
@@ -974,72 +1146,37 @@ export const api = {
           position: 'ROOT',
           businessCenter: 'BC-001',
           businessCenterName: 'Corporate Headquarters',
-          directMembers: 0,
-          leftTeamCount: 0,
-          rightTeamCount: 0,
-          totalTeamCount: 0,
+          directMembers: (sub.left ? 1 : 0) + (sub.right ? 1 : 0),
+          leftTeamCount: sub.left ? 1 : 0,
+          rightTeamCount: sub.right ? 1 : 0,
+          totalTeamCount: (sub.left ? 1 : 0) + (sub.right ? 1 : 0),
           leftBV: 0,
-          rightBV: 0,
-          personalBV: 100,
-          totalBV: 100,
-          hasChildren: false,
+          rightBV: Number(foundEnrollee.bv) || 100,
+          personalBV: Number(foundEnrollee.bv) || 100,
+          totalBV: Number(foundEnrollee.bv) || 100,
+          hasChildren: Boolean(sub.left || sub.right),
           hasDeeperMembers: false,
-          isExpanded: false,
-          left: null,
-          right: null,
+          isExpanded: true,
+          left: sub.left,
+          right: sub.right,
+          children: [sub.left, sub.right].filter(Boolean),
         };
       }
     }
 
-    // Build right leg downline chain for active enrolled members only
-    const buildEnrolledRightBranch = (index) => {
-      if (index >= activeEnrollees.length) return null;
-      const mem = activeEnrollees[index];
-      const remaining = activeEnrollees.length - 1 - index;
-      const nextRight = currentDepth + index + 1 < maxDepth ? buildEnrolledRightBranch(index + 1) : null;
-      const memBV = Number(mem.bv) || 100;
-      const downlineBV = activeEnrollees.slice(index + 1).reduce((sum, m) => sum + (Number(m.bv) || 100), 0);
-
-      return {
-        id: mem.id || `node-${mem.distributorId.toLowerCase()}-uuid`,
-        distributorId: mem.distributorId,
-        name: mem.name,
-        rank: mem.rank || 'Associate',
-        status: mem.status || 'ACTIVE',
-        joinedDate: mem.joinedDate || '14 Oct 2026',
-        sponsor: mem.sponsor || 'KV-1001',
-        sponsorName: mem.sponsorName || 'Rahul Kaushal',
-        placementParent: mem.placementParent || 'KV-1001',
-        placementParentName: mem.placementParentName || 'Rahul Kaushal',
-        position: 'RIGHT',
-        businessCenter: 'BC-001',
-        businessCenterName: 'Corporate Headquarters',
-        directMembers: 0,
-        leftTeamCount: 0,
-        rightTeamCount: remaining,
-        totalTeamCount: remaining,
-        leftBV: 0,
-        rightBV: downlineBV,
-        personalBV: memBV,
-        totalBV: memBV + downlineBV,
-        hasChildren: remaining > 0,
-        hasDeeperMembers: remaining > 0,
-        isExpanded: true,
-        left: null, // Left is always empty (+ Available)
-        right: nextRight, // Subsequent enrollees chain down the right leg
-      };
-    };
-
-    const rightNode = currentDepth < maxDepth ? buildEnrolledRightBranch(0) : null;
-    const enrolledCount = activeEnrollees.length;
-    const totalRightBV = activeEnrollees.reduce((sum, m) => sum + (Number(m.bv) || 100), 0);
+    // Admin root (Rahul Kaushal)
+    const adminSub = buildSubtree('KV-1001', 1);
+    const enrolledCount = directory.length;
+    const totalRightBV = directory.reduce((sum, m) => sum + (Number(m.bv) || 100), 0);
 
     return {
       id: 'dist-rahul-uuid',
+      treeId: 'tree-root-kv1001',
       distributorId: 'KV-1001',
       name: 'Rahul Kaushal',
       rank: 'Business Center',
       status: 'ACTIVE',
+      paymentStatus: 'PAID',
       joinedDate: '15 Sep 2026',
       sponsor: 'KV-1000',
       sponsorName: 'Corporate System',
@@ -1048,19 +1185,20 @@ export const api = {
       position: 'ROOT',
       businessCenter: 'BC-001',
       businessCenterName: 'Corporate Headquarters',
-      directMembers: enrolledCount,
-      leftTeamCount: 0,
-      rightTeamCount: enrolledCount,
+      directMembers: (adminSub.left ? 1 : 0) + (adminSub.right ? 1 : 0) || enrolledCount,
+      leftTeamCount: adminSub.left ? 1 : 0,
+      rightTeamCount: adminSub.right ? 1 : enrolledCount,
       totalTeamCount: enrolledCount,
       leftBV: 0,
       rightBV: totalRightBV,
       personalBV: 250,
       totalBV: 250 + totalRightBV,
-      hasChildren: enrolledCount > 0,
+      hasChildren: Boolean(adminSub.left || adminSub.right || enrolledCount > 0),
       hasDeeperMembers: enrolledCount > 1,
       isExpanded: true,
-      left: null, // Left is empty (+ Available)
-      right: rightNode, // Populated in RIGHT leg only when paid and activated
+      left: adminSub.left,
+      right: adminSub.right,
+      children: [adminSub.left, adminSub.right].filter(Boolean),
     };
   },
 

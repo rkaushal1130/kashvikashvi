@@ -86,26 +86,41 @@ function TreeNode({
     );
   }
 
-  // 2. ACTIVE MEMBER NODE Card
+  // 2. ACTIVE / REGISTERED MEMBER NODE Card
   const name = node.name || node.distributor?.displayName || node.distributor?.firstName || 'Distributor';
   const distributorId = node.distributorId || node.distributor?.distributorCode || 'KV-0000';
+  const treeId = node.treeId || node.id;
   const rank = node.rank || node.distributor?.rankName || 'Business Center';
   const status = (node.status || node.distributor?.status || 'Active').toUpperCase();
   const isActive = status === 'ACTIVE';
+
+  const rawPayment = node.paymentStatus || (isActive ? 'PAID' : 'PENDING');
+  const paymentStatus = rawPayment.toUpperCase();
+  const isPaid = paymentStatus === 'PAID';
+  const isFailed = paymentStatus === 'FAILED' || paymentStatus === 'CANCELLED';
+
+  // Task 2 Authoritative Color Specification:
+  // Green ID: Starter Kit payment verified and member active.
+  // Grey/Yellow ID: Payment pending or not verified.
+  // Red ID: Payment failed.
+  const idColorClass = (isActive && isPaid)
+    ? 'id-active-paid'
+    : isFailed
+    ? 'id-failed'
+    : 'id-pending';
 
   const leftBV = node.leftBV ?? node.businessCenter?.leftVolume ?? 0;
   const rightBV = node.rightBV ?? node.businessCenter?.rightVolume ?? 0;
   const totalBV = leftBV + rightBV;
   const leftPct = totalBV > 0 ? Math.round((leftBV / totalBV) * 100) : 50;
 
-  // refId tolerates a string, an object ({memberId,name}) or undefined — the API has
-  // returned both shapes, and calling .split() on the object form crashed the view.
+  // refId tolerates a string, an object ({memberId,name}) or undefined
   const sponsor = refId(node.sponsor) || 'KV-1001';
   const placementParent =
     refId(node.placementParent ?? node.parent) || (isRoot ? 'ROOT' : (parentNode?.distributorId || 'KV-1001'));
   const businessCenter = node.businessCenter || 'BC-001';
 
-  // Prompt 14: Check if node has deeper children
+  // Check if node has deeper children
   const totalDownlines =
     (node.totalTeamCount ?? 0) +
     (node.directMembers ?? 0) +
@@ -128,7 +143,7 @@ function TreeNode({
   return (
     <div className={`tree-node-wrapper ${isRoot ? 'is-root-node' : ''} ${filterClass}`}>
       <div
-        className={`tree-node-card member-card ${isActive ? 'status-active' : 'status-inactive'} ${
+        className={`tree-node-card member-card ${isActive && isPaid ? 'status-active' : 'status-inactive'} ${
           isHighlighted ? 'search-highlighted' : ''
         } ${filterClass}`}
         data-distributor-id={distributorId}
@@ -149,8 +164,11 @@ function TreeNode({
             {isRoot ? 'ROOT' : position}
           </span>
           <div className="status-indicator-pill">
-            <span className={`status-dot ${isActive ? 'dot-active' : 'dot-inactive'}`} />
+            <span className={`status-dot ${isActive && isPaid ? 'dot-active' : isFailed ? 'dot-failed' : 'dot-pending'}`} />
             <span className="status-text">{status}</span>
+            <span className={`payment-pill payment-pill-${paymentStatus.toLowerCase()}`}>
+              {paymentStatus}
+            </span>
           </div>
         </div>
 
@@ -159,7 +177,17 @@ function TreeNode({
           <h3 className="node-member-name" title={name}>
             {name}
           </h3>
-          <div className="node-distributor-id">{distributorId}</div>
+          <div
+            className={`node-distributor-id ${idColorClass}`}
+            title={`Distributor ID: ${distributorId} | Status: ${status} | Payment: ${paymentStatus}`}
+          >
+            {distributorId}
+          </div>
+          {treeId && (
+            <div className="node-tree-id-tag" title={`Tree ID: ${treeId}`}>
+              Tree ID: {treeId}
+            </div>
+          )}
           <div className="node-rank-row">
             <Award size={13} className="rank-icon" />
             <span className="rank-name">{rank}</span>

@@ -275,11 +275,11 @@ export class InvoiceService {
 
     const buyerName =
       address?.recipientName ||
-      order.user?.name ||
+      (order.user as any)?.name ||
       order.user?.distributorProfile?.displayName ||
       'Authorized Distributor';
     const memberId =
-      order.user?.distributorProfile?.memberId ||
+      (order.user?.distributorProfile as any)?.memberId ||
       order.user?.distributorProfile?.distributorId ||
       order.userId?.slice(0, 8).toUpperCase() ||
       'DIST-887671';

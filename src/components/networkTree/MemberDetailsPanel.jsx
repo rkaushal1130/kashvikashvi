@@ -63,6 +63,13 @@ function MemberDetailsPanel({
   const isActive = rawStatus === 'ACTIVE';
   const status = rawStatus;
 
+  const treeId = member.treeId || member.id;
+  const rawPayment = member.paymentStatus || (isActive ? 'PAID' : 'PENDING');
+  const paymentStatus = rawPayment.toUpperCase();
+  const isPaid = paymentStatus === 'PAID';
+  const isFailed = paymentStatus === 'FAILED' || paymentStatus === 'CANCELLED';
+  const idColorClass = (isActive && isPaid) ? 'id-active-paid' : isFailed ? 'id-failed' : 'id-pending';
+
   const rawJoinedDate =
     member.joinedDate ||
     member.distributor?.createdAtFormatted ||
@@ -155,7 +162,14 @@ function MemberDetailsPanel({
             </div>
             <div>
               <h3 className="panel-member-name">{name}</h3>
-              <span className="panel-member-id">Distributor ID: {distributorId}</span>
+              <span className={`panel-member-id ${idColorClass}`} style={{ display: 'inline-block', marginTop: '2px' }}>
+                Distributor ID: {distributorId}
+              </span>
+              {treeId && (
+                <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px', fontWeight: 500 }}>
+                  Tree ID: {treeId}
+                </div>
+              )}
             </div>
           </div>
           <button
@@ -170,9 +184,12 @@ function MemberDetailsPanel({
 
         {/* Status & Rank Badges */}
         <div className="panel-badges-row">
-          <span className={`panel-status-badge ${isActive ? 'active' : 'inactive'}`}>
-            <span className={`status-dot ${isActive ? 'dot-active' : 'dot-inactive'}`} />
+          <span className={`panel-status-badge ${isActive && isPaid ? 'active' : 'inactive'}`}>
+            <span className={`status-dot ${isActive && isPaid ? 'dot-active' : isFailed ? 'dot-failed' : 'dot-pending'}`} />
             <span>{status}</span>
+          </span>
+          <span className={`payment-pill payment-pill-${paymentStatus.toLowerCase()}`} style={{ fontSize: '11px', padding: '3px 8px', borderRadius: '4px', fontWeight: 700 }}>
+            Payment: {paymentStatus}
           </span>
           <span className="panel-rank-badge">
             <Award size={14} />
@@ -200,7 +217,19 @@ function MemberDetailsPanel({
             </div>
             <div className="panel-info-row">
               <span className="panel-info-label">Distributor ID:</span>
-              <span className="panel-info-value text-accent font-bold">{distributorId}</span>
+              <span className={`panel-info-value font-bold ${idColorClass}`}>{distributorId}</span>
+            </div>
+            {treeId && (
+              <div className="panel-info-row">
+                <span className="panel-info-label">Tree ID:</span>
+                <span className="panel-info-value font-mono text-slate-700 font-semibold">{treeId}</span>
+              </div>
+            )}
+            <div className="panel-info-row">
+              <span className="panel-info-label">Payment Status:</span>
+              <span className="panel-info-value font-bold">
+                <span className={`payment-pill payment-pill-${paymentStatus.toLowerCase()}`}>{paymentStatus}</span>
+              </span>
             </div>
             <div className="panel-info-row">
               <span className="panel-info-label">Rank:</span>
@@ -212,7 +241,7 @@ function MemberDetailsPanel({
             <div className="panel-info-row">
               <span className="panel-info-label">Status:</span>
               <span className="panel-info-value font-semibold">
-                <span className={`status-dot ${isActive ? 'dot-active' : 'dot-inactive'}`} />
+                <span className={`status-dot ${isActive && isPaid ? 'dot-active' : isFailed ? 'dot-failed' : 'dot-pending'}`} />
                 {status}
               </span>
             </div>

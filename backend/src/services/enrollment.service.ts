@@ -1833,11 +1833,11 @@ export class EnrollmentService {
       try {
         const { NetworkTreeService } = await import('./networkTree.service');
         NetworkTreeService.addEnrolledMember({
-          distributorId: result.distributor.distributorId,
-          name: result.distributor.displayName,
+          distributorId: result.distributor.distributorId || undefined,
+          name: result.distributor.displayName || undefined,
           position: 'RIGHT',
-          sponsor: result.sponsor.distributorId,
-          placementParent: result.placement.placementParentDistributorId,
+          sponsor: result.sponsor.distributorId || undefined,
+          placementParent: result.placement.placementParentDistributorId || undefined,
           email,
           phone,
           bv: Number((input as any).bv) || 100,

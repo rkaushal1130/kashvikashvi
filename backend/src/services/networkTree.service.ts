@@ -4,13 +4,18 @@ import { AppError } from '../utils/appError';
 
 export interface NetworkTreeNode {
   id: string;
+  treeId?: string;
   distributorId: string;
   name: string;
   status: string;
+  paymentStatus?: string;
   rank: string;
   position: 'ROOT' | 'LEFT' | 'RIGHT';
   joinedDate?: string;
   sponsor?: string;
+  sponsorName?: string;
+  placementParentId?: string;
+  placementParentName?: string;
   businessCenter?: string;
   directMembers?: number;
   leftTeamCount?: number;
@@ -50,15 +55,18 @@ export interface DistributorSearchResult {
 
 export interface EnrolledTreeMember {
   id: string;
+  treeId?: string;
   distributorId: string;
   name: string;
   status: string;
+  paymentStatus?: string;
   rank: string;
   position: 'RIGHT' | 'LEFT';
   joinedDate: string;
   sponsor: string;
   sponsorName?: string;
   placementParent: string;
+  placementParentName?: string;
   businessCenter: string;
   bv: number;
   starterKitId?: string;
@@ -72,17 +80,21 @@ export class NetworkTreeService {
   public static addEnrolledMember(member: Partial<EnrolledTreeMember>): EnrolledTreeMember {
     const nextNum = 1002 + this.dynamicEnrollees.length;
     const distId = member.distributorId || `KV-${nextNum}`;
+    const treeId = member.treeId || member.id || `node-${distId.toLowerCase()}`;
     const newMember: EnrolledTreeMember = {
-      id: member.id || `node-${distId.toLowerCase()}-uuid`,
+      id: treeId,
+      treeId,
       distributorId: distId,
       name: member.name || 'New Distributor',
       status: member.status || 'PENDING',
+      paymentStatus: member.paymentStatus || (member.status === 'ACTIVE' ? 'PAID' : 'PENDING'),
       rank: member.rank || 'Associate',
-      position: 'RIGHT', // Strictly placed in right leg automatically
+      position: member.position || 'RIGHT',
       joinedDate: member.joinedDate || new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
       sponsor: member.sponsor || 'KV-1001',
       sponsorName: member.sponsorName || 'Rahul Kaushal',
       placementParent: member.placementParent || 'KV-1001',
+      placementParentName: member.placementParentName || 'Rahul Kaushal',
       businessCenter: 'BC-001',
       bv: Number(member.bv) || 100,
       starterKitId: member.starterKitId || 'kit_pro',
@@ -184,9 +196,11 @@ export class NetworkTreeService {
         return {
           root: {
             id: distributor.id,
+            treeId: distributor.id,
             distributorId: rootDistId,
             name: rootName,
             status: rootStatus,
+            paymentStatus: (distributor as any).paymentStatus || (rootStatus === 'ACTIVE' ? 'PAID' : 'PENDING'),
             rank: rootRank,
             position: 'ROOT',
             left: null,
@@ -206,7 +220,6 @@ export class NetworkTreeService {
         const children = await prisma.mLMNode.findMany({
           where: {
             placementParentId: { in: currentLevelIds },
-            distributor: { status: 'ACTIVE' },
           },
           select: {
             id: true,
@@ -265,6 +278,7 @@ export class NetworkTreeService {
           'Distributor';
         const rank = distributorObj?.currentRank?.name || 'Business Center';
         const status = distributorObj?.status || 'ACTIVE';
+        const paymentStatus = (distributorObj as any)?.paymentStatus || (status === 'ACTIVE' ? 'PAID' : 'PENDING');
         const joinedDate = distributorObj?.createdAt
           ? new Date(distributorObj.createdAt).toLocaleDateString('en-GB', {
               day: '2-digit',
@@ -283,9 +297,11 @@ export class NetworkTreeService {
           const hasChildrenInDB = childrenMap.has(nodeId);
           return {
             id: nodeId,
+            treeId: nodeId,
             distributorId: distId,
             name,
             status,
+            paymentStatus,
             rank,
             position,
             joinedDate,
@@ -322,9 +338,11 @@ export class NetworkTreeService {
 
         return {
           id: nodeId,
+          treeId: nodeId,
           distributorId: distId,
           name,
           status,
+          paymentStatus,
           rank,
           position,
           joinedDate,
@@ -520,59 +538,140 @@ export class NetworkTreeService {
    * Personal Tree Guarantee: Whenever a distributor requests their tree,
    * that distributor is always the ROOT of the returned tree.
    */
-  public static getModeledNetworkTree(identifier = 'KV-1001', _maxDepth = 3): NetworkTreeResponse {
-    const cleanId = (identifier || '').toUpperCase();
-    const activeEnrollees = this.dynamicEnrollees.filter((m) => m.status === 'ACTIVE');
+  public static getModeledNetworkTree(identifier = 'KV-1001', maxDepth = 3): NetworkTreeResponse {
+    const cleanId = (identifier || '').toUpperCase().trim();
+    const allEnrollees = this.dynamicEnrollees;
 
-    // 1. If viewing an active dynamic enrolled member directly:
-    const enrolledIdx = activeEnrollees.findIndex(
-      (m) => m.distributorId.toUpperCase() === cleanId || m.name.toUpperCase().includes(cleanId)
-    );
-    if (enrolledIdx !== -1 && !cleanId.includes('1001') && !cleanId.includes('RAHUL')) {
-      const mem = activeEnrollees[enrolledIdx];
-      const remainingDownline = activeEnrollees.length - 1 - enrolledIdx;
-      return {
-        root: {
+    // Helper to find enrollee matching an identifier (distributorId, name, id, or treeId)
+    const findEnrollee = (id: string) => {
+      const clean = (id || '').toUpperCase().trim();
+      return allEnrollees.find(
+        (m) =>
+          m.distributorId.toUpperCase() === clean ||
+          m.name.toUpperCase().includes(clean) ||
+          m.id.toUpperCase() === clean ||
+          (m.treeId && m.treeId.toUpperCase() === clean)
+      );
+    };
+
+    // Recursive helper to build binary subtree for any parent distributor
+    const buildSubtree = (
+      parentId: string,
+      currentDepth: number
+    ): { left: NetworkTreeNode | null; right: NetworkTreeNode | null } => {
+      if (currentDepth >= maxDepth) return { left: null, right: null };
+
+      // Find children whose placementParent matches parentId (or sponsor if no other placementParent)
+      const children = allEnrollees.filter(
+        (m) =>
+          (m.placementParent && m.placementParent.toUpperCase() === parentId.toUpperCase()) ||
+          (!m.placementParent && m.sponsor && m.sponsor.toUpperCase() === parentId.toUpperCase())
+      );
+
+      const leftChild = children.find((m) => m.position === 'LEFT');
+      const rightChild = children.find((m) => m.position === 'RIGHT') || (children.length > 0 && !leftChild ? children[0] : undefined);
+
+      const mapToNode = (mem: EnrolledTreeMember | undefined, pos: 'LEFT' | 'RIGHT'): NetworkTreeNode | null => {
+        if (!mem) return null;
+        const sub = buildSubtree(mem.distributorId, currentDepth + 1);
+        const hasChildren = Boolean(sub.left || sub.right);
+        const paymentStatus = mem.paymentStatus || (mem.status === 'ACTIVE' ? 'PAID' : 'PENDING');
+
+        return {
           id: mem.id,
+          treeId: mem.treeId || mem.id,
           distributorId: mem.distributorId,
           name: mem.name,
-          status: mem.status,
-          rank: mem.rank,
-          position: 'ROOT',
+          status: mem.status || 'PENDING',
+          paymentStatus,
+          rank: mem.rank || 'Associate',
+          position: pos,
           joinedDate: mem.joinedDate,
           sponsor: mem.sponsor,
-          businessCenter: 'BC-001',
-          directMembers: 0,
-          leftTeamCount: 0,
-          rightTeamCount: remainingDownline,
-          totalTeamCount: remainingDownline,
+          sponsorName: mem.sponsorName,
+          placementParentId: mem.placementParent,
+          placementParentName: mem.placementParentName,
+          businessCenter: mem.businessCenter || 'BC-001',
+          directMembers: (sub.left ? 1 : 0) + (sub.right ? 1 : 0),
+          leftTeamCount: sub.left ? 1 : 0,
+          rightTeamCount: sub.right ? 1 : 0,
+          totalTeamCount: (sub.left ? 1 : 0) + (sub.right ? 1 : 0),
           leftBV: 0,
-          rightBV: activeEnrollees.slice(enrolledIdx + 1).reduce((sum, m) => sum + (m.bv || 100), 0),
-          hasDeeperMembers: remainingDownline > 0,
-          hasChildren: remainingDownline > 0,
+          rightBV: Number(mem.bv) || 100,
+          hasDeeperMembers: false,
+          hasChildren,
           isExpanded: true,
-          left: null,
-          right: null,
-          children: [],
+          left: sub.left,
+          right: sub.right,
+          children: [sub.left, sub.right].filter(Boolean) as NetworkTreeNode[],
+        };
+      };
+
+      return {
+        left: mapToNode(leftChild, 'LEFT'),
+        right: mapToNode(rightChild, 'RIGHT'),
+      };
+    };
+
+    // 1. If viewing a specific dynamic enrolled member directly (whether ACTIVE or PENDING):
+    const targetEnrollee =
+      !cleanId || cleanId.includes('1001') || cleanId.includes('RAHUL') || cleanId.includes('ADMIN')
+        ? null
+        : findEnrollee(cleanId);
+
+    if (targetEnrollee) {
+      const sub = buildSubtree(targetEnrollee.distributorId, 1);
+      const hasChildren = Boolean(sub.left || sub.right);
+      const paymentStatus = targetEnrollee.paymentStatus || (targetEnrollee.status === 'ACTIVE' ? 'PAID' : 'PENDING');
+
+      return {
+        root: {
+          id: targetEnrollee.id,
+          treeId: targetEnrollee.treeId || targetEnrollee.id,
+          distributorId: targetEnrollee.distributorId,
+          name: targetEnrollee.name,
+          status: targetEnrollee.status || 'PENDING',
+          paymentStatus,
+          rank: targetEnrollee.rank || 'Associate',
+          position: 'ROOT',
+          joinedDate: targetEnrollee.joinedDate,
+          sponsor: targetEnrollee.sponsor,
+          sponsorName: targetEnrollee.sponsorName,
+          placementParentId: targetEnrollee.placementParent,
+          placementParentName: targetEnrollee.placementParentName,
+          businessCenter: targetEnrollee.businessCenter || 'BC-001',
+          directMembers: (sub.left ? 1 : 0) + (sub.right ? 1 : 0),
+          leftTeamCount: sub.left ? 1 : 0,
+          rightTeamCount: sub.right ? 1 : 0,
+          totalTeamCount: (sub.left ? 1 : 0) + (sub.right ? 1 : 0),
+          leftBV: 0,
+          rightBV: Number(targetEnrollee.bv) || 100,
+          hasDeeperMembers: false,
+          hasChildren,
+          isExpanded: true,
+          left: sub.left,
+          right: sub.right,
+          children: [sub.left, sub.right].filter(Boolean) as NetworkTreeNode[],
         },
       };
     }
 
     // 2. Admin Root (Rahul Kaushal - KV-1001)
     if (!cleanId || cleanId.includes('1001') || cleanId.includes('RAHUL') || cleanId.includes('ADMIN')) {
-      if (activeEnrollees.length === 0) {
-        // CLEAN TREE: Display ONLY Admin as root node when there are no fully paid and activated distributors.
-        // No dummy, hardcoded, sample, test, or incorrectly displayed distributor nodes.
+      if (allEnrollees.length === 0) {
         return {
           root: {
             id: 'node-root-uuid',
+            treeId: 'tree-root-kv1001',
             distributorId: 'KV-1001',
             name: 'Rahul Kaushal',
             status: 'ACTIVE',
+            paymentStatus: 'PAID',
             rank: 'Business Center',
             position: 'ROOT',
             joinedDate: '15 Sep 2026',
             sponsor: 'KV-1000',
+            sponsorName: 'Corporate System',
             businessCenter: 'BC-001',
             directMembers: 0,
             leftTeamCount: 0,
@@ -590,53 +689,69 @@ export class NetworkTreeService {
         };
       }
 
-      // When active paid enrollees exist, construct the tree dynamically
-      const buildDynamicBranch = (index: number): NetworkTreeNode | null => {
-        if (index >= activeEnrollees.length) return null;
-        const mem = activeEnrollees[index];
-        const remaining = activeEnrollees.length - 1 - index;
-        const nextNode = buildDynamicBranch(index + 1);
-        const pos = mem.position || 'RIGHT';
+      // Dynamic branch under Rahul:
+      const sub = buildSubtree('KV-1001', 1);
 
-        return {
-          id: mem.id,
-          distributorId: mem.distributorId,
-          name: mem.name,
-          status: mem.status,
-          rank: mem.rank,
-          position: pos,
-          joinedDate: mem.joinedDate,
-          sponsor: mem.sponsor,
-          businessCenter: mem.businessCenter || 'BC-001',
-          directMembers: 0,
-          leftTeamCount: 0,
-          rightTeamCount: remaining,
-          totalTeamCount: remaining,
-          leftBV: 0,
-          rightBV: activeEnrollees.slice(index + 1).reduce((sum, m) => sum + (m.bv || 100), 0),
-          hasDeeperMembers: remaining > 0,
-          hasChildren: remaining > 0,
-          isExpanded: true,
-          left: null,
-          right: nextNode,
-          children: nextNode ? [nextNode] : [],
+      // If no direct placement parent was set to KV-1001, build sequential right branch from enrollees
+      let leftChild = sub.left;
+      let rightChild = sub.right;
+
+      if (!leftChild && !rightChild && allEnrollees.length > 0) {
+        const buildDynamicBranch = (index: number): NetworkTreeNode | null => {
+          if (index >= allEnrollees.length) return null;
+          const mem = allEnrollees[index];
+          const nextNode = buildDynamicBranch(index + 1);
+          const pos = mem.position || 'RIGHT';
+          const pStatus = mem.paymentStatus || (mem.status === 'ACTIVE' ? 'PAID' : 'PENDING');
+
+          return {
+            id: mem.id,
+            treeId: mem.treeId || mem.id,
+            distributorId: mem.distributorId,
+            name: mem.name,
+            status: mem.status || 'PENDING',
+            paymentStatus: pStatus,
+            rank: mem.rank || 'Associate',
+            position: pos,
+            joinedDate: mem.joinedDate,
+            sponsor: mem.sponsor,
+            sponsorName: mem.sponsorName,
+            placementParentId: mem.placementParent,
+            placementParentName: mem.placementParentName,
+            businessCenter: mem.businessCenter || 'BC-001',
+            directMembers: nextNode ? 1 : 0,
+            leftTeamCount: 0,
+            rightTeamCount: allEnrollees.length - 1 - index,
+            totalTeamCount: allEnrollees.length - 1 - index,
+            leftBV: 0,
+            rightBV: allEnrollees.slice(index + 1).reduce((sum, m) => sum + (Number(m.bv) || 100), 0),
+            hasDeeperMembers: allEnrollees.length - 1 - index > 0,
+            hasChildren: Boolean(nextNode),
+            isExpanded: true,
+            left: null,
+            right: nextNode,
+            children: nextNode ? [nextNode] : [],
+          };
         };
-      };
+        rightChild = buildDynamicBranch(0);
+      }
 
-      const rightChild = buildDynamicBranch(0);
-      const totalCount = activeEnrollees.length;
-      const totalRightBV = activeEnrollees.reduce((sum, m) => sum + (m.bv || 100), 0);
+      const totalCount = allEnrollees.length;
+      const totalRightBV = allEnrollees.reduce((sum, m) => sum + (Number(m.bv) || 100), 0);
 
       return {
         root: {
           id: 'node-root-uuid',
+          treeId: 'tree-root-kv1001',
           distributorId: 'KV-1001',
           name: 'Rahul Kaushal',
           status: 'ACTIVE',
+          paymentStatus: 'PAID',
           rank: 'Business Center',
           position: 'ROOT',
           joinedDate: '15 Sep 2026',
           sponsor: 'KV-1000',
+          sponsorName: 'Corporate System',
           businessCenter: 'BC-001',
           directMembers: totalCount,
           leftTeamCount: 0,
@@ -647,9 +762,9 @@ export class NetworkTreeService {
           hasDeeperMembers: totalCount > 1,
           hasChildren: totalCount > 0,
           isExpanded: true,
-          left: null,
+          left: leftChild,
           right: rightChild,
-          children: rightChild ? [rightChild] : [],
+          children: [leftChild, rightChild].filter(Boolean) as NetworkTreeNode[],
         },
       };
     }
@@ -1061,7 +1176,7 @@ export class NetworkTreeService {
       }
     }
 
-    return this.getModeledNetworkTree('KV-1001', _maxDepth);
+    return this.getModeledNetworkTree('KV-1001', maxDepth);
   }
 
   /**

@@ -276,6 +276,14 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
     'NA';
   const memberId = typeof rawMemberId === 'object' ? (rawMemberId?.code || rawMemberId?.id || 'NA') : rawMemberId;
 
+  const userStatus = (effectiveUser?.status || effectiveUser?.distributorProfile?.status || 'ACTIVE').toUpperCase();
+  const rawPayment = effectiveUser?.paymentStatus || (userStatus === 'ACTIVE' ? 'PAID' : 'PENDING');
+  const paymentStatus = rawPayment.toUpperCase();
+  const isPaid = paymentStatus === 'PAID';
+  const isFailed = paymentStatus === 'FAILED' || paymentStatus === 'CANCELLED';
+  const idColorClass = (userStatus === 'ACTIVE' && isPaid) ? 'id-active-paid' : isFailed ? 'id-failed' : 'id-pending';
+  const treeId = effectiveUser?.treeId || effectiveUser?.distributorProfile?.treeId;
+
   const rawMemberSince =
     effectiveUser?.distributorProfile?.joinDate ||
     effectiveUser?.memberSince ||
@@ -627,7 +635,22 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
                 {/* Column 1: Identity & Rank */}
                 <div className="summary-col col-identity">
                   <h2 className="member-name-title">{memberName}</h2>
-                  <p className="member-id-text">KASHVIMLM ID: {memberId}</p>
+                  <p className="member-id-text">
+                    KASHVIMLM ID: <span className={`node-distributor-id ${idColorClass}`} style={{ fontSize: '13px' }}>{memberId}</span>
+                  </p>
+                  {treeId && (
+                    <p className="member-meta-text" style={{ fontSize: '11px', fontFamily: 'monospace', color: '#475569' }}>
+                      Tree ID: {treeId}
+                    </p>
+                  )}
+                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center', margin: '4px 0 6px' }}>
+                    <span className={`payment-pill payment-pill-${paymentStatus.toLowerCase()}`}>
+                      Payment: {paymentStatus}
+                    </span>
+                    <span style={{ fontSize: '10.5px', padding: '1.5px 6px', borderRadius: '4px', fontWeight: 600, backgroundColor: userStatus === 'ACTIVE' ? '#dcfce7' : '#fef3c7', color: userStatus === 'ACTIVE' ? '#15803d' : '#b45309' }}>
+                      {userStatus}
+                    </span>
+                  </div>
                   <p className="member-meta-text">Brand Partner Since {memberSince}</p>
                   <p className="member-meta-text">Rank: {memberRank}</p>
 

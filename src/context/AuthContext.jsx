@@ -433,6 +433,41 @@ export function AuthProvider({ children }) {
           // ignore
         }
 
+        // Sync into kashvi_enrolled_tree_members for immediate tree view update
+        try {
+          const memberDistId = user.distributorId || user.distributorCode || user.memberId;
+          const treeNodeId = user.treeId || `node-${(memberDistId || 'new').toLowerCase()}`;
+          const rawTree = localStorage.getItem('kashvi_enrolled_tree_members');
+          const treeList = rawTree ? JSON.parse(rawTree) : [];
+          const existingIdx = treeList.findIndex((m) => m.distributorId === memberDistId);
+          const treeEntry = {
+            id: treeNodeId,
+            treeId: treeNodeId,
+            distributorId: memberDistId,
+            name: user.name || user.fullName || `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'New Distributor',
+            status: user.status || 'PENDING',
+            paymentStatus: user.paymentStatus || 'PENDING',
+            rank: user.currentRank?.name || 'Associate',
+            position: user.placementPosition || registrationData.placementPosition || 'RIGHT',
+            joinedDate: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+            sponsor: user.sponsorId || registrationData.sponsorId || 'KV-1001',
+            sponsorName: user.sponsor?.name || 'Rahul Kaushal',
+            placementParent: user.placementParentId || user.sponsorId || 'KV-1001',
+            placementParentName: user.sponsor?.name || 'Rahul Kaushal',
+            businessCenter: 'BC-001',
+            bv: 100,
+          };
+          if (existingIdx >= 0) {
+            treeList[existingIdx] = { ...treeList[existingIdx], ...treeEntry };
+          } else {
+            treeList.push(treeEntry);
+          }
+          localStorage.setItem('kashvi_enrolled_tree_members', JSON.stringify(treeList));
+          window.dispatchEvent(new CustomEvent('kashvi_tree_updated', { detail: treeEntry }));
+        } catch {
+          // ignore
+        }
+
         setCurrentUser(user);
         setIsAuthenticated(true);
         window.dispatchEvent(new CustomEvent('kashvi_auth_change', { detail: { type: 'login' } }));
