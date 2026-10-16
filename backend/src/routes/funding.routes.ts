@@ -74,7 +74,10 @@ adminFundingRouter.get('/transactions/:id', FundingController.getTransactionById
 // 9. Treasury Ledger Reconciliation under Funding Router
 adminFundingRouter.get('/treasury/reconcile', FundingController.reconcileTreasury);
 
-// 10. Treasury & MLM Commission Integration (Prompt 37)
+// 10. Treasury & MLM Commission Integration (Prompt 37 & Funding Portal Distribution)
+import { adminFundingCommissionRouter } from './adminFundingCommission.routes';
+adminFundingRouter.use('/commissions', adminFundingCommissionRouter);
+
 adminFundingRouter.get('/accounting-summary', FundingController.getAccountingSummary);
 adminFundingRouter.post('/commissions/reserve-batch', FundingController.batchReserveCommissions);
 adminFundingRouter.post('/commissions/:id/reserve', FundingController.reserveSingleCommission);

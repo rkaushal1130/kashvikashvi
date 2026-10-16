@@ -22,6 +22,15 @@ import {
   Check,
   X,
   FileText,
+  Download,
+  Send,
+  Users,
+  DollarSign,
+  Layers,
+  Award,
+  TrendingUp,
+  Filter,
+  Calendar,
 } from 'lucide-react';
 import { adminFundingApi, sanitizeErrorMessage } from '../../api/adminFundingApi.js';
 import './AdminPages.css';
@@ -33,6 +42,82 @@ export default function AdminFundingPortalPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [errorBanner, setErrorBanner] = useState(null);
   const [successBanner, setSuccessBanner] = useState(null);
+
+  // Daily Financial Summary State (Requirement 4)
+  const [summaryStartDate, setSummaryStartDate] = useState('');
+  const [summaryEndDate, setSummaryEndDate] = useState('');
+  const [dailySummary, setDailySummary] = useState({
+    dateRange: { label: 'All Time' },
+    totalEmployees: 0,
+    totalQualifyingBV: 0,
+    totalPaymentVolume: 0,
+    totalCalculatedCommissions: 0,
+    totalPendingCommissions: 0,
+    totalApprovedCommissions: 0,
+    totalPaidCommissions: 0,
+    totalFailedPayouts: 0,
+    totalReversedCommissions: 0,
+    financialDistinction: {
+      orderPaymentVolume: 0,
+      businessVolumeBV: 0,
+      commissionLiability: 0,
+      walletCreditsDisbursed: 0,
+      bankPayoutsSettled: 0,
+    },
+  });
+
+  // Employee-Wise Daily Commission Report State (Requirement 3: 23-Column Table)
+  const [dailyReportData, setDailyReportData] = useState({
+    records: [],
+    totalRecords: 0,
+    page: 1,
+    pageSize: 10,
+    totalPages: 1,
+    summaryTotals: {
+      totalPurchaseAmount: 0,
+      totalQualifyingBV: 0,
+      totalCalculatedAmount: 0,
+      totalPendingAmount: 0,
+      totalApprovedAmount: 0,
+      totalPaidAmount: 0,
+      totalReversedAmount: 0,
+    },
+  });
+
+  const [reportFilters, setReportFilters] = useState({
+    search: '',
+    sponsorId: 'ALL',
+    rank: 'ALL',
+    tier: 'ALL',
+    paymentStatus: 'ALL',
+    commissionStatus: 'ALL',
+    payoutBatchId: '',
+    payoutStatus: 'ALL',
+    startDate: '',
+    endDate: '',
+    page: 1,
+    pageSize: 10,
+    sortBy: 'transactionDate',
+    sortOrder: 'desc',
+  });
+
+  // Payout Batches State (Requirement 2 & 6)
+  const [payoutBatches, setPayoutBatches] = useState([]);
+  const [retryingBatchId, setRetryingBatchId] = useState(null);
+
+  // One-Click Distribution Modal State (Requirement 2)
+  const [distributeModal, setDistributeModal] = useState({
+    open: false,
+    loading: false,
+    preview: null,
+    confirmed: false,
+    executing: false,
+    periodId: `CYCLE-${new Date().toISOString().slice(0, 10)}`,
+  });
+
+  // Execution Result Modal State
+  const [distributeResult, setDistributeResult] = useState(null);
+  const [exportingCsv, setExportingCsv] = useState(false);
 
   const [treasury, setTreasury] = useState({
     availableBalance: 0,
@@ -47,8 +132,8 @@ export default function AdminFundingPortalPage() {
   const [transactions, setTransactions] = useState([]);
   const [treasuryLedger, setTreasuryLedger] = useState([]);
 
-  // Active Tab: 'funding' or 'treasury'
-  const [activeTab, setActiveTab] = useState('funding');
+  // Active Tab: 'commissions' | 'batches' | 'funding' | 'treasury'
+  const [activeTab, setActiveTab] = useState('commissions');
 
   // 2. Filters & Search States
   const [statusFilter, setStatusFilter] = useState('ALL');
@@ -125,10 +210,23 @@ export default function AdminFundingPortalPage() {
   const loadPortalData = useCallback(async () => {
     try {
       setErrorBanner(null);
-      const [dashData, ledgerRes] = await Promise.all([
+      const [dashData, ledgerRes, summaryRes, reportRes, batchesRes] = await Promise.all([
         adminFundingApi.getDashboard(),
         adminFundingApi.getTreasuryTransactions(),
+        adminFundingApi.getDailyFinancialSummary({ startDate: summaryStartDate, endDate: summaryEndDate }),
+        adminFundingApi.getEmployeeDailyCommissionReport(reportFilters),
+        adminFundingApi.listPayoutBatches(),
       ]);
+
+      if (summaryRes) {
+        setDailySummary(summaryRes);
+      }
+      if (reportRes) {
+        setDailyReportData(reportRes);
+      }
+      if (batchesRes) {
+        setPayoutBatches(batchesRes);
+      }
 
       if (dashData?.treasury) {
         setTreasury(dashData.treasury);
@@ -141,7 +239,6 @@ export default function AdminFundingPortalPage() {
         }
       }
       if (dashData?.recentTransactions) {
-        // fetch full list with filters
         const txRes = await adminFundingApi.listTransactions({
           status: statusFilter,
           provider: providerFilter,
@@ -158,11 +255,132 @@ export default function AdminFundingPortalPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [selectedAccountId, statusFilter, providerFilter, searchTerm]);
+  }, [selectedAccountId, statusFilter, providerFilter, searchTerm, summaryStartDate, summaryEndDate, reportFilters]);
 
   useEffect(() => {
     loadPortalData();
   }, [loadPortalData]);
+
+  // Handler: Apply custom date range for Daily Summary
+  const handleApplySummaryDateRange = async (e) => {
+    e?.preventDefault();
+    setRefreshing(true);
+    try {
+      const summary = await adminFundingApi.getDailyFinancialSummary({
+        startDate: summaryStartDate,
+        endDate: summaryEndDate,
+      });
+      if (summary) setDailySummary(summary);
+    } catch (err) {
+      setErrorBanner(sanitizeErrorMessage(err));
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  // Handler: Reset custom date range
+  const handleResetSummaryDateRange = async () => {
+    setSummaryStartDate('');
+    setSummaryEndDate('');
+    setRefreshing(true);
+    try {
+      const summary = await adminFundingApi.getDailyFinancialSummary({});
+      if (summary) setDailySummary(summary);
+    } catch (err) {
+      setErrorBanner(sanitizeErrorMessage(err));
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  // Handler: Open One-Click Distribution Modal & Pre-fetch validation breakdown
+  const handleOpenDistributeModal = async () => {
+    try {
+      setErrorBanner(null);
+      setDistributeModal((prev) => ({
+        ...prev,
+        open: true,
+        loading: true,
+        confirmed: false,
+      }));
+      const preview = await adminFundingApi.getDistributionPreview(distributeModal.periodId);
+      setDistributeModal((prev) => ({
+        ...prev,
+        preview,
+        loading: false,
+      }));
+    } catch (err) {
+      setErrorBanner(sanitizeErrorMessage(err));
+      setDistributeModal((prev) => ({ ...prev, open: false, loading: false }));
+    }
+  };
+
+  // Handler: Execute One-Click Commission Distribution upon explicit confirmation
+  const handleExecuteDistribute = async () => {
+    if (!distributeModal.confirmed) {
+      setErrorBanner('Please check the confirmation box before executing distribution.');
+      return;
+    }
+    try {
+      setDistributeModal((prev) => ({ ...prev, executing: true }));
+      setErrorBanner(null);
+      const res = await adminFundingApi.executeOneClickDistribution({
+        periodId: distributeModal.periodId,
+      });
+
+      setDistributeModal((prev) => ({ ...prev, open: false, executing: false }));
+      setDistributeResult(res);
+      setSuccessBanner(
+        `One-Click Distribution completed successfully! Batch: ${res.batchNumber}. ${res.successfulCount} employees credited (${formatCurrency(res.successfulAmount)}).`
+      );
+      await loadPortalData();
+    } catch (err) {
+      setErrorBanner(sanitizeErrorMessage(err));
+      setDistributeModal((prev) => ({ ...prev, executing: false }));
+    }
+  };
+
+  // Handler: Retry Failed Batch Payouts safely
+  const handleRetryFailedBatch = async (batchId) => {
+    try {
+      setRetryingBatchId(batchId);
+      setErrorBanner(null);
+      const res = await adminFundingApi.retryFailedBatchPayouts(batchId);
+      setSuccessBanner(
+        `Retry execution completed for batch ${batchId}. Newly succeeded: ${res.newlySucceededCount}, Still failed: ${res.stillFailedCount}`
+      );
+      await loadPortalData();
+    } catch (err) {
+      setErrorBanner(sanitizeErrorMessage(err));
+    } finally {
+      setRetryingBatchId(null);
+    }
+  };
+
+  // Handler: Export CSV of Daily Report
+  const handleExportCsv = async () => {
+    try {
+      setExportingCsv(true);
+      setErrorBanner(null);
+      await adminFundingApi.exportDailyCommissionReportCsv(reportFilters);
+      setSuccessBanner('Daily commission report exported successfully as CSV.');
+    } catch (err) {
+      setErrorBanner(sanitizeErrorMessage(err));
+    } finally {
+      setExportingCsv(false);
+    }
+  };
+
+  // Handler: Update Report Filter
+  const handleReportFilterChange = (field, value) => {
+    setReportFilters((prev) => ({
+      ...prev,
+      [field]: value,
+      page: 1, // Reset to first page
+    }));
+  };
+
+  // Quick refresh
 
   // Quick refresh
   const handleRefresh = async () => {
@@ -574,8 +792,214 @@ export default function AdminFundingPortalPage() {
         </div>
       )}
 
+      {/* 2.B DAILY FINANCIAL SUMMARY DASHBOARD CARDS (Requirement 4) */}
+      <div className="daily-summary-section">
+        <div className="daily-date-control-bar">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Calendar size={18} style={{ color: '#2563eb' }} />
+            <div>
+              <span style={{ fontSize: '14px', fontWeight: 700, color: '#0f172a' }}>Daily Financial Summary</span>
+              <span style={{ fontSize: '12px', color: '#64748b', marginLeft: '8px' }}>
+                Period: <strong>{dailySummary?.dateRange?.label || 'All Time (Actual Timestamps)'}</strong>
+              </span>
+            </div>
+          </div>
+
+          <form onSubmit={handleApplySummaryDateRange} className="daily-date-inputs">
+            <span style={{ fontSize: '12.5px', color: '#64748b' }}>From:</span>
+            <input
+              type="date"
+              className="daily-date-input"
+              value={summaryStartDate}
+              onChange={(e) => setSummaryStartDate(e.target.value)}
+            />
+            <span style={{ fontSize: '12.5px', color: '#64748b' }}>To:</span>
+            <input
+              type="date"
+              className="daily-date-input"
+              value={summaryEndDate}
+              onChange={(e) => setSummaryEndDate(e.target.value)}
+            />
+            <button type="submit" className="admin-btn admin-btn-primary admin-btn-sm">
+              <Filter size={13} />
+              <span>Apply Range</span>
+            </button>
+            {(summaryStartDate || summaryEndDate) && (
+              <button
+                type="button"
+                className="admin-btn admin-btn-secondary admin-btn-sm"
+                onClick={handleResetSummaryDateRange}
+              >
+                Reset
+              </button>
+            )}
+          </form>
+        </div>
+
+        {/* 9 Metrics Cards */}
+        <div className="daily-summary-grid">
+          <div className="summary-stat-card">
+            <div className="summary-stat-header">
+              <span className="summary-stat-label">Total Employees</span>
+              <div className="summary-stat-icon" style={{ background: '#e0e7ff', color: '#4338ca' }}>
+                <Users size={16} />
+              </div>
+            </div>
+            <div className="summary-stat-value">{dailySummary.totalEmployees}</div>
+          </div>
+
+          <div className="summary-stat-card">
+            <div className="summary-stat-header">
+              <span className="summary-stat-label">Qualifying BV</span>
+              <div className="summary-stat-icon" style={{ background: '#f3e8ff', color: '#7e22ce' }}>
+                <Layers size={16} />
+              </div>
+            </div>
+            <div className="summary-stat-value">{Number(dailySummary.totalQualifyingBV || 0).toLocaleString()} BV</div>
+          </div>
+
+          <div className="summary-stat-card">
+            <div className="summary-stat-header">
+              <span className="summary-stat-label">Payment Volume</span>
+              <div className="summary-stat-icon" style={{ background: '#dbeafe', color: '#1d4ed8' }}>
+                <CreditCard size={16} />
+              </div>
+            </div>
+            <div className="summary-stat-value">{formatCurrency(dailySummary.totalPaymentVolume)}</div>
+          </div>
+
+          <div className="summary-stat-card">
+            <div className="summary-stat-header">
+              <span className="summary-stat-label">Calculated Commissions</span>
+              <div className="summary-stat-icon" style={{ background: '#e0f2fe', color: '#0369a1' }}>
+                <Activity size={16} />
+              </div>
+            </div>
+            <div className="summary-stat-value" style={{ color: '#0284c7' }}>
+              {formatCurrency(dailySummary.totalCalculatedCommissions)}
+            </div>
+          </div>
+
+          <div className="summary-stat-card">
+            <div className="summary-stat-header">
+              <span className="summary-stat-label">Pending Commissions</span>
+              <div className="summary-stat-icon" style={{ background: '#fef3c7', color: '#b45309' }}>
+                <Clock size={16} />
+              </div>
+            </div>
+            <div className="summary-stat-value" style={{ color: '#d97706' }}>
+              {formatCurrency(dailySummary.totalPendingCommissions)}
+            </div>
+          </div>
+
+          <div className="summary-stat-card">
+            <div className="summary-stat-header">
+              <span className="summary-stat-label">Approved Commissions</span>
+              <div className="summary-stat-icon" style={{ background: '#ecfdf5', color: '#047857' }}>
+                <CheckCircle2 size={16} />
+              </div>
+            </div>
+            <div className="summary-stat-value" style={{ color: '#059669' }}>
+              {formatCurrency(dailySummary.totalApprovedCommissions)}
+            </div>
+          </div>
+
+          <div className="summary-stat-card">
+            <div className="summary-stat-header">
+              <span className="summary-stat-label">Paid Commissions</span>
+              <div className="summary-stat-icon" style={{ background: '#dcfce7', color: '#15803d' }}>
+                <DollarSign size={16} />
+              </div>
+            </div>
+            <div className="summary-stat-value" style={{ color: '#16a34a' }}>
+              {formatCurrency(dailySummary.totalPaidCommissions)}
+            </div>
+          </div>
+
+          <div className="summary-stat-card">
+            <div className="summary-stat-header">
+              <span className="summary-stat-label">Failed Payouts</span>
+              <div className="summary-stat-icon" style={{ background: '#fee2e2', color: '#b91c1c' }}>
+                <AlertTriangle size={16} />
+              </div>
+            </div>
+            <div className="summary-stat-value" style={{ color: '#dc2626' }}>
+              {dailySummary.totalFailedPayouts}
+            </div>
+          </div>
+
+          <div className="summary-stat-card">
+            <div className="summary-stat-header">
+              <span className="summary-stat-label">Reversed Commissions</span>
+              <div className="summary-stat-icon" style={{ background: '#ffedd5', color: '#c2410c' }}>
+                <RotateCcw size={16} />
+              </div>
+            </div>
+            <div className="summary-stat-value" style={{ color: '#ea580c' }}>
+              {formatCurrency(dailySummary.totalReversedCommissions)}
+            </div>
+          </div>
+        </div>
+
+        {/* Financial Distinction Banner */}
+        <div className="financial-distinction-banner">
+          <ShieldAlert size={18} style={{ color: '#2563eb', flexShrink: 0, marginTop: '2px' }} />
+          <div>
+            <strong>Strict Financial Distinction (Zero-Ambiguity Guard):</strong>
+            <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', marginTop: '4px' }}>
+              <span>Order Payments: <strong>{formatCurrency(dailySummary.financialDistinction?.orderPaymentVolume || dailySummary.totalPaymentVolume)}</strong></span>
+              <span>•</span>
+              <span>Qualifying BV: <strong>{Number(dailySummary.financialDistinction?.businessVolumeBV || dailySummary.totalQualifyingBV || 0).toLocaleString()} BV</strong></span>
+              <span>•</span>
+              <span>Accrued Liability: <strong>{formatCurrency(dailySummary.financialDistinction?.commissionLiability || (dailySummary.totalCalculatedCommissions + dailySummary.totalApprovedCommissions))}</strong></span>
+              <span>•</span>
+              <span>Wallet Credits: <strong>{formatCurrency(dailySummary.financialDistinction?.walletCreditsDisbursed || dailySummary.totalPaidCommissions)}</strong></span>
+              <span>•</span>
+              <span>Bank Settled: <strong>{formatCurrency(dailySummary.financialDistinction?.bankPayoutsSettled || 0)}</strong> (No external gateway simulated)</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 2.C ONE-CLICK COMMISSION PAYMENT BUTTON (Requirement 2) */}
+      <div className="distribute-hero-card">
+        <div className="distribute-hero-content">
+          <h2 className="distribute-hero-title">
+            <Award size={22} style={{ color: '#818cf8' }} />
+            <span>One-Click Commission Distribution</span>
+          </h2>
+          <p className="distribute-hero-desc">
+            Instantly initiate a secure, verified distribution run for all approved commissions. Transactions are executed atomically into member wallets with idempotent batch tracking and duplicate-payout prevention.
+          </p>
+          <div className="distribute-hero-stats">
+            <span className="distribute-stat-chip">
+              <Users size={14} />
+              <span>Approved Commissions: <strong>{formatCurrency(dailySummary.totalApprovedCommissions)}</strong></span>
+            </span>
+            <span className="distribute-stat-chip">
+              <Clock size={14} />
+              <span>Cycle: <strong>{distributeModal.periodId}</strong></span>
+            </span>
+          </div>
+        </div>
+
+        <div>
+          <button
+            type="button"
+            className="distribute-btn-primary"
+            onClick={handleOpenDistributeModal}
+            disabled={distributeModal.loading || distributeModal.executing}
+          >
+            <Send size={18} />
+            <span>Distribute All Eligible Commissions</span>
+          </button>
+        </div>
+      </div>
+
       {/* 3. Top Grid: Treasury Overview + Connected Bank Account (Section 2.A & 2.B) */}
-      <div className="funding-top-grid">
+      {activeTab === 'funding' && (
+        <>
+          <div className="funding-top-grid">
         {/* Card 1: Treasury Overview (Section 2.A) */}
         <div className="treasury-balance-card">
           <div className="treasury-card-header">
@@ -947,11 +1371,31 @@ export default function AdminFundingPortalPage() {
           </div>
         </div>
       </div>
+      </>
+      )}
 
       {/* 5. Tables Section: Tabs for Funding History (Section 5) & Treasury Transactions (Section 6) */}
       <div className="funding-tables-card">
         <div className="funding-tabs-header">
           <div className="tabs-btn-group">
+            <button
+              className={`funding-tab-btn ${activeTab === 'commissions' ? 'active' : ''}`}
+              onClick={() => setActiveTab('commissions')}
+            >
+              <Award size={16} />
+              <span>Daily Commission Report</span>
+              <span className="tab-badge-count">{dailyReportData?.totalRecords || 0}</span>
+            </button>
+
+            <button
+              className={`funding-tab-btn ${activeTab === 'batches' ? 'active' : ''}`}
+              onClick={() => setActiveTab('batches')}
+            >
+              <Layers size={16} />
+              <span>Payout Batches</span>
+              <span className="tab-badge-count">{payoutBatches?.length || 0}</span>
+            </button>
+
             <button
               className={`funding-tab-btn ${activeTab === 'funding' ? 'active' : ''}`}
               onClick={() => setActiveTab('funding')}
@@ -971,36 +1415,359 @@ export default function AdminFundingPortalPage() {
             </button>
           </div>
 
-          {/* Search & Provider Filter Bar */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-            <div className="admin-search-wrap" style={{ minWidth: '220px', maxWidth: '300px' }}>
-              <Search size={15} />
-              <input
-                type="text"
-                className="admin-search-input"
-                placeholder="Search Tx ID, provider, admin..."
-                value={searchTerm}
+          {/* Search & Provider Filter Bar for Funding and Treasury */}
+          {(activeTab === 'funding' || activeTab === 'treasury') && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              <div className="admin-search-wrap" style={{ minWidth: '220px', maxWidth: '300px' }}>
+                <Search size={15} />
+                <input
+                  type="text"
+                  className="admin-search-input"
+                  placeholder="Search Tx ID, provider, admin..."
+                  value={searchTerm}
+                  onChange={(e) => {
+                    setSearchTerm(e.target.value);
+                    setPage(1);
+                  }}
+                />
+              </div>
+
+              <select
+                className="admin-filter-select"
+                value={providerFilter}
                 onChange={(e) => {
-                  setSearchTerm(e.target.value);
+                  setProviderFilter(e.target.value);
                   setPage(1);
                 }}
-              />
+              >
+                <option value="ALL">All Providers</option>
+                <option value="RAZORPAYX">RazorpayX</option>
+                <option value="CASHFREE">Cashfree</option>
+              </select>
+            </div>
+          )}
+        </div>
+
+        {/* TAB 0: Employee-Wise Daily Commission Report (23 Columns) */}
+        {activeTab === 'commissions' && (
+          <div style={{ padding: '20px' }}>
+            {/* Filter Bar */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center', marginBottom: '16px', background: '#f8fafc', padding: '14px 16px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
+              <div className="admin-search-wrap" style={{ minWidth: '220px', flex: '1 1 200px' }}>
+                <Search size={15} />
+                <input
+                  type="text"
+                  className="admin-search-input"
+                  placeholder="Search ID, Name or Sponsor..."
+                  value={reportFilters.search || ''}
+                  onChange={(e) => handleReportFilterChange('search', e.target.value)}
+                />
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Calendar size={14} style={{ color: '#64748b' }} />
+                <input
+                  type="date"
+                  className="admin-date-input"
+                  value={reportFilters.startDate || ''}
+                  onChange={(e) => handleReportFilterChange('startDate', e.target.value)}
+                  title="From Date"
+                />
+                <span style={{ color: '#94a3b8' }}>-</span>
+                <input
+                  type="date"
+                  className="admin-date-input"
+                  value={reportFilters.endDate || ''}
+                  onChange={(e) => handleReportFilterChange('endDate', e.target.value)}
+                  title="To Date"
+                />
+              </div>
+
+              <select
+                className="admin-filter-select"
+                value={reportFilters.rank || 'ALL'}
+                onChange={(e) => handleReportFilterChange('rank', e.target.value)}
+              >
+                <option value="ALL">All Ranks</option>
+                <option value="SILVER">Silver</option>
+                <option value="GOLD">Gold</option>
+                <option value="PLATINUM">Platinum</option>
+                <option value="DIAMOND">Diamond</option>
+                <option value="RUBY">Ruby</option>
+              </select>
+
+              <select
+                className="admin-filter-select"
+                value={reportFilters.tier || 'ALL'}
+                onChange={(e) => handleReportFilterChange('tier', e.target.value)}
+              >
+                <option value="ALL">All Tiers</option>
+                <option value="SILVER">Silver (24%)</option>
+                <option value="GOLD">Gold (8%)</option>
+                <option value="PLATINUM">Platinum (13%)</option>
+                <option value="DIAMOND">Diamond (5%)</option>
+                <option value="RUBY">Ruby (4%)</option>
+              </select>
+
+              <select
+                className="admin-filter-select"
+                value={reportFilters.paymentStatus || 'ALL'}
+                onChange={(e) => handleReportFilterChange('paymentStatus', e.target.value)}
+              >
+                <option value="ALL">Payment: All</option>
+                <option value="PAID">Payment: PAID</option>
+                <option value="PENDING">Payment: PENDING</option>
+                <option value="FAILED">Payment: FAILED</option>
+              </select>
+
+              <select
+                className="admin-filter-select"
+                value={reportFilters.status || 'ALL'}
+                onChange={(e) => handleReportFilterChange('status', e.target.value)}
+              >
+                <option value="ALL">Comm: All</option>
+                <option value="APPROVED">Comm: APPROVED</option>
+                <option value="PENDING">Comm: PENDING</option>
+                <option value="PAID">Comm: PAID</option>
+                <option value="REVERSED">Comm: REVERSED</option>
+              </select>
+
+              <select
+                className="admin-filter-select"
+                value={reportFilters.payoutStatus || 'ALL'}
+                onChange={(e) => handleReportFilterChange('payoutStatus', e.target.value)}
+              >
+                <option value="ALL">Payout: All</option>
+                <option value="SUCCESS">Payout: SUCCESS</option>
+                <option value="FAILED">Payout: FAILED</option>
+                <option value="PENDING">Payout: PENDING</option>
+              </select>
+
+              <button
+                type="button"
+                className="admin-btn admin-btn-secondary"
+                onClick={handleExportCsv}
+                disabled={exportingCsv}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', marginLeft: 'auto' }}
+              >
+                <Download size={14} />
+                <span>{exportingCsv ? 'Exporting...' : 'Export CSV'}</span>
+              </button>
             </div>
 
-            <select
-              className="admin-filter-select"
-              value={providerFilter}
-              onChange={(e) => {
-                setProviderFilter(e.target.value);
-                setPage(1);
-              }}
-            >
-              <option value="ALL">All Providers</option>
-              <option value="RAZORPAYX">RazorpayX</option>
-              <option value="CASHFREE">Cashfree</option>
-            </select>
+            {/* 23-Column Table with Horizontal Scroll */}
+            <div className="report-table-scroll-wrapper">
+              <table className="report-table-custom">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Employee ID</th>
+                    <th>Employee Name</th>
+                    <th>Sponsor ID</th>
+                    <th>Rank</th>
+                    <th>Tx Date & Time</th>
+                    <th>Order Ref</th>
+                    <th>Payment Status</th>
+                    <th>Purchase Amt</th>
+                    <th>Qualifying BV</th>
+                    <th>Left Vol</th>
+                    <th>Right Vol</th>
+                    <th>Tier</th>
+                    <th>Comm %</th>
+                    <th>Comm Base</th>
+                    <th>Commission Amt</th>
+                    <th>Prev Paid</th>
+                    <th>Pending</th>
+                    <th>Approved</th>
+                    <th>Paid</th>
+                    <th>Failed / Rev</th>
+                    <th>Batch ID</th>
+                    <th>Payout Reference</th>
+                    <th>Last Updated</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dailyReportData?.records && dailyReportData.records.length > 0 ? (
+                    dailyReportData.records.map((r, idx) => (
+                      <tr key={r.id || `${r.distributorId}-${idx}`}>
+                        <td style={{ color: '#94a3b8', fontSize: '11px' }}>
+                          {((dailyReportData.page || 1) - 1) * (dailyReportData.pageSize || 20) + idx + 1}
+                        </td>
+                        <td className="code-font" style={{ fontWeight: 600 }}>{r.distributorCode}</td>
+                        <td style={{ fontWeight: 600, color: '#0f172a' }}>{r.distributorName}</td>
+                        <td className="code-font">{r.sponsorId || '—'}</td>
+                        <td>
+                          <span className={`rank-badge-pill rank-${r.currentRank?.toLowerCase()}`}>
+                            {r.currentRank}
+                          </span>
+                        </td>
+                        <td>{formatDate(r.transactionDate)}</td>
+                        <td className="code-font" style={{ fontSize: '12px' }}>{r.orderReference || '—'}</td>
+                        <td>
+                          <span className={`admin-badge ${r.paymentStatus === 'PAID' ? 'badge-active' : r.paymentStatus === 'PENDING' ? 'badge-pending' : 'badge-suspended'}`}>
+                            {r.paymentStatus}
+                          </span>
+                        </td>
+                        <td style={{ fontWeight: 600 }}>{formatCurrency(r.purchaseAmount)}</td>
+                        <td style={{ fontWeight: 600, color: '#0284c7' }}>{r.qualifyingBV}</td>
+                        <td>{r.leftMatchingVolume}</td>
+                        <td>{r.rightMatchingVolume}</td>
+                        <td><span className="admin-badge badge-neutral">{r.commissionTier}</span></td>
+                        <td style={{ fontWeight: 600 }}>{r.commissionPercentage}%</td>
+                        <td>{formatCurrency(r.commissionBase)}</td>
+                        <td style={{ fontWeight: 700, color: '#16a34a' }}>{formatCurrency(r.commissionAmount)}</td>
+                        <td style={{ color: '#64748b' }}>{formatCurrency(r.previousPaidCommission)}</td>
+                        <td style={{ color: '#d97706', fontWeight: 600 }}>{formatCurrency(r.pendingCommission)}</td>
+                        <td style={{ color: '#0284c7', fontWeight: 600 }}>{formatCurrency(r.approvedCommission)}</td>
+                        <td style={{ color: '#16a34a', fontWeight: 600 }}>{formatCurrency(r.paidCommission)}</td>
+                        <td style={{ color: '#dc2626', fontWeight: 600 }}>{formatCurrency(r.failedCommission)}</td>
+                        <td className="code-font" style={{ fontSize: '11.5px' }}>{r.payoutBatchId || '—'}</td>
+                        <td className="code-font" style={{ fontSize: '11.5px' }}>{r.payoutReference || '—'}</td>
+                        <td style={{ fontSize: '12px', color: '#64748b' }}>{formatDate(r.lastUpdated)}</td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={24} style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>
+                        No commission records found matching the specified filters.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+                {dailyReportData?.summaryTotals && (
+                  <tfoot>
+                    <tr style={{ background: '#f8fafc', fontWeight: 700, borderTop: '2px solid #cbd5e1' }}>
+                      <td colSpan={8} style={{ textAlign: 'right', padding: '12px 14px' }}>
+                        Summary Totals ({dailyReportData.totalRecords || 0} records):
+                      </td>
+                      <td style={{ padding: '12px 10px' }}>{formatCurrency(dailyReportData.summaryTotals.totalPurchaseAmount)}</td>
+                      <td style={{ padding: '12px 10px', color: '#0284c7' }}>{dailyReportData.summaryTotals.totalQualifyingBV}</td>
+                      <td colSpan={5} style={{ textAlign: 'right', padding: '12px 10px' }}>Total Comm:</td>
+                      <td style={{ padding: '12px 10px', color: '#16a34a' }}>{formatCurrency(dailyReportData.summaryTotals.totalCommissionAmount)}</td>
+                      <td style={{ padding: '12px 10px' }}>{formatCurrency(dailyReportData.summaryTotals.totalPreviousPaidCommission)}</td>
+                      <td style={{ padding: '12px 10px', color: '#d97706' }}>{formatCurrency(dailyReportData.summaryTotals.totalPendingCommission)}</td>
+                      <td style={{ padding: '12px 10px', color: '#0284c7' }}>{formatCurrency(dailyReportData.summaryTotals.totalApprovedCommission)}</td>
+                      <td style={{ padding: '12px 10px', color: '#16a34a' }}>{formatCurrency(dailyReportData.summaryTotals.totalPaidCommission)}</td>
+                      <td style={{ padding: '12px 10px', color: '#dc2626' }}>{formatCurrency(dailyReportData.summaryTotals.totalFailedCommission)}</td>
+                      <td colSpan={3}></td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
+
+            {/* Pagination Controls */}
+            {dailyReportData && (
+              <div className="admin-pagination">
+                <span>
+                  Showing {dailyReportData.records?.length || 0} of {dailyReportData.totalRecords || 0} records (Page {dailyReportData.page || 1} of {dailyReportData.totalPages || 1})
+                </span>
+                <div className="admin-page-controls">
+                  <button
+                    className="admin-page-btn"
+                    disabled={(dailyReportData.page || 1) <= 1}
+                    onClick={() => handleReportFilterChange('page', (dailyReportData.page || 1) - 1)}
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <span style={{ padding: '0 8px', fontWeight: 600 }}>{dailyReportData.page || 1}</span>
+                  <button
+                    className="admin-page-btn"
+                    disabled={(dailyReportData.page || 1) >= (dailyReportData.totalPages || 1)}
+                    onClick={() => handleReportFilterChange('page', (dailyReportData.page || 1) + 1)}
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
-        </div>
+        )}
+
+        {/* TAB: Payout Batches */}
+        {activeTab === 'batches' && (
+          <div className="admin-table-container">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Batch Number</th>
+                  <th>Period</th>
+                  <th>Initiated At</th>
+                  <th>Completed At</th>
+                  <th>Status</th>
+                  <th>Method</th>
+                  <th>Total Employees</th>
+                  <th>Success</th>
+                  <th>Failed</th>
+                  <th>Total Amount</th>
+                  <th>Successful Amount</th>
+                  <th>Failed Amount</th>
+                  <th style={{ textAlign: 'right' }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {payoutBatches && payoutBatches.length > 0 ? (
+                  payoutBatches.map((batch) => (
+                    <tr key={batch.id}>
+                      <td className="code-font" style={{ fontWeight: 700, color: '#0f172a' }}>{batch.batchNumber}</td>
+                      <td><span className="admin-badge badge-neutral">{batch.periodId || 'Ad-hoc'}</span></td>
+                      <td>{formatDate(batch.createdAt)}</td>
+                      <td>{formatDate(batch.completedAt)}</td>
+                      <td>
+                        <span className={`admin-badge ${
+                          batch.status === 'COMPLETED' || batch.status === 'COMPLETED_WALLET'
+                            ? 'badge-active'
+                            : batch.status === 'PARTIAL_FAILURE'
+                            ? 'badge-pending'
+                            : batch.status === 'PROCESSING'
+                            ? 'badge-processing'
+                            : 'badge-suspended'
+                        }`}>
+                          {batch.status}
+                        </span>
+                      </td>
+                      <td><span className="admin-badge badge-neutral">{batch.payoutMethod || 'DIGITAL_WALLET'}</span></td>
+                      <td style={{ fontWeight: 600 }}>{batch.totalEmployees}</td>
+                      <td style={{ fontWeight: 600, color: '#16a34a' }}>{batch.successfulCount}</td>
+                      <td style={{ fontWeight: 600, color: batch.failedCount > 0 ? '#dc2626' : '#64748b' }}>
+                        {batch.failedCount}
+                      </td>
+                      <td style={{ fontWeight: 700 }}>{formatCurrency(batch.totalAmount)}</td>
+                      <td style={{ fontWeight: 700, color: '#16a34a' }}>{formatCurrency(batch.successfulAmount)}</td>
+                      <td style={{ fontWeight: 700, color: batch.failedAmount > 0 ? '#dc2626' : '#64748b' }}>
+                        {formatCurrency(batch.failedAmount)}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        {batch.failedCount > 0 ? (
+                          <button
+                            type="button"
+                            className="admin-btn admin-btn-danger admin-btn-sm"
+                            onClick={() => handleRetryFailedBatch(batch.id)}
+                            disabled={retryingBatchId === batch.id}
+                            title="Retry only failed payouts safely without double-paying successful members"
+                          >
+                            <RotateCcw size={13} />
+                            <span>{retryingBatchId === batch.id ? 'Retrying...' : 'Retry Failed'}</span>
+                          </button>
+                        ) : (
+                          <span style={{ fontSize: '12px', color: '#16a34a', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            <Check size={13} /> All Settled
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={13} style={{ textAlign: 'center', padding: '36px', color: '#64748b' }}>
+                      No payout batches recorded yet. Click &quot;Distribute All Eligible Commissions&quot; to initiate a distribution run.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
 
         {/* TAB 1: Funding History Table (Requirement 5) */}
         {activeTab === 'funding' && (
@@ -1666,6 +2433,183 @@ export default function AdminFundingPortalPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: One-Click Commission Distribution Confirmation */}
+      {distributeModal.open && (
+        <div className="admin-modal-backdrop">
+          <div className="admin-modal-card" style={{ maxWidth: '640px' }}>
+            <div className="admin-modal-header">
+              <h3 className="admin-modal-title">
+                <Send size={18} style={{ color: '#2563eb' }} />
+                <span>Confirm One-Click Commission Distribution</span>
+              </h3>
+              <button
+                type="button"
+                className="admin-modal-close"
+                onClick={() => setDistributeModal((prev) => ({ ...prev, open: false }))}
+                disabled={distributeModal.executing}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="admin-modal-body" style={{ padding: '20px' }}>
+              {distributeModal.loading ? (
+                <div style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>
+                  <RefreshCw size={24} className="spin" style={{ marginBottom: '10px' }} />
+                  <p>Calculating eligible approved commissions and validating members...</p>
+                </div>
+              ) : (
+                <>
+                  <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', padding: '14px 16px', borderRadius: '8px', marginBottom: '16px' }}>
+                    <div style={{ fontWeight: 700, color: '#166534', fontSize: '15px', marginBottom: '4px' }}>
+                      Distribution Summary Preview
+                    </div>
+                    <p style={{ margin: 0, fontSize: '13px', color: '#15803d' }}>
+                      Review the breakdown below before initiating wallet credit distribution.
+                    </p>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px', marginBottom: '16px' }}>
+                    <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', fontWeight: 600 }}>Eligible Members</div>
+                      <div style={{ fontSize: '20px', fontWeight: 700, color: '#16a34a' }}>
+                        {distributeModal.preview?.eligibleEmployeesCount || 0}
+                      </div>
+                    </div>
+
+                    <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', fontWeight: 600 }}>Total Payout Amount</div>
+                      <div style={{ fontSize: '20px', fontWeight: 700, color: '#2563eb' }}>
+                        {formatCurrency(distributeModal.preview?.totalCommissionAmount || 0)}
+                      </div>
+                    </div>
+
+                    <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', fontWeight: 600 }}>Pending (Unapproved)</div>
+                      <div style={{ fontSize: '16px', fontWeight: 600, color: '#d97706' }}>
+                        {formatCurrency(distributeModal.preview?.pendingCommissionsAmount || 0)}
+                      </div>
+                    </div>
+
+                    <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', fontWeight: 600 }}>Previously Paid</div>
+                      <div style={{ fontSize: '16px', fontWeight: 600, color: '#64748b' }}>
+                        {formatCurrency(distributeModal.preview?.previouslyPaidAmount || 0)}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ background: '#fffbeb', border: '1px solid #fef3c7', padding: '12px 14px', borderRadius: '8px', marginBottom: '16px', fontSize: '12.5px', color: '#92400e' }}>
+                    <strong>Excluded Members:</strong> {distributeModal.preview?.excludedEmployeesCount || 0} members ({formatCurrency(distributeModal.preview?.excludedCommissionsAmount || 0)}) excluded due to pending starter kit payment or inactive account status.
+                  </div>
+
+                  <div className="security-invariant-banner" style={{ marginBottom: '16px' }}>
+                    <Lock size={15} style={{ flexShrink: 0 }} />
+                    <span>
+                      <strong>Settlement Mechanism:</strong> Payouts are credited directly to member digital wallets with double-entry ledger verification. No simulated bank wire transfer is performed.
+                    </span>
+                  </div>
+
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', fontSize: '13px', color: '#1e293b', cursor: 'pointer', background: '#f1f5f9', padding: '12px', borderRadius: '8px' }}>
+                    <input
+                      type="checkbox"
+                      checked={distributeModal.confirmed}
+                      onChange={(e) => setDistributeModal((prev) => ({ ...prev, confirmed: e.target.checked }))}
+                      style={{ marginTop: '2px' }}
+                    />
+                    <span>
+                      I confirm that I have reviewed the commission amounts and authorize immediate wallet credit distribution for all eligible members.
+                    </span>
+                  </label>
+                </>
+              )}
+            </div>
+
+            <div className="admin-modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', padding: '16px 20px', borderTop: '1px solid #e2e8f0', background: '#f8fafc' }}>
+              <button
+                type="button"
+                className="admin-btn admin-btn-secondary"
+                onClick={() => setDistributeModal((prev) => ({ ...prev, open: false }))}
+                disabled={distributeModal.executing}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="distribute-btn-primary"
+                onClick={handleExecuteDistribute}
+                disabled={!distributeModal.confirmed || distributeModal.executing || distributeModal.loading}
+              >
+                <Send size={15} />
+                <span>{distributeModal.executing ? 'Executing Batch Payout...' : 'Execute Distribution Now'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Distribution Result */}
+      {distributeResult && (
+        <div className="admin-modal-backdrop">
+          <div className="admin-modal-card" style={{ maxWidth: '640px' }}>
+            <div className="admin-modal-header">
+              <h3 className="admin-modal-title">
+                <CheckCircle2 size={18} style={{ color: '#16a34a' }} />
+                <span>Distribution Batch Result: {distributeResult.batchNumber}</span>
+              </h3>
+              <button
+                type="button"
+                className="admin-modal-close"
+                onClick={() => setDistributeResult(null)}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="admin-modal-body" style={{ padding: '20px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '16px' }}>
+                <div style={{ background: '#f0fdf4', padding: '12px', borderRadius: '8px', border: '1px solid #bbf7d0', textAlign: 'center' }}>
+                  <div style={{ fontSize: '11px', color: '#166534', fontWeight: 600, textTransform: 'uppercase' }}>Successful</div>
+                  <div style={{ fontSize: '20px', fontWeight: 700, color: '#16a34a' }}>{distributeResult.successfulCount}</div>
+                  <div style={{ fontSize: '12px', color: '#15803d' }}>{formatCurrency(distributeResult.successfulAmount)}</div>
+                </div>
+
+                <div style={{ background: distributeResult.failedCount > 0 ? '#fef2f2' : '#f8fafc', padding: '12px', borderRadius: '8px', border: `1px solid ${distributeResult.failedCount > 0 ? '#fecaca' : '#e2e8f0'}`, textAlign: 'center' }}>
+                  <div style={{ fontSize: '11px', color: distributeResult.failedCount > 0 ? '#991b1b' : '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>Failed</div>
+                  <div style={{ fontSize: '20px', fontWeight: 700, color: distributeResult.failedCount > 0 ? '#dc2626' : '#64748b' }}>{distributeResult.failedCount}</div>
+                  <div style={{ fontSize: '12px', color: distributeResult.failedCount > 0 ? '#b91c1c' : '#64748b' }}>{formatCurrency(distributeResult.failedAmount)}</div>
+                </div>
+
+                <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0', textAlign: 'center' }}>
+                  <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600, textTransform: 'uppercase' }}>Status</div>
+                  <div style={{ fontSize: '16px', fontWeight: 700, color: '#0f172a', marginTop: '4px' }}>
+                    <span className={`admin-badge ${distributeResult.status === 'COMPLETED' || distributeResult.status === 'COMPLETED_WALLET' ? 'badge-active' : 'badge-pending'}`}>
+                      {distributeResult.status}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {distributeResult.failedCount > 0 && (
+                <div style={{ background: '#fef2f2', border: '1px solid #fecaca', padding: '12px', borderRadius: '8px', color: '#991b1b', fontSize: '12.5px' }}>
+                  <strong>Partial Failures Detected:</strong> {distributeResult.failedCount} payouts could not be credited. You can safely retry these failed items from the Payout Batches tab without double-crediting successful members.
+                </div>
+              )}
+            </div>
+
+            <div className="admin-modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', padding: '14px 20px', borderTop: '1px solid #e2e8f0', background: '#f8fafc' }}>
+              <button
+                type="button"
+                className="admin-btn admin-btn-primary"
+                onClick={() => setDistributeResult(null)}
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -30,6 +30,10 @@ export class CumulativeRankCommissionService {
   private static inMemoryLedger: Map<string, TierCommissionCalculation> = new Map();
   private static inMemoryAuditTrail: any[] = [];
 
+  public static getInMemoryLedger(): TierCommissionCalculation[] {
+    return Array.from(this.inMemoryLedger.values());
+  }
+
   // =========================================================================
   // PHASE 1: RANK CONFIGURATION
   // =========================================================================

@@ -2093,3 +2093,63 @@ model ClientFundingOrder {
   @@index([createdAt])
   @@map("client_funding_orders")
 }
+
+// 63. PayoutBatch (One-Click Commission Distribution Execution Ledger)
+model PayoutBatch {
+  id                  String             @id @default(uuid())
+  batchNumber         String             @unique // e.g. "PB-20261016-1001"
+  periodId            String?
+  initiatedByAdminId  String
+  totalAmount         Decimal            @db.Decimal(14, 2)
+  successfulAmount    Decimal            @default(0.00) @db.Decimal(14, 2)
+  failedAmount        Decimal            @default(0.00) @db.Decimal(14, 2)
+  totalEmployees      Int
+  successfulCount     Int                @default(0)
+  failedCount         Int                @default(0)
+  pendingCount        Int                @default(0)
+  status              String             @default("PROCESSING") // PROCESSING, COMPLETED, PARTIALLY_FAILED, FAILED
+  payoutMethod        String             @default("WALLET_CREDIT") // WALLET_CREDIT, BANK_GATEWAY
+  notes               String?
+  metadata            Json?
+  createdAt           DateTime           @default(now())
+  completedAt         DateTime?
+
+  items               PayoutBatchItem[]
+
+  @@index([batchNumber])
+  @@index([status])
+  @@index([initiatedByAdminId])
+  @@index([createdAt])
+  @@map("payout_batches")
+}
+
+// 64. PayoutBatchItem (Employee-level Payout Execution & Retry Record)
+model PayoutBatchItem {
+  id                  String             @id @default(uuid())
+  batchId             String
+  distributorId       String
+  distributorName     String
+  distributorCode     String
+  sponsorId           String?
+  rankCode            String?
+  amount              Decimal            @db.Decimal(12, 2)
+  status              String             @default("PENDING") // SUCCESS, PENDING, FAILED
+  walletTransactionId String?
+  payoutReference     String?
+  failureReason       String?
+  retryCount          Int                @default(0)
+  lastRetryAt         DateTime?
+  commissionIds       Json?
+  details             Json?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  batch               PayoutBatch        @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@index([batchId])
+  @@index([distributorId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("payout_batch_items")
+}
+
