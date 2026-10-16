@@ -13,6 +13,7 @@ import {
   ToggleLeft,
   ToggleRight,
   HelpCircle,
+  Award,
 } from 'lucide-react';
 import './AdminPages.css';
 
@@ -33,21 +34,61 @@ export default function CommissionSettingsPage() {
     carryForwardEnabled: true,
   });
 
+  const [ranks, setRanks] = useState([
+    { code: 'SILVER', name: 'Silver', commissionPercent: 24, minBV: 250, minLeftMatching: 2000, minRightMatching: 2000 },
+    { code: 'GOLD', name: 'Gold', commissionPercent: 8, minBV: 250, minLeftMatching: 5000, minRightMatching: 5000 },
+    { code: 'PLATINUM', name: 'Platinum', commissionPercent: 13, minBV: 500, minLeftMatching: 50000, minRightMatching: 50000 },
+    { code: 'DIAMOND', name: 'Diamond', commissionPercent: 5, minBV: 1000, minLeftMatching: 60000, minRightMatching: 60000 },
+    { code: 'RUBY', name: 'Ruby', commissionPercent: 4, minBV: 1000, minLeftMatching: 100000, minRightMatching: 100000 },
+  ]);
+
   const loadSettings = async () => {
     try {
       setLoading(true);
       setErrorMsg('');
-      const res = await adminApi.getSettings();
-      if (res && res.data) {
+      const [settingsRes, ranksRes] = await Promise.allSettled([
+        adminApi.getSettings(),
+        adminApi.getCumulativeRanks(),
+      ]);
+      if (settingsRes.status === 'fulfilled' && settingsRes.value?.data) {
         setSettings((prev) => ({
           ...prev,
-          ...res.data,
+          ...settingsRes.value.data,
         }));
+      }
+      if (ranksRes.status === 'fulfilled' && ranksRes.value?.data) {
+        const list = Array.isArray(ranksRes.value.data) ? ranksRes.value.data : [];
+        const nonBase = list.filter((r) => r.code !== 'BASE');
+        if (nonBase.length > 0) {
+          setRanks(nonBase);
+        }
       }
     } catch (err) {
       console.warn('Error loading settings, using current defaults:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRankChange = (code, field, val) => {
+    setRanks((prev) =>
+      prev.map((r) => (r.code === code ? { ...r, [field]: Number(val) } : r))
+    );
+  };
+
+  const handleSaveRank = async (code) => {
+    const rankObj = ranks.find((r) => r.code === code);
+    if (!rankObj) return;
+    try {
+      setSaving(true);
+      setErrorMsg('');
+      await adminApi.updateCumulativeRank(code, rankObj);
+      setSuccessMsg(`Rank ${rankObj.name} updated successfully!`);
+      setTimeout(() => setSuccessMsg(''), 4000);
+    } catch (err) {
+      setErrorMsg(err.message || `Failed to update rank ${code}`);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -370,6 +411,142 @@ export default function CommissionSettingsPage() {
                 Software platform and banking maintenance deduction (Default: 5%).
               </span>
             </div>
+          </div>
+        </div>
+
+        {/* Card 3: Five MLM Ranks & Cumulative Commission Configuration (Phase 1) */}
+        <div className="admin-card" style={{ marginTop: '24px', padding: '24px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #e2e8f0', paddingBottom: '14px', marginBottom: '18px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div className="admin-kpi-icon indigo" style={{ width: '36px', height: '36px' }}>
+                <Award size={18} />
+              </div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: '#0f172a' }}>
+                  Five MLM Ranks &amp; Cumulative Commission Hierarchy (Phase 1)
+                </h3>
+                <span style={{ fontSize: '12px', color: '#64748b' }}>
+                  Centralized, database-backed minimum thresholds (Silver, Gold, Platinum, Diamond, Ruby)
+                </span>
+              </div>
+            </div>
+            <span style={{ fontSize: '12px', color: '#0284c7', background: '#e0f2fe', padding: '4px 10px', borderRadius: '6px', fontWeight: 600 }}>
+              Independent Left &amp; Right Matching Enforced
+            </span>
+          </div>
+
+          <div className="admin-table-container">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Rank</th>
+                  <th>Tier Commission Rate (%)</th>
+                  <th>Min Qualifying BV</th>
+                  <th>Min Left Matching (BV)</th>
+                  <th>Min Right Matching (BV)</th>
+                  <th>Cumulative Payout Rate</th>
+                  <th>Quick Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ranks.map((r, idx) => {
+                  let cumTotal = 0;
+                  for (let i = 0; i <= idx; i++) {
+                    cumTotal += Number(ranks[i].commissionPercent || 0);
+                  }
+
+                  return (
+                    <tr key={r.code}>
+                      <td style={{ fontWeight: 700, color: '#0f172a' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span
+                            style={{
+                              display: 'inline-block',
+                              width: '10px',
+                              height: '10px',
+                              borderRadius: '50%',
+                              backgroundColor:
+                                r.code === 'SILVER'
+                                  ? '#94a3b8'
+                                  : r.code === 'GOLD'
+                                  ? '#eab308'
+                                  : r.code === 'PLATINUM'
+                                  ? '#06b6d4'
+                                  : r.code === 'DIAMOND'
+                                  ? '#3b82f6'
+                                  : '#e11d48',
+                            }}
+                          />
+                          <span>{r.name}</span>
+                        </div>
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          step="0.5"
+                          min="0"
+                          max="100"
+                          className="admin-form-input"
+                          style={{ width: '85px', padding: '4px 8px', fontSize: '13px' }}
+                          value={r.commissionPercent}
+                          onChange={(e) => handleRankChange(r.code, 'commissionPercent', e.target.value)}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          step="50"
+                          min="0"
+                          className="admin-form-input"
+                          style={{ width: '100px', padding: '4px 8px', fontSize: '13px' }}
+                          value={r.minBV}
+                          onChange={(e) => handleRankChange(r.code, 'minBV', e.target.value)}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          step="500"
+                          min="0"
+                          className="admin-form-input"
+                          style={{ width: '120px', padding: '4px 8px', fontSize: '13px' }}
+                          value={r.minLeftMatching}
+                          onChange={(e) => handleRankChange(r.code, 'minLeftMatching', e.target.value)}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="number"
+                          step="500"
+                          min="0"
+                          className="admin-form-input"
+                          style={{ width: '120px', padding: '4px 8px', fontSize: '13px' }}
+                          value={r.minRightMatching}
+                          onChange={(e) => handleRankChange(r.code, 'minRightMatching', e.target.value)}
+                        />
+                      </td>
+                      <td>
+                        <span style={{ fontWeight: 700, color: '#16a34a' }}>
+                          {cumTotal}% Total
+                        </span>
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className="admin-btn admin-btn-secondary admin-btn-sm"
+                          onClick={() => handleSaveRank(r.code)}
+                          disabled={saving}
+                          title="Save this rank configuration"
+                        >
+                          <Save size={13} />
+                          <span>Update</span>
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </div>
 

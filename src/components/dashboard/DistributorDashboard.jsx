@@ -119,6 +119,27 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
     };
   }, []);
 
+  // Cumulative Rank & Commission Progress State (Phase 6)
+  const [cumulativeRank, setCumulativeRank] = useState(null);
+
+  useEffect(() => {
+    let mounted = true;
+    async function loadRank() {
+      try {
+        const data = await api.getMyCumulativeRank();
+        if (mounted && data) {
+          setCumulativeRank(data);
+        }
+      } catch (err) {
+        console.warn('Could not load cumulative rank:', err);
+      }
+    }
+    loadRank();
+    return () => {
+      mounted = false;
+    };
+  }, [user]);
+
   const handleMarkNotification = async (id) => {
     try {
       await api.markNotificationAsRead(id);
@@ -292,11 +313,16 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
   const memberSince = typeof rawMemberSince === 'object' ? (rawMemberSince?.date || rawMemberSince?.name || 'NA') : rawMemberSince;
 
   const rawMemberRank =
+    cumulativeRank?.currentRankName ||
     effectiveUser?.distributorProfile?.currentRank ||
     effectiveUser?.tier ||
     effectiveUser?.rank ||
-    'NA';
-  const memberRank = typeof rawMemberRank === 'object' ? (rawMemberRank?.name || rawMemberRank?.title || 'NA') : rawMemberRank;
+    'Base';
+  const memberRank = typeof rawMemberRank === 'object' ? (rawMemberRank?.name || rawMemberRank?.title || 'Base') : rawMemberRank;
+  const currentRankCode = cumulativeRank?.currentRank || 'BASE';
+  const currentRankName = cumulativeRank?.currentRankName || memberRank;
+  const nextRankName = cumulativeRank?.nextRankName || null;
+  const rankProgressPercent = cumulativeRank?.rankProgressPercent ?? 0;
 
   // Format today's date dynamically
   const todayDateStr = new Intl.DateTimeFormat('en-US', {
@@ -634,7 +660,61 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
               <section className="kashvimlm-member-summary-card">
                 {/* Column 1: Identity & Rank */}
                 <div className="summary-col col-identity">
-                  <h2 className="member-name-title">{memberName}</h2>
+                  <h2 className="member-name-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <span>{memberName}</span>
+                    <span
+                      className="rank-badge-pill"
+                      style={{
+                        fontSize: '11px',
+                        padding: '2px 8px',
+                        borderRadius: '12px',
+                        fontWeight: 700,
+                        backgroundColor:
+                          currentRankCode === 'RUBY'
+                            ? '#ffe4e6'
+                            : currentRankCode === 'DIAMOND'
+                            ? '#dbeafe'
+                            : currentRankCode === 'PLATINUM'
+                            ? '#cffafe'
+                            : currentRankCode === 'GOLD'
+                            ? '#fef9c3'
+                            : currentRankCode === 'SILVER'
+                            ? '#f1f5f9'
+                            : '#f8fafc',
+                        color:
+                          currentRankCode === 'RUBY'
+                            ? '#be123c'
+                            : currentRankCode === 'DIAMOND'
+                            ? '#1d4ed8'
+                            : currentRankCode === 'PLATINUM'
+                            ? '#0e7490'
+                            : currentRankCode === 'GOLD'
+                            ? '#a16207'
+                            : currentRankCode === 'SILVER'
+                            ? '#475569'
+                            : '#64748b',
+                        border: `1px solid ${
+                          currentRankCode === 'RUBY'
+                            ? '#fda4af'
+                            : currentRankCode === 'DIAMOND'
+                            ? '#93c5fd'
+                            : currentRankCode === 'PLATINUM'
+                            ? '#67e8f9'
+                            : currentRankCode === 'GOLD'
+                            ? '#fde047'
+                            : currentRankCode === 'SILVER'
+                            ? '#cbd5e1'
+                            : '#e2e8f0'
+                        }`,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}
+                    >
+                      <Award size={12} />
+                      {currentRankName}
+                    </span>
+                  </h2>
                   <p className="member-id-text">
                     KASHVIMLM ID: <span className={`node-distributor-id ${idColorClass}`} style={{ fontSize: '13px' }}>{memberId}</span>
                   </p>
@@ -652,7 +732,93 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
                     </span>
                   </div>
                   <p className="member-meta-text">Brand Partner Since {memberSince}</p>
-                  <p className="member-meta-text">Rank: {memberRank}</p>
+
+                  {/* Phase 6: Rank Progression Box */}
+                  <div style={{ marginTop: '10px', padding: '10px 12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', fontSize: '12px' }}>
+                      <span style={{ fontWeight: 600, color: '#334155' }}>
+                        Rank: <strong style={{ color: '#0f172a' }}>{currentRankName}</strong>
+                      </span>
+                      <span style={{ color: '#64748b', fontSize: '11px' }}>
+                        Next: {nextRankName || 'Top Rank'}
+                      </span>
+                    </div>
+
+                    {/* Progress Bar */}
+                    <div style={{ width: '100%', height: '6px', backgroundColor: '#e2e8f0', borderRadius: '3px', overflow: 'hidden', margin: '5px 0' }}>
+                      <div
+                        style={{
+                          width: `${rankProgressPercent}%`,
+                          height: '100%',
+                          backgroundColor: '#16a34a',
+                          transition: 'width 0.3s ease',
+                        }}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', color: '#64748b', marginBottom: '6px' }}>
+                      <span>Progress: {rankProgressPercent}%</span>
+                      {cumulativeRank?.isQualified && (
+                        <span style={{ color: '#16a34a', fontWeight: 600 }}>✓ Qualified</span>
+                      )}
+                    </div>
+
+                    {/* Gaps Breakdown */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', fontSize: '11px', color: '#475569', borderTop: '1px solid #f1f5f9', paddingTop: '6px' }}>
+                      <div>
+                        BV: <strong>{cumulativeRank?.qualifyingBV ?? 0}</strong>
+                        {cumulativeRank?.missingRequirements?.bvGap > 0 && (
+                          <span style={{ color: '#b45309', display: 'block', fontSize: '10px' }}>
+                            Need {cumulativeRank.missingRequirements.bvGap} more
+                          </span>
+                        )}
+                      </div>
+                      <div>
+                        Left: <strong>{cumulativeRank?.leftMatching?.toLocaleString() ?? 0}</strong>
+                        {cumulativeRank?.missingRequirements?.leftMatchingGap > 0 && (
+                          <span style={{ color: '#b45309', display: 'block', fontSize: '10px' }}>
+                            Need {cumulativeRank.missingRequirements.leftMatchingGap.toLocaleString()} more
+                          </span>
+                        )}
+                      </div>
+                      <div>
+                        Right: <strong>{cumulativeRank?.rightMatching?.toLocaleString() ?? 0}</strong>
+                        {cumulativeRank?.missingRequirements?.rightMatchingGap > 0 && (
+                          <span style={{ color: '#b45309', display: 'block', fontSize: '10px' }}>
+                            Need {cumulativeRank.missingRequirements.rightMatchingGap.toLocaleString()} more
+                          </span>
+                        )}
+                      </div>
+                      <div>
+                        Matching: <strong>{cumulativeRank?.matchedVolume?.toLocaleString() ?? 0}</strong>
+                      </div>
+                    </div>
+
+                    {/* Eligible Cumulative Tiers */}
+                    {cumulativeRank?.eligibleCommissionTiers && cumulativeRank.eligibleCommissionTiers.length > 0 && (
+                      <div style={{ marginTop: '8px', paddingTop: '6px', borderTop: '1px solid #f1f5f9', fontSize: '11px' }}>
+                        <span style={{ color: '#15803d', fontWeight: 700 }}>
+                          Eligible: {cumulativeRank.cumulativePercentage}% Cumulative
+                        </span>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px', marginTop: '3px' }}>
+                          {cumulativeRank.eligibleCommissionTiers.map((t) => (
+                            <span
+                              key={t.rankCode}
+                              style={{
+                                fontSize: '9.5px',
+                                padding: '1px 5px',
+                                background: '#dcfce7',
+                                color: '#166534',
+                                borderRadius: '3px',
+                                fontWeight: 600,
+                              }}
+                            >
+                              {t.rankName}: {t.percentage}%
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
 
                   <button
                     type="button"

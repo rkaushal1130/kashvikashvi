@@ -47,6 +47,7 @@ export * from './fundingWorkflow.service';
 export * from './fundingReconciliation.service';
 export * from './treasuryCommission.service';
 export * from './withdrawal.service';
+export * from './cumulativeRankCommission.service';
 
 
 

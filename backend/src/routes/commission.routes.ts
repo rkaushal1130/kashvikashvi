@@ -43,9 +43,11 @@ const optionalAuth = (req: Request, _res: Response, next: NextFunction) => {
 import levelCommissionRouter from './levelCommission.routes';
 import commissionConfigRoutes from './commissionConfig.routes';
 import commissionLedgerRouter from './commissionLedger.routes';
+import cumulativeRankCommissionRouter from './cumulativeRankCommission.routes';
 router.use('/levels', levelCommissionRouter);
 router.use('/config', commissionConfigRoutes);
 router.use('/ledger', commissionLedgerRouter);
+router.use('/cumulative', cumulativeRankCommissionRouter);
 
 // GET /api/v1/commissions/current - Current active period and qualification
 router.get('/current', optionalAuth, CommissionController.getCurrentPeriod);

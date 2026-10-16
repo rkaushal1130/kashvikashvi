@@ -139,6 +139,49 @@ export const adminApi = {
   async updateSettings(data) {
     return apiClient.put('/admin/settings', data);
   },
+
+  /**
+   * Cumulative Rank & Commission System API
+   */
+  async getCumulativeRanks() {
+    return apiClient.get('/commissions/cumulative/ranks');
+  },
+
+  async updateCumulativeRank(rankCode, data) {
+    return apiClient.put(`/commissions/cumulative/ranks/${encodeURIComponent(rankCode)}`, data);
+  },
+
+  async recalculateRanks(data = {}) {
+    return apiClient.post('/commissions/cumulative/recalculate-ranks', data);
+  },
+
+  async previewCumulativeCommissions(data = {}) {
+    return apiClient.post('/commissions/cumulative/preview', data);
+  },
+
+  async calculateCumulativeCommissions(data = {}) {
+    return apiClient.post('/commissions/cumulative/calculate', data);
+  },
+
+  async approveCumulativeCommissions(data = {}) {
+    return apiClient.post('/commissions/cumulative/approve', data);
+  },
+
+  async payoutCumulativeCommissions(data = {}) {
+    return apiClient.post('/commissions/cumulative/payout', data);
+  },
+
+  async reverseCumulativeCommission(data) {
+    return apiClient.post('/commissions/cumulative/reverse', data);
+  },
+
+  async getCumulativeAdminReport() {
+    return apiClient.get('/commissions/cumulative/admin/report');
+  },
+
+  async getMyCumulativeRank() {
+    return apiClient.get('/commissions/cumulative/me');
+  },
 };
 
 export default adminApi;

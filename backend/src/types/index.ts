@@ -67,4 +67,5 @@ export * from './platformTreasury.types';
 export * from './funding.types';
 export * from './treasuryCommission.types';
 export * from './withdrawal.types';
+export * from './cumulativeRankCommission.types';
 

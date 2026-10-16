@@ -1802,5 +1802,38 @@ export const api = {
       return true;
     }
   },
+
+  // 16. Cumulative Rank & Commission System
+  async getMyCumulativeRank() {
+    try {
+      const res = await fetch(`${API_BASE_URL}/commissions/cumulative/me`, {
+        headers: getAuthHeaders(),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        return data.data;
+      }
+      return null;
+    } catch (err) {
+      console.warn('[API] getMyCumulativeRank failed:', err.message);
+      return null;
+    }
+  },
+
+  async getCumulativeRanks() {
+    try {
+      const res = await fetch(`${API_BASE_URL}/commissions/cumulative/ranks`, {
+        headers: getAuthHeaders(),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        return data.data;
+      }
+      return [];
+    } catch (err) {
+      console.warn('[API] getCumulativeRanks failed:', err.message);
+      return [];
+    }
+  },
 };
 
