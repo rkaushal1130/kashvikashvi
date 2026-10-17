@@ -29,11 +29,22 @@ app.use(
       const customOrigins = process.env.ALLOWED_ORIGINS
         ? process.env.ALLOWED_ORIGINS.split(',').map((s) => s.trim())
         : [];
-      const allowedOrigins = [env.FRONTEND_URL, 'http://localhost:5173', 'http://localhost:3000', ...customOrigins];
+      const allowedOrigins = [
+        env.FRONTEND_URL,
+        'http://localhost:5173',
+        'http://localhost:3000',
+        'https://www.kashvimlm.com',
+        'https://kashvimlm.com',
+        'http://www.kashvimlm.com',
+        'http://kashvimlm.com',
+        ...customOrigins,
+      ];
       if (
         allowedOrigins.includes(origin) ||
         env.NODE_ENV === 'development' ||
         origin.endsWith('.vercel.app') ||
+        origin.endsWith('kashvimlm.com') ||
+        origin.includes('kashvimlm') ||
         origin.startsWith('http://localhost:') ||
         origin.startsWith('http://127.0.0.1:')
       ) {

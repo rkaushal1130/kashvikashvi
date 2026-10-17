@@ -64,7 +64,7 @@ const parseEnv = () => {
       return envSchema.parse({
         PORT: 5000,
         NODE_ENV: 'production',
-        FRONTEND_URL: 'https://kashvimlm.vercel.app',
+        FRONTEND_URL: process.env.FRONTEND_URL || 'https://www.kashvimlm.com',
         DATABASE_URL: process.env.DATABASE_URL || 'postgresql://unconfigured:unconfigured@localhost:5432/unconfigured',
         JWT_ACCESS_SECRET: process.env.JWT_ACCESS_SECRET || 'temporary_secret_key_needs_replacement_32_chars_min',
         JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET || 'temporary_secret_key_needs_replacement_32_chars_min',

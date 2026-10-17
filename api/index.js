@@ -94,7 +94,7 @@ Please add them in Vercel Project Settings > Environment Variables.`);
           return envSchema.parse({
             PORT: 5e3,
             NODE_ENV: "production",
-            FRONTEND_URL: "https://kashvimlm.vercel.app",
+            FRONTEND_URL: process.env.FRONTEND_URL || "https://www.kashvimlm.com",
             DATABASE_URL: process.env.DATABASE_URL || "postgresql://unconfigured:unconfigured@localhost:5432/unconfigured",
             JWT_ACCESS_SECRET: process.env.JWT_ACCESS_SECRET || "temporary_secret_key_needs_replacement_32_chars_min",
             JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET || "temporary_secret_key_needs_replacement_32_chars_min",
@@ -45794,8 +45794,17 @@ app.use(
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);
       const customOrigins = process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(",").map((s) => s.trim()) : [];
-      const allowedOrigins = [env.FRONTEND_URL, "http://localhost:5173", "http://localhost:3000", ...customOrigins];
-      if (allowedOrigins.includes(origin) || env.NODE_ENV === "development" || origin.endsWith(".vercel.app") || origin.startsWith("http://localhost:") || origin.startsWith("http://127.0.0.1:")) {
+      const allowedOrigins = [
+        env.FRONTEND_URL,
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "https://www.kashvimlm.com",
+        "https://kashvimlm.com",
+        "http://www.kashvimlm.com",
+        "http://kashvimlm.com",
+        ...customOrigins
+      ];
+      if (allowedOrigins.includes(origin) || env.NODE_ENV === "development" || origin.endsWith(".vercel.app") || origin.endsWith("kashvimlm.com") || origin.includes("kashvimlm") || origin.startsWith("http://localhost:") || origin.startsWith("http://127.0.0.1:")) {
         return callback(null, true);
       }
       return callback(new Error(`CORS policy does not allow access from origin: ${origin}`));
