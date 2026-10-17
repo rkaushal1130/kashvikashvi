@@ -218,7 +218,7 @@ function ShopView({ user, catalog, onNavigate }) {
         const keyId =
           rzpOrderData?.keyId ||
           import.meta.env?.VITE_RAZORPAY_KEY_ID ||
-          'rzp_test_your_key_id';
+          'rzp_test_To8FSTZD9szgaD';
         const order = rzpOrderData?.order;
 
         if (typeof window !== 'undefined' && window.Razorpay) {

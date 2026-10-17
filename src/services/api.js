@@ -1676,7 +1676,7 @@ export const api = {
             createdAt: new Date().toISOString(),
           },
           razorpayOrderId: `order_mock_${Date.now()}`,
-          keyId: 'rzp_test_your_key_id',
+          keyId: import.meta.env?.VITE_RAZORPAY_KEY_ID || 'rzp_test_To8FSTZD9szgaD',
           currency: 'INR',
           amountInPaise: Math.round(Number(orderData.amount) * 100),
         },

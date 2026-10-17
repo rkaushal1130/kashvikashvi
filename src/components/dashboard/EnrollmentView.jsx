@@ -218,7 +218,7 @@ function EnrollmentView({ user, onNavigate }) {
         ? 'Elite Leadership Pack'
         : 'Associate Welcome Pack';
 
-    const rzpKey = import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_test_your_key_id';
+    const rzpKey = import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_test_To8FSTZD9szgaD';
 
     const startCheckout = () => {
       try {

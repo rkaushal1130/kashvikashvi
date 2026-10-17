@@ -27,7 +27,7 @@ export class ClientFundingService {
       env.RAZORPAY_KEY_ID ||
       env.FUNDING_PROVIDER_KEY_ID ||
       process.env.RAZORPAY_KEY_ID ||
-      'rzp_test_your_key_id';
+      'rzp_test_To8FSTZD9szgaD';
     const keySecret =
       env.RAZORPAY_KEY_SECRET ||
       env.FUNDING_PROVIDER_KEY_SECRET ||
