@@ -26,12 +26,12 @@ export class PaymentService {
       env.RAZORPAY_KEY_ID ||
       env.FUNDING_PROVIDER_KEY_ID ||
       process.env.RAZORPAY_KEY_ID ||
-      'rzp_test_To8FSTZD9szgaD';
+      'rzp_live_ToerZRsvekgL2z';
     const keySecret =
       env.RAZORPAY_KEY_SECRET ||
       env.FUNDING_PROVIDER_KEY_SECRET ||
       process.env.RAZORPAY_KEY_SECRET ||
-      'your_key_secret_keep_secret';
+      '4mq7WOEx4mxvpkX6LOkSK32p';
     const webhookSecret =
       env.RAZORPAY_WEBHOOK_SECRET ||
       env.FUNDING_PROVIDER_WEBHOOK_SECRET ||

@@ -27,12 +27,12 @@ export class ClientFundingService {
       env.RAZORPAY_KEY_ID ||
       env.FUNDING_PROVIDER_KEY_ID ||
       process.env.RAZORPAY_KEY_ID ||
-      'rzp_test_To8FSTZD9szgaD';
+      'rzp_live_ToerZRsvekgL2z';
     const keySecret =
       env.RAZORPAY_KEY_SECRET ||
       env.FUNDING_PROVIDER_KEY_SECRET ||
       process.env.RAZORPAY_KEY_SECRET ||
-      'your_key_secret_keep_secret';
+      '4mq7WOEx4mxvpkX6LOkSK32p';
     const webhookSecret =
       env.RAZORPAY_WEBHOOK_SECRET ||
       env.FUNDING_PROVIDER_WEBHOOK_SECRET ||
@@ -98,8 +98,43 @@ export class ClientFundingService {
       `IDEMP-CLF-${Date.now()}-${Math.floor(100000 + Math.random() * 900000)}`;
 
     const { keyId, keySecret } = this.getRazorpayCredentials();
-    const amountInPaise = Math.round(amountDecimal.toNumber() * 100);
-    const razorpayOrderId = `order_fund_${Date.now()}_${Math.floor(1000 + Math.random() * 9000)}`;
+    let razorpayOrderId = `order_fund_${Date.now()}_${Math.floor(1000 + Math.random() * 9000)}`;
+
+    // If real Razorpay credentials are provided, invoke Razorpay Orders API
+    const isMockKey = !keyId || keyId.includes('your_key_id') || isTest;
+    if (!isMockKey) {
+      try {
+        const authHeader = 'Basic ' + Buffer.from(`${keyId}:${keySecret}`).toString('base64');
+        const res = await fetch('https://api.razorpay.com/v1/orders', {
+          method: 'POST',
+          headers: {
+            Authorization: authHeader,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            amount: amountInPaise,
+            currency: input.currency || 'INR',
+            receipt: idempotencyKey.slice(0, 40),
+            notes: {
+              userId,
+              type: 'WALLET_FUNDING',
+            },
+          }),
+        });
+
+        if (res.ok) {
+          const rzpData = (await res.json()) as any;
+          if (rzpData && rzpData.id) {
+            razorpayOrderId = rzpData.id;
+          }
+        } else {
+          const errText = await res.text();
+          logger.warn({ errText }, 'Razorpay API non-200 response for client funding, using fallback');
+        }
+      } catch (err: any) {
+        logger.warn({ error: err.message }, 'Razorpay client funding order fetch exception, using fallback');
+      }
+    }
 
     // Try DB creation
     try {
