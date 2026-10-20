@@ -338,12 +338,24 @@ export class BinaryTreeService {
     let left: any = null;
     let right: any = null;
 
-    // Scan all members for those whose parent is distributor.memberId
+    const currentMemberId = (distributor.memberId || '').toUpperCase();
+    const currentDbId = (distributor.id || '').toLowerCase();
+
+    // Scan all members for those whose parent is distributor.memberId or distributor.id
     for (const m of membersMap.values()) {
-      if (m.parentId && (m.parentId.toUpperCase() === distributor.memberId.toUpperCase() || m.parentDbId === distributor.id)) {
-        if (m.position === 'LEFT' && !left) {
+      // Prevent self-loop
+      if ((m.id && m.id.toLowerCase() === currentDbId) || (m.memberId && m.memberId.toUpperCase() === currentMemberId)) {
+        continue;
+      }
+
+      const pId = (m.parentId || '').toUpperCase();
+      const pDbId = (m.parentDbId || '').toLowerCase();
+
+      if (pId === currentMemberId || (currentDbId && pDbId === currentDbId) || (currentDbId && pId === currentDbId.toUpperCase())) {
+        const pos = (m.position || '').toUpperCase();
+        if (pos === 'LEFT' && !left) {
           left = m;
-        } else if (m.position === 'RIGHT' && !right) {
+        } else if (pos === 'RIGHT' && !right) {
           right = m;
         }
       }

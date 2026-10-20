@@ -230,6 +230,31 @@ export class AdminController {
     }
   }
 
+  static async repairTreeNode(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const memberId = req.params.memberId || req.body.memberId;
+      const { parentId, position, reason } = req.body;
+      const adminId = req.user?.id || req.user?.memberId || 'ADMIN_USER';
+
+      if (!memberId || !memberId.trim()) {
+        res.status(400).json({ success: false, message: 'Member ID is required for tree repair.' });
+        return;
+      }
+
+      const result = await AdminService.repairMemberTreeNode({
+        memberId: memberId.trim(),
+        adminId,
+        parentId: parentId ? String(parentId).trim() : undefined,
+        position: position ? (String(position).trim().toUpperCase() as any) : undefined,
+        reason: reason ? String(reason).trim() : undefined,
+      });
+
+      res.status(200).json(result);
+    } catch (err: any) {
+      res.status(400).json({ success: false, message: err.message || 'Tree repair failed.' });
+    }
+  }
+
   // GET /api/v1/admin/support/tickets
   static async getSupportTickets(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
     try {

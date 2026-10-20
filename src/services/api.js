@@ -853,11 +853,11 @@ export const api = {
   },
 
   async submitCompleteEnrollment(enrollData) {
-    // Force placement position to RIGHT leg as requested
+    const chosenPosition = (enrollData.placementPosition || enrollData.placementLeg || 'AUTO').toUpperCase();
     const cleanPayload = {
       ...enrollData,
-      placementPosition: 'RIGHT',
-      placementLeg: 'right',
+      placementPosition: chosenPosition,
+      placementLeg: chosenPosition.toLowerCase(),
     };
 
     let resultData = null;

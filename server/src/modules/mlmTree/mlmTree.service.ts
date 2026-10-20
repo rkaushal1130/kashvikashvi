@@ -165,17 +165,27 @@ export class MlmTreeService {
             right: null,
           };
           nodeMap.set(row.id, nodeObj);
+          if (row.member_id) {
+            nodeMap.set(row.member_id.toUpperCase(), nodeObj);
+          }
         }
 
         // Link parent-child edges
         for (const row of cteRes.rows) {
+          if (row.id === rootRow.id) continue;
+          let parentObj: any = null;
           if (row.parent_distributor_id && nodeMap.has(row.parent_distributor_id)) {
-            const parentObj = nodeMap.get(row.parent_distributor_id);
+            parentObj = nodeMap.get(row.parent_distributor_id);
+          } else if (row.parent_id && nodeMap.has(row.parent_id.toUpperCase())) {
+            parentObj = nodeMap.get(row.parent_id.toUpperCase());
+          }
+
+          if (parentObj) {
             const childObj = nodeMap.get(row.id);
-            const leg = (row.leg_position || '').toLowerCase();
-            if (leg === 'left') {
+            const leg = (row.leg_position || row.placement_leg || '').toLowerCase();
+            if (leg === 'left' && !parentObj.left) {
               parentObj.left = childObj;
-            } else if (leg === 'right') {
+            } else if (leg === 'right' && !parentObj.right) {
               parentObj.right = childObj;
             }
           }

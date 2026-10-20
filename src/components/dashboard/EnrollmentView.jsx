@@ -241,7 +241,7 @@ function EnrollmentView({ user, onNavigate }) {
           notes: {
             starterKitId: formData.starterKitId,
             sponsorId: sponsorInput.trim(),
-            placementLeg: 'RIGHT',
+            placementLeg: selectedPlacementPosition || 'AUTO',
             bv: String(kitBV),
           },
           theme: {
@@ -320,7 +320,8 @@ function EnrollmentView({ user, onNavigate }) {
       country: 'India',
       sponsorId: sponsorInput.trim(),
       placementParentId: sponsorInput.trim(),
-      placementPosition: 'RIGHT',
+      placementPosition: selectedPlacementPosition || 'AUTO',
+      placementLeg: (selectedPlacementPosition || 'AUTO').toLowerCase(),
       enrollmentType: enrollType === 'distributor' ? 'DISTRIBUTOR' : 'CUSTOMER',
       starterKitId: formData.starterKitId,
       productPackage: kitName,

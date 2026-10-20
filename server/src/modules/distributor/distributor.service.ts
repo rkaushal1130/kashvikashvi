@@ -625,13 +625,13 @@ export class DistributorService {
           client,
         });
 
-        // Update sponsor direct member count & team size
+        // Update sponsor direct team count & team size
         if (cleanSponsor) {
           try {
             await client.query(
               `UPDATE distributors
-               SET direct_members = direct_members + 1, team_size = team_size + 1
-               WHERE member_id = $1`,
+               SET team_size = team_size + 1
+               WHERE member_id = $1 OR id::text = $1`,
               [cleanSponsor]
             );
           } catch {

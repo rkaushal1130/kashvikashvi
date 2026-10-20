@@ -26,6 +26,8 @@ adminRoutes.delete('/audit-logs/:id', AdminController.blockAuditDeletion);
 // Financial & Operations
 adminRoutes.post('/calculate-commissions', AdminController.triggerWeeklyCommissionCalculation);
 adminRoutes.post('/settle-payouts', AdminController.triggerPayoutSettlement);
+adminRoutes.post('/repair-tree-node', AdminController.repairTreeNode);
+adminRoutes.post('/distributors/:memberId/repair-tree', AdminController.repairTreeNode);
 adminRoutes.patch('/distributors/:id/status', AdminController.updateDistributorStatus);
 adminRoutes.patch('/distributors/:memberId/status', AdminController.updateDistributorStatus);
 

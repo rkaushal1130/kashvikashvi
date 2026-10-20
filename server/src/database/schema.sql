@@ -155,7 +155,7 @@ CREATE TABLE mlm_tree (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT uq_mlm_tree_distributor UNIQUE (distributor_id),
     CONSTRAINT uq_mlm_tree_parent_leg UNIQUE (parent_distributor_id, leg_position),
-    CONSTRAINT chk_mlm_tree_leg CHECK (leg_position IN ('left', 'right', 'ROOT') OR leg_position IS NULL),
+    CONSTRAINT chk_mlm_tree_leg CHECK (LOWER(leg_position) IN ('left', 'right') OR leg_position = 'ROOT' OR leg_position IS NULL),
     CONSTRAINT chk_mlm_tree_no_self_parent CHECK (parent_distributor_id IS NULL OR parent_distributor_id <> distributor_id)
 );
 

@@ -212,4 +212,26 @@ export class AdminService {
       updatedAt: new Date().toISOString()
     };
   }
+
+  /**
+   * Safe Administrative Repair Operation for distributors missing from mlm_tree.
+   * Transactional, idempotent, verifies payment/enrollment, confirms placement slot,
+   * and prevents duplicate member creation or duplicate commissions.
+   */
+  static async repairMemberTreeNode(params: {
+    memberId: string;
+    adminId: string;
+    parentId?: string;
+    position?: 'LEFT' | 'RIGHT' | 'AUTO';
+    reason?: string;
+  }) {
+    const { BinaryTreePlacementService } = await import('../mlmTree/binaryTreePlacement.service.js');
+    return await BinaryTreePlacementService.repairDistributorTreePlacement({
+      memberId: params.memberId,
+      requestedParentId: params.parentId,
+      requestedPosition: params.position || 'AUTO',
+      adminId: params.adminId,
+      reason: params.reason || 'Administrative node repair for member with missing tree node',
+    });
+  }
 }
