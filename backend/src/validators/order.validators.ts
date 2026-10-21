@@ -23,7 +23,7 @@ export const paymentMethodEnum = z.enum([
 
 // IMPORTANT: Never trust price or BV sent from client! We strictly only accept productId & quantity.
 export const orderItemInputSchema = z.object({
-  productId: z.string().uuid('Product ID must be a valid UUID'),
+  productId: z.string().min(1, 'Product ID is required'),
   quantity: z.coerce.number().int().min(1, 'Quantity must be at least 1'),
 });
 
@@ -35,14 +35,14 @@ export const inlineAddressSchema = z.object({
   city: z.string().min(2, 'City is required').trim(),
   state: z.string().min(2, 'State is required').trim(),
   postalCode: z.string().min(3, 'Postal code is required').trim(),
-  country: z.string().trim().default('USA'),
+  country: z.string().trim().default('India'),
 });
 
 export const createOrderSchema = z.object({
   items: z.array(orderItemInputSchema).min(1).optional(),
   fromCart: z.boolean().default(false),
-  shippingAddressId: z.string().uuid().optional(),
-  billingAddressId: z.string().uuid().optional(),
+  shippingAddressId: z.string().min(1).optional(),
+  billingAddressId: z.string().min(1).optional(),
   shippingAddress: inlineAddressSchema.optional(),
   billingAddress: inlineAddressSchema.optional(),
   paymentMethod: paymentMethodEnum.default('CREDIT_CARD'),

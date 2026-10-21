@@ -1099,3 +1099,727 @@
   gap: 12px;
 }
 
+/* ==========================================================================
+   PRO CONNECT BANK ACCOUNT BUTTON & MODAL SUITE
+   ========================================================================== */
+
+/* Executive Pro Connect Bank Button */
+.admin-btn-connect-bank-pro {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 18px;
+  background: linear-gradient(135deg, #1d4ed8 0%, #2563eb 55%, #3b82f6 100%);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 10px;
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  position: relative;
+  overflow: hidden;
+}
+
+.admin-btn-connect-bank-pro:hover:not(:disabled) {
+  transform: translateY(-2px);
+  background: linear-gradient(135deg, #1e40af 0%, #1d4ed8 55%, #2563eb 100%);
+  box-shadow: 0 8px 22px rgba(37, 99, 235, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+
+.admin-btn-connect-bank-pro:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
+}
+
+.admin-btn-connect-bank-pro:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.admin-btn-connect-bank-pro .btn-bank-icon-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 7px;
+  padding: 4px;
+  color: #ffffff;
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.1);
+}
+
+.admin-btn-connect-bank-pro .btn-bank-label {
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.admin-btn-connect-bank-pro .btn-bank-live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(16, 185, 129, 0.25);
+  border: 1px solid rgba(110, 231, 183, 0.5);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #ecfdf5;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.admin-btn-connect-bank-pro .pulse-indicator {
+  width: 6px;
+  height: 6px;
+  background-color: #34d399;
+  border-radius: 50%;
+  box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.7);
+  animation: pulse-green 1.8s infinite;
+}
+
+@keyframes pulse-green {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.7);
+  }
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 6px rgba(52, 211, 153, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(52, 211, 153, 0);
+  }
+}
+
+/* Modal backdrop scrollability guarantee */
+.admin-modal-backdrop {
+  overflow-y: auto;
+  padding: 20px 16px;
+}
+
+/* Modal Card Customizations - Bounded height with fixed header & sticky footer */
+.connect-modal-card {
+  background: #ffffff;
+  border-radius: 20px;
+  width: 100%;
+  max-width: 680px;
+  max-height: calc(100vh - 40px);
+  height: min(88vh, 780px);
+  box-shadow: 0 25px 60px -15px rgba(15, 23, 42, 0.45), 0 0 0 1px rgba(0, 0, 0, 0.05);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  margin: auto;
+  animation: modalScaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes modalScaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* Modal Form Flex Wrapper */
+.connect-modal-form {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.connect-modal-header {
+  flex-shrink: 0;
+  padding: 18px 24px;
+  background: linear-gradient(135deg, #090d16 0%, #0f172a 45%, #1e3a8a 100%);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.connect-modal-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.connect-modal-header-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.connect-modal-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.connect-modal-subtitle {
+  margin: 2px 0 0 0;
+  font-size: 12px;
+  color: #cbd5e1;
+}
+
+/* Scrollable Body with smooth visible scrollbar */
+.connect-modal-body {
+  padding: 22px 26px;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+  overscroll-behavior: contain;
+}
+
+.connect-modal-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.connect-modal-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.connect-modal-body::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1;
+  border-radius: 999px;
+}
+
+.connect-modal-body::-webkit-scrollbar-thumb:hover {
+  background-color: #94a3b8;
+}
+
+/* Sticky Modal Footer */
+.connect-modal-footer {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 24px;
+  border-top: 1px solid #e2e8f0;
+  background: #f8fafc;
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.03);
+}
+
+/* Active Selected Bank Tag */
+.active-selected-bank-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #1d4ed8;
+}
+
+.active-selected-bank-pill .bank-code-tag {
+  background: #1d4ed8;
+  color: #ffffff;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
+
+/* Bank Search Input Wrapper */
+.bank-search-input-wrap {
+  position: relative;
+  margin-bottom: 8px;
+}
+
+.bank-search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #64748b;
+  pointer-events: none;
+}
+
+.bank-search-input {
+  padding-left: 36px !important;
+  padding-right: 32px !important;
+  font-size: 12.5px !important;
+  height: 38px !important;
+  border-radius: 8px !important;
+  border: 1px solid #cbd5e1 !important;
+  background: #ffffff !important;
+  transition: all 0.15s ease !important;
+}
+
+.bank-search-input:focus {
+  border-color: #2563eb !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15) !important;
+}
+
+.bank-search-clear-btn {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: #94a3b8;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+
+.bank-search-clear-btn:hover {
+  color: #475569;
+  background: #f1f5f9;
+}
+
+/* Interactive Bank Search Results Panel */
+.bank-search-results-panel {
+  background: #ffffff;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px -4px rgba(37, 99, 235, 0.12), 0 2px 6px rgba(0, 0, 0, 0.05);
+  margin-bottom: 12px;
+  overflow: hidden;
+  animation: modalScaleIn 0.15s ease-out;
+}
+
+.bank-search-results-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  background: #eff6ff;
+  border-bottom: 1px solid #dbeafe;
+  font-size: 11px;
+  font-weight: 700;
+  color: #1e40af;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.bank-search-results-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.bank-result-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid #f1f5f9;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.bank-result-item:last-child {
+  border-bottom: none;
+}
+
+.bank-result-item:hover {
+  background: #f8fafc;
+}
+
+.bank-result-item.selected {
+  background: #f0fdf4;
+}
+
+.bank-result-item-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.bank-result-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: #f1f5f9;
+  color: #2563eb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.bank-result-item.selected .bank-result-icon {
+  background: #dcfce7;
+  color: #16a34a;
+}
+
+.bank-result-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bank-result-code {
+  font-size: 10px;
+  font-weight: 700;
+  background: #e2e8f0;
+  color: #334155;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.bank-result-meta {
+  font-size: 11px;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.bank-result-select-btn {
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 700;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #0f172a;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.15s ease;
+}
+
+.bank-result-select-btn:hover {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #ffffff;
+}
+
+.bank-result-select-btn.active {
+  background: #16a34a;
+  border-color: #16a34a;
+  color: #ffffff;
+}
+
+.bank-search-empty {
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #92400e;
+  background: #fffbeb;
+}
+
+.bank-directory-select {
+  font-weight: 600 !important;
+  color: #0f172a !important;
+  background: #f8fafc !important;
+  height: 38px !important;
+}
+
+/* Form Helper Notes */
+.form-field-helper-note {
+  font-size: 11px;
+  color: #64748b;
+  margin-top: 3px;
+  display: block;
+  line-height: 1.4;
+}
+
+.font-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+}
+
+.input-error-border {
+  border-color: #ef4444 !important;
+  background: #fff5f5 !important;
+}
+
+/* Quick Bank Selection Chips */
+.bank-chips-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.bank-chips-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.bank-chip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.bank-chip-btn:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #0f172a;
+  transform: translateY(-1px);
+}
+
+.bank-chip-btn.selected {
+  background: #eff6ff;
+  border-color: #3b82f6;
+  color: #1d4ed8;
+  box-shadow: 0 1px 3px rgba(37, 99, 235, 0.15);
+}
+
+.bank-chip-btn .chip-check-icon {
+  color: #2563eb;
+  font-weight: bold;
+}
+
+.bank-chip-icon {
+  font-size: 14px;
+}
+
+/* Two-column responsive row */
+.form-row-2col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+@media (max-width: 640px) {
+  .form-row-2col {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Account Number Validation & Match Indicators */
+.match-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.match-status-badge.matched {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.match-status-badge.mismatch {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+/* Live Gateway Connection Indicator Card */
+.gateway-active-pill-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 10px;
+}
+
+.gateway-pill-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.gateway-pill-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #166534;
+}
+
+.gateway-pill-desc {
+  font-size: 11.5px;
+  color: #15803d;
+}
+
+.gateway-status-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #16a34a;
+  color: #ffffff;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+/* ==========================================================================
+   PRO RAZORPAY PAYMENT & DEPOSIT RAILS SUITE
+   ========================================================================== */
+
+/* Pro Razorpay Payment Button (Header) */
+.admin-btn-pay-razorpay-pro {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 18px;
+  background: linear-gradient(135deg, #047857 0%, #059669 50%, #10b981 100%);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 10px;
+  font-size: 13.5px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  position: relative;
+  overflow: hidden;
+}
+
+.admin-btn-pay-razorpay-pro:hover:not(:disabled) {
+  transform: translateY(-2px);
+  background: linear-gradient(135deg, #065f46 0%, #047857 50%, #059669 100%);
+  box-shadow: 0 8px 22px rgba(16, 185, 129, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+}
+
+.admin-btn-pay-razorpay-pro:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+}
+
+.admin-btn-pay-razorpay-pro .live-pill {
+  background: rgba(255, 255, 255, 0.22);
+  color: #ecfdf5;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+}
+
+/* Card Deposit Trigger Button */
+.card-deposit-btn-pro {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1d4ed8;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.card-deposit-btn-pro:hover {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(37, 99, 235, 0.2);
+}
+
+/* Quick Deposit Preset Chips */
+.quick-deposit-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(95px, 1fr));
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.quick-deposit-chip {
+  padding: 8px 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #334155;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.12s ease;
+}
+
+.quick-deposit-chip:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #0f172a;
+}
+
+.quick-deposit-chip.selected {
+  background: #f0fdf4;
+  border-color: #16a34a;
+  color: #15803d;
+  box-shadow: 0 1px 3px rgba(22, 163, 74, 0.2);
+}
+
+/* Solvency Badge in Distribution Hero */
+.distribute-solvency-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.distribute-solvency-pill.solvent {
+  background: rgba(34, 197, 94, 0.2);
+  border: 1px solid rgba(134, 239, 172, 0.4);
+  color: #dcfce7;
+}
+
+.distribute-solvency-pill.unbacked {
+  background: rgba(245, 158, 11, 0.25);
+  border: 1px solid rgba(252, 211, 77, 0.4);
+  color: #fef3c7;
+}
+
+
+

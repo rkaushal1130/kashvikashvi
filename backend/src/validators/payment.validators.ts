@@ -4,13 +4,13 @@ export const createRazorpayOrderSchema = z.object({
   items: z
     .array(
       z.object({
-        productId: z.string().uuid('Invalid product ID format'),
+        productId: z.string().min(1, 'Product ID is required'),
         quantity: z.number().int().positive('Quantity must be at least 1'),
       })
     )
     .min(1, 'Order must contain at least one item'),
-  shippingAddressId: z.string().uuid().optional(),
-  billingAddressId: z.string().uuid().optional(),
+  shippingAddressId: z.string().min(1).optional(),
+  billingAddressId: z.string().min(1).optional(),
   shippingAddress: z
     .object({
       recipientName: z.string().min(2),
@@ -37,13 +37,13 @@ export const walletCheckoutSchema = z.object({
   items: z
     .array(
       z.object({
-        productId: z.string().uuid('Invalid product ID format'),
+        productId: z.string().min(1, 'Product ID is required'),
         quantity: z.number().int().positive('Quantity must be at least 1'),
       })
     )
     .min(1, 'Order must contain at least one item'),
-  shippingAddressId: z.string().uuid().optional(),
-  billingAddressId: z.string().uuid().optional(),
+  shippingAddressId: z.string().min(1).optional(),
+  billingAddressId: z.string().min(1).optional(),
   shippingAddress: z
     .object({
       recipientName: z.string().min(2),

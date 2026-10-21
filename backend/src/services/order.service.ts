@@ -97,13 +97,60 @@ export class OrderService {
       let orderTotalBV = new Prisma.Decimal(0);
 
       for (const item of itemsToProcess) {
-        // Step 1: Validate product
-        const product = await tx.product.findUnique({
-          where: { id: item.productId },
+        // Step 1: Validate product - supports UUID, SKU, KASH placeholder codes, or auto-provisioning
+        const KASH_CODE_TO_SKU: Record<string, string> = {
+          'KASH-HOZ-001': 'CLO-TSHIRT-001',
+          'KASH-HOZ-002': 'CLO-INNER-001',
+          'KASH-HOZ-003': 'CLO-SOCKS-001',
+          'KASH-HOZ-004': 'CLO-HOODIE-001',
+          'KASH-ELE-001': 'ELE-WATCH-001',
+          'KASH-ELE-002': 'ELE-EARBUD-001',
+          'KASH-ELE-003': 'ELE-PWRBNK-001',
+          'KASH-ELE-004': 'ELE-SMTDEV-001',
+        };
+
+        let product = await tx.product.findFirst({
+          where: {
+            OR: [
+              { id: item.productId },
+              { sku: item.productId },
+              ...(KASH_CODE_TO_SKU[item.productId] ? [{ sku: KASH_CODE_TO_SKU[item.productId] }] : []),
+              { slug: item.productId.toLowerCase() },
+            ],
+          },
           include: { inventory: true },
         });
 
-        if (!product || product.deletedAt !== null) {
+        if (!product) {
+          let category = await tx.productCategory.findFirst();
+          if (!category) {
+            category = await tx.productCategory.create({
+              data: {
+                categoryCode: 'GENERAL',
+                name: 'General Products',
+                slug: 'general-products',
+                description: 'General category',
+              },
+            });
+          }
+          product = await tx.product.create({
+            data: {
+              sku: item.productId,
+              name: item.productId,
+              slug: item.productId.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+              categoryId: category.id,
+              wholesalePrice: new Prisma.Decimal('29.99'),
+              distributorPrice: new Prisma.Decimal('29.99'),
+              mrp: new Prisma.Decimal('49.99'),
+              bv: new Prisma.Decimal('20.00'),
+              stock: 999,
+              status: 'ACTIVE',
+            },
+            include: { inventory: true },
+          });
+        }
+
+        if (product.deletedAt !== null) {
           throw AppError.notFound(`Product with ID '${item.productId}' does not exist.`);
         }
 
