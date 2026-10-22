@@ -300,13 +300,17 @@ export default function DistributorManagementPage() {
                     </td>
                     <td>
                       <div className="font-semibold">
-                        {Number(dist.personalBv || 0).toLocaleString()} BV
+                        {Number(dist.personalBv ?? dist.personalBV ?? dist.current_psv ?? dist.lifetimePV ?? 0).toLocaleString()} BV
                       </div>
-                      <div className="text-xs text-muted">{dist.teamSize || 0} Team</div>
+                      <div className="text-xs text-muted">{dist.teamSize ?? dist.team_size ?? 0} Team</div>
                     </td>
                     <td>
                       <div className="text-xs text-muted">
-                        {new Date(dist.joinedAt).toLocaleDateString()}
+                        {(() => {
+                          const raw = dist.joinedAt || dist.joinedDate || dist.createdAt || dist.created_at;
+                          const d = raw ? new Date(raw) : null;
+                          return (d && !isNaN(d.getTime())) ? d.toLocaleDateString() : new Date().toLocaleDateString();
+                        })()}
                       </div>
                     </td>
                     <td className="text-right">

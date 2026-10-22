@@ -228,7 +228,11 @@ export default function DistributorDetailPage() {
               <span className="member-id-pill">ID: {distributor.distributorId || id}</span>
               <span className="rank-pill">{distributor.rank || 'Associate'}</span>
               <span className="text-muted text-sm">
-                Joined: {new Date(distributor.joinedAt || distributor.joined_at || Date.now()).toLocaleDateString()}
+                Joined: {(() => {
+                  const raw = distributor.joinedAt || distributor.joined_at || distributor.createdAt || distributor.created_at;
+                  const d = raw ? new Date(raw) : null;
+                  return (d && !isNaN(d.getTime())) ? d.toLocaleDateString() : new Date().toLocaleDateString();
+                })()}
               </span>
             </div>
           </div>

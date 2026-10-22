@@ -756,36 +756,37 @@ export default function AdminFundingPortalPage() {
   // Connect Account Form Submit (Section 2.B)
   const handleConnectAccount = async (e) => {
     e.preventDefault();
-    if (!connectFormData.accountName || !connectFormData.bankName) {
-      setErrorBanner('Please select your bank institution and enter the account name.');
+    if (!connectFormData.accountName?.trim() || !connectFormData.bankName) {
+      setErrorBanner('Please select your bank institution and enter the corporate account holder name.');
       return;
     }
-    if (
-      connectFormData.accountNumber &&
-      connectFormData.confirmAccountNumber &&
-      connectFormData.accountNumber !== connectFormData.confirmAccountNumber
-    ) {
+    if (!connectFormData.accountNumber || connectFormData.accountNumber.length < 9) {
+      setErrorBanner('Please enter a valid commercial bank account number (9 to 18 digits).');
+      return;
+    }
+    if (connectFormData.accountNumber !== connectFormData.confirmAccountNumber) {
       setErrorBanner('Account numbers do not match. Please verify your account number entries.');
       return;
     }
+    if (!connectFormData.ifscCode || !/^[A-Z]{4}0[A-Z0-9]{6}$/.test(connectFormData.ifscCode)) {
+      setErrorBanner('Please enter a valid 11-character RBI IFSC code (e.g. HDFC0001234).');
+      return;
+    }
 
-    const maskedNum =
-      connectFormData.accountNumber && connectFormData.accountNumber.length >= 4
-        ? `•••• •••• •••• ${connectFormData.accountNumber.slice(-4)}`
-        : connectFormData.maskedAccountNumber || '•••• •••• •••• 8842';
+    const maskedNum = `•••• •••• •••• ${connectFormData.accountNumber.slice(-4)}`;
+    const connectingBank = connectFormData.bankName;
+    const connectingRail = connectFormData.provider === 'RAZORPAYX' ? 'RazorpayX Corporate' : (connectFormData.provider || 'Commercial');
 
     try {
       setConnectingAccount(true);
       setErrorBanner(null);
 
       const newAcc = await adminFundingApi.connectAccount({
-        accountName: connectFormData.accountName.includes(connectFormData.bankName)
-          ? connectFormData.accountName
-          : `${connectFormData.accountName} (${connectFormData.bankName})`,
+        accountName: connectFormData.accountName.trim(),
         bankName: connectFormData.bankName,
         bankCode: connectFormData.bankCode,
         ifscCode: connectFormData.ifscCode,
-        branchName: connectFormData.branchName,
+        branchName: connectFormData.branchName?.trim() || 'Corporate Banking Branch',
         provider: connectFormData.provider || 'RAZORPAYX',
         providerAccountId: `rzpx_${(connectFormData.bankCode || 'bank').toLowerCase()}_${Date.now().toString().slice(-6)}`,
         maskedAccountNumber: maskedNum,
@@ -817,7 +818,7 @@ export default function AdminFundingPortalPage() {
         accountType: 'PRIMARY_OPERATING',
         isPrimary: true,
       });
-      setSuccessBanner(`${connectFormData.bankName} corporate account connected successfully via ${connectFormData.provider === 'RAZORPAYX' ? 'RazorpayX Corporate' : connectFormData.provider} rail.`);
+      setSuccessBanner(`${connectingBank} corporate account connected successfully via ${connectingRail} rail.`);
       await loadPortalData();
     } catch (err) {
       setErrorBanner(sanitizeErrorMessage(err));
@@ -2643,9 +2644,9 @@ export default function AdminFundingPortalPage() {
               </div>
               <button
                 type="button"
-                className="admin-modal-close"
-                style={{ color: '#ffffff', opacity: 0.8 }}
+                className="admin-modal-close-btn"
                 onClick={() => setConnectModal(false)}
+                title="Close modal"
               >
                 <X size={18} />
               </button>
@@ -2656,17 +2657,17 @@ export default function AdminFundingPortalPage() {
                 {/* 1. Quick Bank Selection Chips & Full Searchable List */}
                 <div className="form-group-custom">
                   <div className="bank-chips-label-row">
-                    <label className="form-label-custom" style={{ fontWeight: 700, color: '#0f172a' }}>
+                    <label className="form-label-custom">
                       1. Choose Bank Institution *
                     </label>
                     <div className="active-selected-bank-pill">
                       <Landmark size={12} style={{ color: '#2563eb' }} />
-                      <span>{connectFormData.bankName}</span>
+                      <span className="selected-bank-name">{connectFormData.bankName}</span>
                       <span className="bank-code-tag">{connectFormData.bankCode}</span>
                     </div>
                   </div>
 
-                  {/* Popular Bank Chips */}
+                  {/* Popular Bank Chips Grid */}
                   <div className="bank-chips-grid">
                     {POPULAR_BANKS.map((b) => {
                       const isSelected = connectFormData.bankCode === b.code;
@@ -2678,9 +2679,11 @@ export default function AdminFundingPortalPage() {
                           onClick={() => handleSelectBank(b)}
                           title={`Select ${b.name}`}
                         >
-                          <Landmark size={12} className="bank-chip-icon" />
-                          <span>{b.name}</span>
-                          {isSelected && <Check size={12} className="chip-check-icon" />}
+                          <div className="bank-chip-content">
+                            <Building2 size={13} className="bank-chip-icon" />
+                            <span className="bank-chip-name">{b.name}</span>
+                          </div>
+                          {isSelected && <Check size={13} className="chip-check-icon" />}
                         </button>
                       );
                     })}
@@ -2688,11 +2691,11 @@ export default function AdminFundingPortalPage() {
 
                   {/* Instant Bank Search Input */}
                   <div className="bank-search-input-wrap">
-                    <Search size={14} className="bank-search-icon" />
+                    <Search size={15} className="bank-search-icon" />
                     <input
                       type="text"
                       className="form-input-custom bank-search-input"
-                      placeholder="Search 38+ RBI-approved banks (e.g. Canara, Indian Overseas, Kotak, SBI)..."
+                      placeholder="Search 38+ RBI-approved banks (e.g. Canara, Kotak, Union)..."
                       value={bankSearchTerm}
                       onChange={(e) => setBankSearchTerm(e.target.value)}
                       autoComplete="off"
@@ -2709,12 +2712,12 @@ export default function AdminFundingPortalPage() {
                     )}
                   </div>
 
-                  {/* Instant Live Search Results (Shown when user types in search box) */}
+                  {/* Instant Live Search Results Popover */}
                   {bankSearchTerm.trim() && (
                     <div className="bank-search-results-panel">
                       {filteredBanks.length === 0 ? (
                         <div className="bank-search-empty">
-                          <AlertTriangle size={15} style={{ color: '#d97706' }} />
+                          <AlertTriangle size={15} style={{ color: '#d97706', flexShrink: 0 }} />
                           <span>No bank found matching "{bankSearchTerm}". You can select from the full list below.</span>
                         </div>
                       ) : (
@@ -2723,7 +2726,7 @@ export default function AdminFundingPortalPage() {
                             <span>Matching Banks ({filteredBanks.length})</span>
                             <span style={{ fontSize: '11px', color: '#64748b' }}>Click to select</span>
                           </div>
-                          {filteredBanks.slice(0, 6).map((b) => {
+                          {filteredBanks.slice(0, 8).map((b) => {
                             const isSelected = connectFormData.bankCode === b.code;
                             return (
                               <div
@@ -2747,10 +2750,7 @@ export default function AdminFundingPortalPage() {
                                     </div>
                                   </div>
                                 </div>
-                                <button
-                                  type="button"
-                                  className={`bank-result-select-btn ${isSelected ? 'active' : ''}`}
-                                >
+                                <span className={`bank-result-select-btn ${isSelected ? 'active' : ''}`}>
                                   {isSelected ? (
                                     <>
                                       <Check size={12} /> Selected
@@ -2758,7 +2758,7 @@ export default function AdminFundingPortalPage() {
                                   ) : (
                                     'Select'
                                   )}
-                                </button>
+                                </span>
                               </div>
                             );
                           })}
@@ -2768,8 +2768,8 @@ export default function AdminFundingPortalPage() {
                   )}
 
                   {/* Complete Bank Dropdown with Categories */}
-                  <div style={{ marginTop: '4px' }}>
-                    <label style={{ fontSize: '11.5px', color: '#64748b', fontWeight: 600, display: 'block', marginBottom: '4px' }}>
+                  <div className="bank-select-container">
+                    <label className="bank-directory-label">
                       Or select from complete classified directory:
                     </label>
                     <select
@@ -2808,7 +2808,7 @@ export default function AdminFundingPortalPage() {
                   <input
                     type="text"
                     className="form-input-custom"
-                    placeholder="e.g. Kashvi Technologies Corp - Primary Treasury Float"
+                    placeholder="Legal corporate entity name as per bank records"
                     value={connectFormData.accountName}
                     onChange={(e) => setConnectFormData({ ...connectFormData, accountName: e.target.value })}
                     required
@@ -2821,11 +2821,18 @@ export default function AdminFundingPortalPage() {
                 {/* 3. Account Number & Confirm Account Number (2-Column) */}
                 <div className="form-row-2col">
                   <div className="form-group-custom">
-                    <label className="form-label-custom">Account Number *</label>
+                    <div className="form-label-row">
+                      <label className="form-label-custom">Account Number *</label>
+                      {connectFormData.accountNumber && (
+                        <span className={`digit-count-tag ${connectFormData.accountNumber.length >= 9 ? 'valid' : 'pending'}`}>
+                          {connectFormData.accountNumber.length} {connectFormData.accountNumber.length === 1 ? 'digit' : 'digits'}
+                        </span>
+                      )}
+                    </div>
                     <input
                       type="text"
                       className="form-input-custom font-mono"
-                      placeholder="Enter 9 to 18 digit account number"
+                      placeholder="Enter 9 to 18 digits (e.g. 50100428912345)"
                       value={connectFormData.accountNumber}
                       onChange={(e) =>
                         setConnectFormData({
@@ -2843,7 +2850,7 @@ export default function AdminFundingPortalPage() {
                   </div>
 
                   <div className="form-group-custom">
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div className="form-label-row">
                       <label className="form-label-custom">Confirm Account Number *</label>
                       {connectFormData.accountNumber && connectFormData.confirmAccountNumber && (
                         connectFormData.accountNumber === connectFormData.confirmAccountNumber ? (
@@ -2887,7 +2894,7 @@ export default function AdminFundingPortalPage() {
                 {/* 4. IFSC Code & Branch Name */}
                 <div className="form-row-2col">
                   <div className="form-group-custom">
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div className="form-label-row">
                       <label className="form-label-custom">IFSC Code *</label>
                       {connectFormData.ifscCode && (
                         /^[A-Z]{4}0[A-Z0-9]{6}$/.test(connectFormData.ifscCode) ? (
@@ -2903,8 +2910,8 @@ export default function AdminFundingPortalPage() {
                     </div>
                     <input
                       type="text"
-                      className="form-input-custom font-mono"
-                      placeholder="e.g. IOBA0000553"
+                      className="form-input-custom font-mono ifsc-input"
+                      placeholder="e.g. HDFC0001234"
                       value={connectFormData.ifscCode}
                       onChange={(e) =>
                         setConnectFormData({
@@ -2913,7 +2920,6 @@ export default function AdminFundingPortalPage() {
                         })
                       }
                       maxLength={11}
-                      style={{ letterSpacing: '1px', textTransform: 'uppercase', fontWeight: 600 }}
                       required
                     />
                     <span className="form-field-helper-note">
@@ -2922,7 +2928,9 @@ export default function AdminFundingPortalPage() {
                   </div>
 
                   <div className="form-group-custom">
-                    <label className="form-label-custom">Branch Name (Optional)</label>
+                    <div className="form-label-row">
+                      <label className="form-label-custom">Branch Name (Optional)</label>
+                    </div>
                     <input
                       type="text"
                       className="form-input-custom"
@@ -2970,7 +2978,7 @@ export default function AdminFundingPortalPage() {
                 {/* Active Gateway Verification Card */}
                 <div className="gateway-active-pill-card">
                   <div className="gateway-pill-left">
-                    <ShieldCheck size={22} style={{ color: '#16a34a', flexShrink: 0 }} />
+                    <ShieldCheck size={20} className="gateway-shield-icon" />
                     <div>
                       <div className="gateway-pill-title">RazorpayX Live Float Rail Active</div>
                       <div className="gateway-pill-desc">
@@ -2986,28 +2994,28 @@ export default function AdminFundingPortalPage() {
 
                 {/* Security Invariant Banner */}
                 <div className="security-invariant-banner" style={{ margin: 0 }}>
-                  <Lock size={15} style={{ flexShrink: 0, color: '#0284c7' }} />
+                  <Lock size={14} style={{ flexShrink: 0, color: '#0284c7' }} />
                   <span>
-                    Zero-Trust Security: Real account numbers are stored encrypted and displayed masked as <code>•••• •••• •••• {connectFormData.accountNumber ? connectFormData.accountNumber.slice(-4) : '3766'}</code>.
+                    Zero-Trust Security: Real account numbers are stored encrypted and displayed masked as <code>•••• •••• •••• {connectFormData.accountNumber && connectFormData.accountNumber.length >= 4 ? connectFormData.accountNumber.slice(-4) : '3766'}</code>.
                   </span>
                 </div>
               </div>
 
               <div className="connect-modal-footer">
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12.5px', color: '#334155' }}>
+                <div className="footer-primary-checkbox-wrap">
                   <input
                     type="checkbox"
                     id="setPrimaryAcc"
                     checked={connectFormData.isPrimary}
                     onChange={(e) => setConnectFormData({ ...connectFormData, isPrimary: e.target.checked })}
-                    style={{ cursor: 'pointer', width: '16px', height: '16px' }}
+                    className="custom-checkbox"
                   />
-                  <label htmlFor="setPrimaryAcc" style={{ cursor: 'pointer', fontWeight: 600 }}>
+                  <label htmlFor="setPrimaryAcc" className="checkbox-label">
                     Set as Primary Treasury Payout Account
                   </label>
                 </div>
 
-                <div style={{ display: 'flex', gap: '10px' }}>
+                <div className="modal-footer-btns">
                   <button
                     type="button"
                     className="admin-btn admin-btn-secondary"
@@ -3022,20 +3030,23 @@ export default function AdminFundingPortalPage() {
                     className="admin-btn-connect-bank-pro"
                     disabled={
                       connectingAccount ||
-                      (connectFormData.accountNumber &&
-                        connectFormData.confirmAccountNumber &&
-                        connectFormData.accountNumber !== connectFormData.confirmAccountNumber)
+                      !connectFormData.accountName?.trim() ||
+                      !connectFormData.accountNumber ||
+                      connectFormData.accountNumber.length < 9 ||
+                      !connectFormData.confirmAccountNumber ||
+                      connectFormData.accountNumber !== connectFormData.confirmAccountNumber ||
+                      !connectFormData.ifscCode ||
+                      connectFormData.ifscCode.length !== 11
                     }
-                    style={{ padding: '9px 20px', fontSize: '13px' }}
                   >
                     {connectingAccount ? (
                       <>
-                        <RefreshCw size={15} className="spin" />
+                        <RefreshCw size={15} className="animate-spin" />
                         <span>Connecting Bank...</span>
                       </>
                     ) : (
                       <>
-                        <Building2 size={16} />
+                        <Landmark size={15} />
                         <span>Connect Bank Account</span>
                       </>
                     )}
@@ -3340,7 +3351,7 @@ export default function AdminFundingPortalPage() {
                   {[
                     { label: '+ ₹50,000', val: 50000 },
                     { label: '+ ₹1,00,000', val: 100000 },
-                    { label: `+ ₹${Math.round(dailySummary.totalApprovedCommissions || 239500).toLocaleString('en-IN')} (Cycle Match)`, val: Math.round(dailySummary.totalApprovedCommissions || 239500) },
+                    { label: `+ ₹${Math.round(dailySummary.totalApprovedCommissions || 0).toLocaleString('en-IN')} (Cycle Match)`, val: Math.round(dailySummary.totalApprovedCommissions || 0) },
                     { label: '+ ₹5,00,000', val: 500000 },
                   ].map((chip) => (
                     <button

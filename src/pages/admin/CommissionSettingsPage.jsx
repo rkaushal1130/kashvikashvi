@@ -14,6 +14,7 @@ import {
   ToggleRight,
   HelpCircle,
   Award,
+  RotateCcw,
 } from 'lucide-react';
 import './AdminPages.css';
 
@@ -96,6 +97,30 @@ export default function CommissionSettingsPage() {
     loadSettings();
   }, []);
 
+  const handleZeroAll = () => {
+    setSettings({
+      binaryMatchPercentage: 0,
+      directSponsorPercentage: 0,
+      minPbvForQualification: 0,
+      monthlyMaintenanceBv: 0,
+      cappingLimit: 0,
+      tdsRate: 0,
+      adminFeeRate: 0,
+      carryForwardEnabled: false,
+    });
+    setRanks((prev) =>
+      prev.map((r) => ({
+        ...r,
+        commissionPercent: 0,
+        minBV: 0,
+        minLeftMatching: 0,
+        minRightMatching: 0,
+      }))
+    );
+    setSuccessMsg('All rule fields have been reset to zero for a fresh configuration. Click "Save Commission Rules" to persist.');
+    setTimeout(() => setSuccessMsg(''), 5000);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
@@ -139,6 +164,17 @@ export default function CommissionSettingsPage() {
         </div>
 
         <div className="admin-header-actions">
+          <button
+            type="button"
+            className="admin-btn admin-btn-secondary"
+            onClick={handleZeroAll}
+            disabled={loading || saving}
+            title="Reset all settings and rank thresholds to zero"
+          >
+            <RotateCcw size={15} />
+            <span>Set All to Zero</span>
+          </button>
+
           <button
             type="button"
             className="admin-btn admin-btn-secondary"

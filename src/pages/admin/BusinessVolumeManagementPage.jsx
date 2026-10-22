@@ -21,7 +21,7 @@ export default function BusinessVolumeManagementPage() {
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState('');
   const [data, setData] = useState({
-    summary: { totalBV: 580000, leftBV: 295000, rightBV: 285000, personalBV: 15400 },
+    summary: { totalBV: 0, leftBV: 0, rightBV: 0, personalBV: 0 },
     transactions: [],
   });
 
@@ -50,59 +50,27 @@ export default function BusinessVolumeManagementPage() {
       });
 
       if (res && res.data) {
+        const s = res.data.summary || {};
         setData({
-          summary: res.data.summary || data.summary,
-          transactions: Array.isArray(res.data.transactions) ? res.data.transactions : (res.data || []),
+          summary: {
+            totalBV: s.totalBV ?? s.totalBv ?? 0,
+            leftBV: s.leftBV ?? s.leftBv ?? 0,
+            rightBV: s.rightBV ?? s.rightBv ?? 0,
+            personalBV: s.personalBV ?? s.personalBv ?? 0,
+          },
+          transactions: Array.isArray(res.data.transactions)
+            ? res.data.transactions
+            : Array.isArray(res.data)
+            ? res.data
+            : [],
         });
       }
     } catch (err) {
-      console.warn('BV fetch error, fallback to initial transactions:', err);
-      // Fallback initial dataset if server is warming up
-      setData((prev) => ({
-        ...prev,
-        transactions: prev.transactions.length > 0 ? prev.transactions : [
-          {
-            id: 'TXN-BV-1001',
-            distributorId: 'KV-1001',
-            distributorName: 'Rahul Kaushal',
-            leg: 'PERSONAL',
-            amount: 5000,
-            reference: 'ORD-98214',
-            reason: 'Corporate initial inventory package',
-            createdAt: new Date().toISOString(),
-          },
-          {
-            id: 'TXN-BV-1002',
-            distributorId: 'KV-1002',
-            distributorName: 'Amit Patel',
-            leg: 'LEFT',
-            amount: 4500,
-            reference: 'ORD-98215',
-            reason: 'Binary enrollment order BV placement',
-            createdAt: new Date(Date.now() - 3600000).toISOString(),
-          },
-          {
-            id: 'TXN-BV-1003',
-            distributorId: 'KV-1003',
-            distributorName: 'Rohit Verma',
-            leg: 'RIGHT',
-            amount: 4500,
-            reference: 'ORD-98216',
-            reason: 'Binary enrollment order BV placement',
-            createdAt: new Date(Date.now() - 7200000).toISOString(),
-          },
-          {
-            id: 'TXN-BV-1004',
-            distributorId: 'KV-1004',
-            distributorName: 'Priya Sharma',
-            leg: 'LEFT',
-            amount: 2500,
-            reference: 'ORD-98220',
-            reason: 'Product repurchasing package',
-            createdAt: new Date(Date.now() - 14400000).toISOString(),
-          },
-        ],
-      }));
+      console.warn('BV fetch error, fallback to zero state:', err);
+      setData({
+        summary: { totalBV: 0, leftBV: 0, rightBV: 0, personalBV: 0 },
+        transactions: [],
+      });
     } finally {
       setLoading(false);
     }
@@ -226,7 +194,7 @@ export default function BusinessVolumeManagementPage() {
           <div className="admin-kpi-content">
             <span className="admin-kpi-label">Total System Volume</span>
             <span className="admin-kpi-value">
-              {(data.summary?.totalBV || 580000).toLocaleString()} BV
+              {(data.summary?.totalBV ?? 0).toLocaleString()} BV
             </span>
             <span className="admin-kpi-sub">Total active group volume</span>
           </div>
@@ -239,7 +207,7 @@ export default function BusinessVolumeManagementPage() {
           <div className="admin-kpi-content">
             <span className="admin-kpi-label">Left Leg Volume</span>
             <span className="admin-kpi-value">
-              {(data.summary?.leftBV || 295000).toLocaleString()} BV
+              {(data.summary?.leftBV ?? 0).toLocaleString()} BV
             </span>
             <span className="admin-kpi-sub">System-wide Left leg accrual</span>
           </div>
@@ -252,7 +220,7 @@ export default function BusinessVolumeManagementPage() {
           <div className="admin-kpi-content">
             <span className="admin-kpi-label">Right Leg Volume</span>
             <span className="admin-kpi-value">
-              {(data.summary?.rightBV || 285000).toLocaleString()} BV
+              {(data.summary?.rightBV ?? 0).toLocaleString()} BV
             </span>
             <span className="admin-kpi-sub">System-wide Right leg accrual</span>
           </div>
@@ -265,7 +233,7 @@ export default function BusinessVolumeManagementPage() {
           <div className="admin-kpi-content">
             <span className="admin-kpi-label">Personal Volume (PBV)</span>
             <span className="admin-kpi-value">
-              {(data.summary?.personalBV || 15400).toLocaleString()} BV
+              {(data.summary?.personalBV ?? 0).toLocaleString()} BV
             </span>
             <span className="admin-kpi-sub">Direct retail purchase BV</span>
           </div>

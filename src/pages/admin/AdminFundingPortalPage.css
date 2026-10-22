@@ -335,18 +335,21 @@
 
 .form-input-custom {
   padding: 10px 14px;
-  border-radius: 8px;
-  border: 1px solid #cbd5e1;
+  border-radius: 9px;
+  border: 1.5px solid #cbd5e1;
   background: #ffffff;
-  font-size: 15px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 500;
   color: #0f172a;
   transition: all 0.15s ease;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .form-input-custom:focus {
   border-color: #2563eb;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
 }
 
 .currency-input-wrap {
@@ -1204,18 +1207,20 @@
 /* Modal Card Customizations - Bounded height with fixed header & sticky footer */
 .connect-modal-card {
   background: #ffffff;
-  border-radius: 20px;
+  border-radius: 16px;
   width: 100%;
-  max-width: 680px;
+  max-width: 700px;
   max-height: calc(100vh - 40px);
-  height: min(88vh, 780px);
-  box-shadow: 0 25px 60px -15px rgba(15, 23, 42, 0.45), 0 0 0 1px rgba(0, 0, 0, 0.05);
+  height: min(88vh, 790px);
+  box-shadow: 0 25px 60px -15px rgba(15, 23, 42, 0.45), 0 0 0 1px rgba(0, 0, 0, 0.06);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: hidden !important;
+  overflow-x: hidden !important;
   border: 1px solid #e2e8f0;
   margin: auto;
   animation: modalScaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-sizing: border-box;
 }
 
 @keyframes modalScaleIn {
@@ -1235,13 +1240,16 @@
   flex-direction: column;
   flex: 1;
   min-height: 0;
-  overflow: hidden;
+  overflow: hidden !important;
+  overflow-x: hidden !important;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .connect-modal-header {
   flex-shrink: 0;
-  padding: 18px 24px;
-  background: linear-gradient(135deg, #090d16 0%, #0f172a 45%, #1e3a8a 100%);
+  padding: 18px 26px;
+  background: linear-gradient(135deg, #0b0f19 0%, #0f172a 50%, #1e293b 100%);
   color: #ffffff;
   display: flex;
   align-items: center;
@@ -1252,20 +1260,21 @@
 .connect-modal-header-left {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
 }
 
 .connect-modal-header-icon {
-  width: 42px;
-  height: 42px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.15);
+  width: 44px;
+  height: 44px;
+  border-radius: 11px;
+  background: rgba(37, 99, 235, 0.2);
+  border: 1px solid rgba(96, 165, 250, 0.3);
   backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #ffffff;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #60a5fa;
+  flex-shrink: 0;
 }
 
 .connect-modal-title {
@@ -1273,18 +1282,41 @@
   font-size: 17px;
   font-weight: 700;
   color: #ffffff;
+  letter-spacing: -0.2px;
 }
 
 .connect-modal-subtitle {
-  margin: 2px 0 0 0;
+  margin: 3px 0 0 0;
   font-size: 12px;
+  color: #94a3b8;
+  line-height: 1.4;
+}
+
+.admin-modal-close-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: #cbd5e1;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.admin-modal-close-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+  transform: scale(1.05);
 }
 
 /* Scrollable Body with smooth visible scrollbar */
 .connect-modal-body {
-  padding: 22px 26px;
+  padding: 22px 28px;
   overflow-y: auto;
+  overflow-x: hidden !important;
   flex: 1;
   min-height: 0;
   display: flex;
@@ -1293,6 +1325,8 @@
   scrollbar-width: thin;
   scrollbar-color: #cbd5e1 transparent;
   overscroll-behavior: contain;
+  box-sizing: border-box;
+  width: 100%;
 }
 
 .connect-modal-body::-webkit-scrollbar {
@@ -1318,10 +1352,41 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 24px;
+  padding: 16px 28px;
   border-top: 1px solid #e2e8f0;
   background: #f8fafc;
   box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.03);
+  overflow-x: hidden;
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.footer-primary-checkbox-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: #334155;
+}
+
+.custom-checkbox {
+  cursor: pointer;
+  width: 16px;
+  height: 16px;
+  accent-color: #2563eb;
+}
+
+.checkbox-label {
+  cursor: pointer;
+  font-weight: 600;
+  color: #1e293b;
+  user-select: none;
+}
+
+.modal-footer-btns {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 /* Active Selected Bank Tag */
@@ -1338,6 +1403,13 @@
   color: #1d4ed8;
 }
 
+.active-selected-bank-pill .selected-bank-name {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .active-selected-bank-pill .bank-code-tag {
   background: #1d4ed8;
   color: #ffffff;
@@ -1348,10 +1420,96 @@
   letter-spacing: 0.5px;
 }
 
+/* Bank Selection Chips */
+.bank-chips-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.bank-chips-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 12px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 640px) {
+  .bank-chips-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.bank-chip-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-radius: 9px;
+  border: 1.5px solid #e2e8f0;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  min-height: 40px;
+  box-sizing: border-box;
+  text-align: left;
+}
+
+.bank-chip-btn:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #0f172a;
+}
+
+.bank-chip-btn.selected {
+  background: #eff6ff;
+  border-color: #2563eb;
+  color: #1d4ed8;
+  box-shadow: 0 1px 4px rgba(37, 99, 235, 0.15);
+}
+
+.bank-chip-content {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bank-chip-icon {
+  color: #64748b;
+  flex-shrink: 0;
+}
+
+.bank-chip-btn.selected .bank-chip-icon {
+  color: #2563eb;
+}
+
+.bank-chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bank-chip-btn .chip-check-icon {
+  color: #2563eb;
+  flex-shrink: 0;
+  margin-left: 4px;
+}
+
 /* Bank Search Input Wrapper */
 .bank-search-input-wrap {
   position: relative;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .bank-search-icon {
@@ -1359,24 +1517,26 @@
   left: 12px;
   top: 50%;
   transform: translateY(-50%);
-  color: #64748b;
+  color: #94a3b8;
   pointer-events: none;
 }
 
 .bank-search-input {
   padding-left: 36px !important;
-  padding-right: 32px !important;
-  font-size: 12.5px !important;
-  height: 38px !important;
-  border-radius: 8px !important;
-  border: 1px solid #cbd5e1 !important;
+  padding-right: 34px !important;
+  font-size: 13px !important;
+  height: 40px !important;
+  border-radius: 9px !important;
+  border: 1.5px solid #e2e8f0 !important;
   background: #ffffff !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
   transition: all 0.15s ease !important;
 }
 
 .bank-search-input:focus {
   border-color: #2563eb !important;
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15) !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12) !important;
 }
 
 .bank-search-clear-btn {
@@ -1388,7 +1548,7 @@
   border: none;
   cursor: pointer;
   color: #94a3b8;
-  padding: 2px;
+  padding: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1403,12 +1563,14 @@
 /* Interactive Bank Search Results Panel */
 .bank-search-results-panel {
   background: #ffffff;
-  border: 1px solid #bfdbfe;
+  border: 1.5px solid #bfdbfe;
   border-radius: 10px;
   box-shadow: 0 8px 24px -4px rgba(37, 99, 235, 0.12), 0 2px 6px rgba(0, 0, 0, 0.05);
   margin-bottom: 12px;
   overflow: hidden;
   animation: modalScaleIn 0.15s ease-out;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .bank-search-results-header {
@@ -1532,7 +1694,7 @@
 }
 
 .bank-search-empty {
-  padding: 16px;
+  padding: 14px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1541,14 +1703,41 @@
   background: #fffbeb;
 }
 
-.bank-directory-select {
-  font-weight: 600 !important;
-  color: #0f172a !important;
-  background: #f8fafc !important;
-  height: 38px !important;
+/* Bank Directory Select */
+.bank-select-container {
+  margin-top: 4px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
-/* Form Helper Notes */
+.bank-directory-label {
+  font-size: 11.5px;
+  color: #64748b;
+  font-weight: 600;
+  display: block;
+  margin-bottom: 5px;
+}
+
+.bank-directory-select {
+  font-weight: 500 !important;
+  color: #0f172a !important;
+  background: #f8fafc !important;
+  height: 40px !important;
+  border-radius: 9px !important;
+  border: 1.5px solid #e2e8f0 !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  font-size: 13px !important;
+}
+
+/* Form Custom Controls */
+.form-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
 .form-field-helper-note {
   font-size: 11px;
   color: #64748b;
@@ -1559,6 +1748,39 @@
 
 .font-mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.5px;
+}
+
+.form-input-custom::placeholder {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important;
+  font-size: 13px !important;
+  font-weight: 400 !important;
+  color: #94a3b8 !important;
+  letter-spacing: normal !important;
+}
+
+.ifsc-input {
+  letter-spacing: 1.2px !important;
+  text-transform: uppercase !important;
+  font-weight: 600 !important;
+}
+
+.digit-count-tag {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.digit-count-tag.valid {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.digit-count-tag.pending {
+  background: #fef3c7;
+  color: #b45309;
 }
 
 .input-error-border {
@@ -1566,64 +1788,13 @@
   background: #fff5f5 !important;
 }
 
-/* Quick Bank Selection Chips */
-.bank-chips-label-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 8px;
-}
-
-.bank-chips-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.bank-chip-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border-radius: 8px;
-  border: 1px solid #e2e8f0;
-  background: #f8fafc;
-  color: #334155;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.bank-chip-btn:hover {
-  background: #f1f5f9;
-  border-color: #cbd5e1;
-  color: #0f172a;
-  transform: translateY(-1px);
-}
-
-.bank-chip-btn.selected {
-  background: #eff6ff;
-  border-color: #3b82f6;
-  color: #1d4ed8;
-  box-shadow: 0 1px 3px rgba(37, 99, 235, 0.15);
-}
-
-.bank-chip-btn .chip-check-icon {
-  color: #2563eb;
-  font-weight: bold;
-}
-
-.bank-chip-icon {
-  font-size: 14px;
-}
-
 /* Two-column responsive row */
 .form-row-2col {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 @media (max-width: 640px) {
@@ -1646,11 +1817,13 @@
 .match-status-badge.matched {
   background: #dcfce7;
   color: #15803d;
+  border: 1px solid #bbf7d0;
 }
 
 .match-status-badge.mismatch {
   background: #fee2e2;
   color: #b91c1c;
+  border: 1px solid #fecaca;
 }
 
 /* Live Gateway Connection Indicator Card */
@@ -1662,12 +1835,19 @@
   background: #f0fdf4;
   border: 1px solid #bbf7d0;
   border-radius: 10px;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .gateway-pill-left {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.gateway-shield-icon {
+  color: #16a34a;
+  flex-shrink: 0;
 }
 
 .gateway-pill-title {

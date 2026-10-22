@@ -30,10 +30,10 @@ export default function CommissionManagementPage() {
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState('');
   const [metrics, setMetrics] = useState({
-    totalCommission: 485000,
-    pendingCommissions: 65000,
-    approvedCommissions: 120000,
-    paidCommissions: 300000,
+    totalCommission: 0,
+    pendingCommissions: 0,
+    approvedCommissions: 0,
+    paidCommissions: 0,
   });
 
   // Data states
@@ -87,10 +87,10 @@ export default function CommissionManagementPage() {
       if (dashRes.status === 'fulfilled' && dashRes.value?.data) {
         const d = dashRes.value.data;
         setMetrics({
-          totalCommission: d.totalCommission || 485000,
-          pendingCommissions: d.pendingCommissions || 65000,
-          approvedCommissions: d.approvedCommissions || 120000,
-          paidCommissions: d.paidCommissions || 300000,
+          totalCommission: d.totalCommission ?? 0,
+          pendingCommissions: d.pendingCommissions ?? 0,
+          approvedCommissions: d.approvedCommissions ?? 0,
+          paidCommissions: d.paidCommissions ?? 0,
         });
       }
 
@@ -106,115 +106,18 @@ export default function CommissionManagementPage() {
         setCumulativeReport(rep);
         setAuditTrail(cumRes.value.data.auditTrail || []);
       } else {
-        // Fallback sample data if backend offline/unseeded
-        setCumulativeReport([
-          {
-            distributorId: 'dist-001',
-            distributorCode: 'KV-1001',
-            distributorName: 'Rahul Kaushal (Owner)',
-            sponsorId: null,
-            placementDetails: { parentId: null, position: null, treeId: 'TR-KV1001-ROOT' },
-            achievedRank: 'RUBY',
-            rankName: 'Ruby',
-            qualifyingBV: 1500,
-            leftMatching: 125000,
-            rightMatching: 110000,
-            missingRequirements: { bvGap: 0, leftMatchingGap: 0, rightMatchingGap: 0 },
-            rankStatus: 'QUALIFIED',
-            paymentStatus: 'PAID',
-            eligibleTiers: [
-              { tierOrder: 1, rankCode: 'SILVER', rankName: 'Silver', percentage: 24, cumulativePercentage: 24 },
-              { tierOrder: 2, rankCode: 'GOLD', rankName: 'Gold', percentage: 8, cumulativePercentage: 32 },
-              { tierOrder: 3, rankCode: 'PLATINUM', rankName: 'Platinum', percentage: 13, cumulativePercentage: 45 },
-              { tierOrder: 4, rankCode: 'DIAMOND', rankName: 'Diamond', percentage: 5, cumulativePercentage: 50 },
-              { tierOrder: 5, rankCode: 'RUBY', rankName: 'Ruby', percentage: 4, cumulativePercentage: 54 },
-            ],
-            cumulativePercentage: 54,
-            eligibleBase: 110000,
-            calculatedAmount: 59400,
-            pendingAmount: 0,
-            approvedAmount: 0,
-            paidAmount: 59400,
-            reversedAmount: 0,
-          },
-          {
-            distributorId: 'dist-002',
-            distributorCode: 'KV-1002',
-            distributorName: 'Amit Patel',
-            sponsorId: 'KV-1001',
-            placementDetails: { parentId: 'KV-1001', position: 'LEFT', treeId: 'TR-KV1001-LEFT-1002' },
-            achievedRank: 'GOLD',
-            rankName: 'Gold',
-            qualifyingBV: 350,
-            leftMatching: 8500,
-            rightMatching: 7200,
-            missingRequirements: { bvGap: 150, leftMatchingGap: 41500, rightMatchingGap: 42800 },
-            rankStatus: 'QUALIFIED',
-            paymentStatus: 'PAID',
-            eligibleTiers: [
-              { tierOrder: 1, rankCode: 'SILVER', rankName: 'Silver', percentage: 24, cumulativePercentage: 24 },
-              { tierOrder: 2, rankCode: 'GOLD', rankName: 'Gold', percentage: 8, cumulativePercentage: 32 },
-            ],
-            cumulativePercentage: 32,
-            eligibleBase: 7200,
-            calculatedAmount: 2304,
-            pendingAmount: 2304,
-            approvedAmount: 0,
-            paidAmount: 0,
-            reversedAmount: 0,
-          },
-          {
-            distributorId: 'dist-003',
-            distributorCode: 'KV-1003',
-            distributorName: 'Rohit Verma',
-            sponsorId: 'KV-1001',
-            placementDetails: { parentId: 'KV-1001', position: 'RIGHT', treeId: 'TR-KV1001-RIGHT-1003' },
-            achievedRank: 'SILVER',
-            rankName: 'Silver',
-            qualifyingBV: 260,
-            leftMatching: 3200,
-            rightMatching: 2500,
-            missingRequirements: { bvGap: 0, leftMatchingGap: 1800, rightMatchingGap: 2500 },
-            rankStatus: 'QUALIFIED',
-            paymentStatus: 'PAID',
-            eligibleTiers: [
-              { tierOrder: 1, rankCode: 'SILVER', rankName: 'Silver', percentage: 24, cumulativePercentage: 24 },
-            ],
-            cumulativePercentage: 24,
-            eligibleBase: 2500,
-            calculatedAmount: 600,
-            pendingAmount: 600,
-            approvedAmount: 0,
-            paidAmount: 0,
-            reversedAmount: 0,
-          },
-          {
-            distributorId: 'dist-004',
-            distributorCode: 'KV-1004',
-            distributorName: 'Priya Sharma',
-            sponsorId: 'KV-1002',
-            placementDetails: { parentId: 'KV-1002', position: 'LEFT', treeId: 'TR-KV1002-LEFT-1004' },
-            achievedRank: 'BASE',
-            rankName: 'Base',
-            qualifyingBV: 100,
-            leftMatching: 1500,
-            rightMatching: 400,
-            missingRequirements: { bvGap: 150, leftMatchingGap: 500, rightMatchingGap: 1600 },
-            rankStatus: 'SHORTFALL',
-            paymentStatus: 'PAID',
-            eligibleTiers: [],
-            cumulativePercentage: 0,
-            eligibleBase: 400,
-            calculatedAmount: 0,
-            pendingAmount: 0,
-            approvedAmount: 0,
-            paidAmount: 0,
-            reversedAmount: 0,
-          },
-        ]);
+        setCumulativeReport([]);
       }
     } catch (err) {
       console.warn('Error loading commission report:', err);
+      setMetrics({
+        totalCommission: 0,
+        pendingCommissions: 0,
+        approvedCommissions: 0,
+        paidCommissions: 0,
+      });
+      setCumulativeReport([]);
+      setCommissions([]);
     } finally {
       setLoading(false);
     }

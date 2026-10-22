@@ -47,12 +47,12 @@ export default function AdminDashboard() {
     fetchDashboardMetrics();
   }, []);
 
-  const totalDist = metrics?.totalDistributors || 124;
-  const activeDist = metrics?.activeDistributors || 108;
-  const inactiveDist = metrics?.inactiveDistributors || 12;
-  const suspendedDist = metrics?.suspendedDistributors || 4;
+  const totalDist = metrics?.totalDistributors ?? 5;
+  const activeDist = metrics?.activeDistributors ?? 4;
+  const inactiveDist = metrics?.inactiveDistributors ?? 0;
+  const suspendedDist = metrics?.suspendedDistributors ?? 1;
 
-  const activePercent = Math.round((activeDist / totalDist) * 100) || 87;
+  const activePercent = totalDist > 0 ? Math.round((activeDist / totalDist) * 100) : 0;
 
   return (
     <div className="admin-page-container">
@@ -144,7 +144,7 @@ export default function AdminDashboard() {
           <div className="kpi-meta">
             <span className="kpi-label">Total Business Volume</span>
             <span className="kpi-value">
-              {Number(metrics?.totalBusinessVolume || metrics?.totalBV || 89400).toLocaleString()} BV
+              {Number(metrics?.totalBusinessVolume ?? metrics?.totalBV ?? 0).toLocaleString()} BV
             </span>
             <span className="kpi-subtext">System-wide accumulated volume</span>
           </div>
@@ -157,7 +157,7 @@ export default function AdminDashboard() {
           <div className="kpi-meta">
             <span className="kpi-label">Total Commissions</span>
             <span className="kpi-value">
-              ₹{Number(metrics?.totalCommission || 436600).toLocaleString()}
+              ₹{Number(metrics?.totalCommission ?? 0).toLocaleString()}
             </span>
             <span className="kpi-subtext">Lifetime gross computed</span>
           </div>
@@ -170,7 +170,7 @@ export default function AdminDashboard() {
           <div className="kpi-meta">
             <span className="kpi-label">Pending Commissions</span>
             <span className="kpi-value text-amber">
-              ₹{Number(metrics?.pendingCommissions || 52400).toLocaleString()}
+              ₹{Number(metrics?.pendingCommissions ?? 0).toLocaleString()}
             </span>
             <span className="kpi-subtext">Awaiting cycle approval</span>
           </div>
@@ -183,7 +183,7 @@ export default function AdminDashboard() {
           <div className="kpi-meta">
             <span className="kpi-label">Approved Commissions</span>
             <span className="kpi-value text-cyan">
-              ₹{Number(metrics?.approvedCommissions || 18200).toLocaleString()}
+              ₹{Number(metrics?.approvedCommissions ?? 0).toLocaleString()}
             </span>
             <span className="kpi-subtext">Ready for disbursement</span>
           </div>
@@ -196,7 +196,7 @@ export default function AdminDashboard() {
           <div className="kpi-meta">
             <span className="kpi-label">Paid Commissions</span>
             <span className="kpi-value text-emerald">
-              ₹{Number(metrics?.paidCommissions || 384200).toLocaleString()}
+              ₹{Number(metrics?.paidCommissions ?? 0).toLocaleString()}
             </span>
             <span className="kpi-subtext">Disbursed via bank payouts</span>
           </div>
@@ -300,7 +300,7 @@ export default function AdminDashboard() {
               <div className="info-row">
                 <span className="text-muted">Pending Payout Batch:</span>
                 <span className="font-semibold text-emerald">
-                  ₹{Number(metrics?.pendingPayouts || 48200).toLocaleString()}
+                  ₹{Number(metrics?.pendingPayouts ?? 0).toLocaleString()}
                 </span>
               </div>
             </div>

@@ -38093,20 +38093,20 @@ var AdminController = class _AdminController {
   static async getDashboard(req, res, next) {
     try {
       let stats = {
-        totalDistributors: 1105,
-        totalUsers: 1420,
-        totalMembers: 1420,
-        activeDistributors: 1105,
-        preferredCustomers: 315,
-        totalSalesRevenue: 485e3,
-        totalBusinessVolume: 32e4,
-        totalBVTurnover: 32e4,
-        totalCommission: 124500,
-        totalCommissionsPaid: 124500,
-        pendingPayouts: 8200,
+        totalDistributors: _AdminController.distributorsStore.length,
+        totalUsers: _AdminController.distributorsStore.length,
+        totalMembers: _AdminController.distributorsStore.length,
+        activeDistributors: _AdminController.distributorsStore.filter((d) => d.status === "ACTIVE").length,
+        preferredCustomers: 0,
+        totalSalesRevenue: 0,
+        totalBusinessVolume: 0,
+        totalBVTurnover: 0,
+        totalCommission: 0,
+        totalCommissionsPaid: 0,
+        pendingPayouts: 0,
         activeCommissionPeriod: "W-2026-38",
-        openSupportTickets: 12,
-        lowStockItemsCount: 2,
+        openSupportTickets: 0,
+        lowStockItemsCount: 0,
         systemHealth: "HEALTHY",
         systemStatus: "HEALTHY"
       };
@@ -38222,13 +38222,18 @@ var AdminController = class _AdminController {
       phone: "+91 9998887776",
       status: "ACTIVE",
       position: "ROOT",
-      rank: "Diamond",
+      rank: "Associate",
       sponsorId: null,
       parentId: null,
-      leftBv: 12e3,
-      rightBv: 9500,
-      lifetimePV: 3500,
-      lifetimeGV: 15e4
+      level: 0,
+      depth: 0,
+      leftBv: 0,
+      rightBv: 0,
+      personalBv: 0,
+      teamSize: 0,
+      lifetimePV: 0,
+      lifetimeGV: 0,
+      joinedAt: "2026-01-01T00:00:00.000Z"
     },
     {
       id: "dist-1002",
@@ -38242,13 +38247,18 @@ var AdminController = class _AdminController {
       phone: "+91 9876543210",
       status: "ACTIVE",
       position: "LEFT",
-      rank: "Gold",
+      rank: "Associate",
       sponsorId: "KV-1001",
       parentId: "KV-1001",
-      leftBv: 6e3,
-      rightBv: 4500,
-      lifetimePV: 1500,
-      lifetimeGV: 45e3
+      level: 1,
+      depth: 1,
+      leftBv: 0,
+      rightBv: 0,
+      personalBv: 0,
+      teamSize: 0,
+      lifetimePV: 0,
+      lifetimeGV: 0,
+      joinedAt: "2026-01-01T00:00:00.000Z"
     },
     {
       id: "dist-1003",
@@ -38262,13 +38272,18 @@ var AdminController = class _AdminController {
       phone: "+91 9876543211",
       status: "ACTIVE",
       position: "RIGHT",
-      rank: "Platinum",
+      rank: "Associate",
       sponsorId: "KV-1001",
       parentId: "KV-1001",
-      leftBv: 8500,
-      rightBv: 7200,
-      lifetimePV: 2200,
-      lifetimeGV: 68e3
+      level: 1,
+      depth: 1,
+      leftBv: 0,
+      rightBv: 0,
+      personalBv: 0,
+      teamSize: 0,
+      lifetimePV: 0,
+      lifetimeGV: 0,
+      joinedAt: "2026-01-01T00:00:00.000Z"
     },
     {
       id: "dist-1004",
@@ -38282,13 +38297,18 @@ var AdminController = class _AdminController {
       phone: "+91 9876543212",
       status: "ACTIVE",
       position: "LEFT",
-      rank: "Silver",
+      rank: "Associate",
       sponsorId: "KV-1002",
       parentId: "KV-1002",
-      leftBv: 3e3,
-      rightBv: 2500,
-      lifetimePV: 800,
-      lifetimeGV: 25e3
+      level: 2,
+      depth: 2,
+      leftBv: 0,
+      rightBv: 0,
+      personalBv: 0,
+      teamSize: 0,
+      lifetimePV: 0,
+      lifetimeGV: 0,
+      joinedAt: "2026-01-02T00:00:00.000Z"
     },
     {
       id: "dist-1008",
@@ -38302,13 +38322,18 @@ var AdminController = class _AdminController {
       phone: "+91 9876543216",
       status: "SUSPENDED",
       position: "RIGHT",
-      rank: "Silver",
+      rank: "Associate",
       sponsorId: "KV-1003",
       parentId: "KV-1003",
+      level: 2,
+      depth: 2,
       leftBv: 0,
       rightBv: 0,
-      lifetimePV: 100,
-      lifetimeGV: 100
+      personalBv: 0,
+      teamSize: 0,
+      lifetimePV: 0,
+      lifetimeGV: 0,
+      joinedAt: "2026-01-02T00:00:00.000Z"
     }
   ];
   // 3. Distributors: /api/v1/admin/distributors
@@ -38447,23 +38472,19 @@ var AdminController = class _AdminController {
         message: "System-wide Business Volume retrieved",
         data: {
           summary: {
-            totalBv: 32e4,
-            leftBv: 165e3,
-            rightBv: 155e3,
-            matchedBv: 15e4,
-            carryForwardLeft: 15e3,
-            carryForwardRight: 5e3
+            totalBv: 0,
+            leftBv: 0,
+            rightBv: 0,
+            personalBv: 0,
+            totalBV: 0,
+            leftBV: 0,
+            rightBV: 0,
+            personalBV: 0,
+            matchedBv: 0,
+            carryForwardLeft: 0,
+            carryForwardRight: 0
           },
-          transactions: [
-            {
-              id: "bv-001",
-              distributorId: "KV-1002",
-              amount: 500,
-              leg: "LEFT",
-              type: "PURCHASE",
-              createdAt: /* @__PURE__ */ new Date()
-            }
-          ]
+          transactions: []
         }
       });
     } catch (error) {
@@ -38758,15 +38779,8 @@ var AdminController = class _AdminController {
       } catch {
       }
       if (periods.length === 0) {
-        periods = [
-          { periodCode: "W-2026-37", status: "CLOSED", totalCalculated: 1250, totalBV: 12500 },
-          { periodCode: "W-2026-38", status: "OPEN", totalCalculated: 0, totalBV: 4500 }
-        ];
-        commissions = [
-          { comNumber: "COM-10001", type: "BINARY", amount: 350, status: "PAID", period: "W-2026-37" },
-          { comNumber: "COM-10002", type: "FRONTLINE", amount: 120, status: "PAID", period: "W-2026-37" },
-          { comNumber: "COM-10003", type: "RANK", amount: 150, status: "PAID", period: "W-2026-37" }
-        ];
+        periods = [];
+        commissions = [];
       }
       sendSuccess(res, {
         message: "Commission periods and settlement records retrieved",
