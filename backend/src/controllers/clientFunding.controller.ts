@@ -6,6 +6,7 @@ import {
   addBankAccountSchema,
   createClientFundingOrderSchema,
   listClientFundingOrdersQuerySchema,
+  requestClientWithdrawalSchema,
   verifyClientFundingPaymentSchema,
 } from '../validators/clientFunding.validators';
 
@@ -144,6 +145,41 @@ export class ClientFundingController {
         statusCode: 200,
         message: 'Bank account deleted successfully.',
         data: { success: deleted },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/v1/funding/withdraw
+   * Process client fund withdrawal to verified bank account.
+   */
+  public static async requestWithdrawal(req: Request, res: Response, next: NextFunction) {
+    try {
+      const validated = requestClientWithdrawalSchema.parse(req.body);
+      const result = await ClientFundingService.requestWithdrawal((req as any).user.id, validated);
+      return sendSuccess(res, {
+        statusCode: 201,
+        message: 'Withdrawal processed successfully to your bank account via instant IMPS.',
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/v1/funding/withdrawals
+   * List authenticated client's withdrawal history.
+   */
+  public static async listWithdrawals(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await ClientFundingService.listWithdrawals((req as any).user.id);
+      return sendSuccess(res, {
+        statusCode: 200,
+        message: 'Withdrawal history retrieved successfully.',
+        data: result,
       });
     } catch (error) {
       next(error);

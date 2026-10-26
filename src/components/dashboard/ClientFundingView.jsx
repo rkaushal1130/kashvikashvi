@@ -13,25 +13,27 @@ import {
   AlertCircle,
   RefreshCw,
   Search,
-  ExternalLink,
   Lock,
   ArrowUpRight,
+  ArrowDownLeft,
   Trash2,
 } from 'lucide-react';
 import { api } from '../../services/api.js';
 import './ClientFundingView.css';
 
 const PRESET_AMOUNTS = [500, 1000, 2500, 5000, 10000, 25000];
+const WITHDRAW_PRESETS = [500, 1000, 2500, 5000, 10000];
 
 export default function ClientFundingView({ user, onWalletUpdated }) {
   // 1. Data States
-  const [activeTab, setActiveTab] = useState('fund'); // 'fund' | 'bank'
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [activeTab, setActiveTab] = useState('fund'); // 'fund' | 'withdraw' | 'bank'
+  const [, setLoading] = useState(true);
+  const [, setRefreshing] = useState(false);
   const [walletBalance, setWalletBalance] = useState(0);
   const [pendingBalance, setPendingBalance] = useState(0);
   const [orders, setOrders] = useState([]);
   const [bankAccounts, setBankAccounts] = useState([]);
+  const [withdrawals, setWithdrawals] = useState([]);
   const [statusMessage, setStatusMessage] = useState(null);
 
   // 2. Add Funds Form States
@@ -39,7 +41,15 @@ export default function ClientFundingView({ user, onWalletUpdated }) {
   const [paymentMethod, setPaymentMethod] = useState('RAZORPAY_UPI');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // 3. Bank Account Form States
+  // 3. Withdrawal Form States
+  const [withdrawAmount, setWithdrawAmount] = useState('1000');
+  const [selectedBankId, setSelectedBankId] = useState('');
+  const [withdrawNotes] = useState('');
+  const [isWithdrawing, setIsWithdrawing] = useState(false);
+  const [withdrawSearch, setWithdrawSearch] = useState('');
+  const [withdrawStatusFilter, setWithdrawStatusFilter] = useState('ALL');
+
+  // 4. Bank Account Form States
   const [showAddBankModal, setShowAddBankModal] = useState(false);
   const [bankFormData, setBankFormData] = useState({
     accountHolderName: user?.fullName || '',
@@ -53,7 +63,7 @@ export default function ClientFundingView({ user, onWalletUpdated }) {
   const [bankFormError, setBankFormError] = useState('');
   const [isAddingBank, setIsAddingBank] = useState(false);
 
-  // 4. Filters & Search
+  // 5. Filters & Search
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
 
@@ -83,10 +93,11 @@ export default function ClientFundingView({ user, onWalletUpdated }) {
   const loadPortalData = useCallback(async () => {
     try {
       setRefreshing(true);
-      const [walletRes, ordersRes, banksRes] = await Promise.allSettled([
-        api.getCommissionSummary ? api.getCommissionSummary() : null,
+      const [walletRes, ordersRes, banksRes, withdrawRes] = await Promise.allSettled([
+        api.getCommissionSummary ? api.getCommissionSummary() : api.getWalletBalance(),
         api.getClientFundingOrders(),
         api.getClientBankAccounts(),
+        api.getClientWithdrawals ? api.getClientWithdrawals() : Promise.resolve({ withdrawals: [] }),
       ]);
 
       if (walletRes.status === 'fulfilled' && walletRes.value) {
@@ -100,6 +111,16 @@ export default function ClientFundingView({ user, onWalletUpdated }) {
 
       if (banksRes.status === 'fulfilled' && Array.isArray(banksRes.value)) {
         setBankAccounts(banksRes.value);
+        // Pre-select verified or primary bank
+        const verified = banksRes.value.filter((b) => b.status === 'VERIFIED');
+        if (verified.length > 0) {
+          const primary = verified.find((b) => b.isPrimary) || verified[0];
+          setSelectedBankId((prev) => prev || primary.id);
+        }
+      }
+
+      if (withdrawRes.status === 'fulfilled' && Array.isArray(withdrawRes.value?.withdrawals)) {
+        setWithdrawals(withdrawRes.value.withdrawals);
       }
     } catch (err) {
       console.warn('Failed to load portal data:', err);
@@ -194,7 +215,7 @@ export default function ClientFundingView({ user, onWalletUpdated }) {
         rzp.open();
       } else {
         // Mock / Sandbox direct verification flow when external script is not loaded
-        const verifyRes = await api.verifyClientFundingPayment({
+        await api.verifyClientFundingPayment({
           orderId: order.id,
           razorpayOrderId: razorpayOrderId || `order_${Date.now()}`,
           razorpayPaymentId: `pay_mock_${Date.now()}`,
@@ -279,6 +300,79 @@ export default function ClientFundingView({ user, onWalletUpdated }) {
     }
   };
 
+  // Verified Bank Accounts list
+  const verifiedAccounts = bankAccounts.filter((b) => b.status === 'VERIFIED');
+  const selectedBank = bankAccounts.find((b) => b.id === selectedBankId) || verifiedAccounts[0];
+
+  // Handle Proceed Withdrawal
+  const handleProceedWithdrawal = async (e) => {
+    if (e) e.preventDefault();
+    const numAmount = Number(withdrawAmount);
+
+    if (!numAmount || numAmount < 100) {
+      setStatusMessage({ type: 'error', text: 'Minimum withdrawal amount is ₹100.00' });
+      return;
+    }
+
+    if (numAmount > walletBalance) {
+      setStatusMessage({
+        type: 'error',
+        text: `Withdrawal amount of ${formatINR(numAmount)} exceeds your available wallet balance of ${formatINR(walletBalance)}.`,
+      });
+      return;
+    }
+
+    if (!selectedBankId && verifiedAccounts.length === 0) {
+      setStatusMessage({
+        type: 'error',
+        text: 'Please add and verify a bank account before requesting a withdrawal.',
+      });
+      return;
+    }
+
+    const targetBank = selectedBank || verifiedAccounts[0];
+    if (!targetBank || targetBank.status !== 'VERIFIED') {
+      setStatusMessage({
+        type: 'error',
+        text: 'Selected bank account must have VERIFIED status to receive payouts.',
+      });
+      return;
+    }
+
+    try {
+      setIsWithdrawing(true);
+      setStatusMessage(null);
+
+      const res = await api.requestClientWithdrawal({
+        amount: numAmount,
+        bankAccountId: targetBank.id,
+        bankName: targetBank.bankName,
+        accountNumber: targetBank.accountNumber,
+        ifscCode: targetBank.routingNumber || targetBank.ifscCode,
+        notes: withdrawNotes || 'Client Funding Portal Instant Withdrawal',
+      });
+
+      if (res && (res.success || res.data)) {
+        const utr = res.data?.withdrawal?.externalTransactionId || `IMPS${Date.now()}`;
+        setStatusMessage({
+          type: 'success',
+          text: `Success! ${formatINR(numAmount)} has been disbursed to ${targetBank.bankName} (${targetBank.accountNumber}). UTR: ${utr}`,
+        });
+
+        // Instant balance deduction
+        setWalletBalance((prev) => Math.max(0, prev - numAmount));
+        await loadPortalData();
+        if (onWalletUpdated) onWalletUpdated();
+      } else {
+        throw new Error(res?.message || 'Withdrawal request failed');
+      }
+    } catch (err) {
+      setStatusMessage({ type: 'error', text: err.message || 'Failed to process withdrawal request.' });
+    } finally {
+      setIsWithdrawing(false);
+    }
+  };
+
   // Filtered Orders
   const filteredOrders = orders.filter((o) => {
     if (statusFilter !== 'ALL' && o.status !== statusFilter) return false;
@@ -288,6 +382,19 @@ export default function ClientFundingView({ user, onWalletUpdated }) {
       const railMatch = (o.paymentMethod || '').toLowerCase().includes(term);
       const rzpMatch = (o.providerOrderId || '').toLowerCase().includes(term);
       if (!idMatch && !railMatch && !rzpMatch) return false;
+    }
+    return true;
+  });
+
+  // Filtered Withdrawals
+  const filteredWithdrawals = withdrawals.filter((w) => {
+    if (withdrawStatusFilter !== 'ALL' && w.status !== withdrawStatusFilter) return false;
+    if (withdrawSearch) {
+      const term = withdrawSearch.toLowerCase();
+      const idMatch = (w.id || '').toLowerCase().includes(term);
+      const bankMatch = (w.bankName || '').toLowerCase().includes(term);
+      const refMatch = (w.externalTransactionId || '').toLowerCase().includes(term);
+      if (!idMatch && !bankMatch && !refMatch) return false;
     }
     return true;
   });
@@ -337,6 +444,24 @@ export default function ClientFundingView({ user, onWalletUpdated }) {
             <h3>Available Wallet Balance</h3>
             <p className="metric-amount">{formatINR(walletBalance)}</p>
             <p className="metric-subtext">Usable for wholesale orders & commissions</p>
+            <div className="metric-card-actions">
+              <button
+                type="button"
+                className="metric-action-btn withdraw"
+                onClick={() => setActiveTab('withdraw')}
+              >
+                <ArrowDownLeft className="w-4 h-4" />
+                Withdraw Funds
+              </button>
+              <button
+                type="button"
+                className="metric-action-btn fund"
+                onClick={() => setActiveTab('fund')}
+              >
+                <PlusCircle className="w-4 h-4" />
+                Add Funds
+              </button>
+            </div>
           </div>
           <div className="metric-icon-wrap">
             <Wallet className="w-6 h-6" />
@@ -376,6 +501,13 @@ export default function ClientFundingView({ user, onWalletUpdated }) {
         >
           <CreditCard className="w-4 h-4" />
           Add Funds to Wallet
+        </button>
+        <button
+          className={`funding-tab-btn ${activeTab === 'withdraw' ? 'active' : ''}`}
+          onClick={() => setActiveTab('withdraw')}
+        >
+          <ArrowDownLeft className="w-4 h-4" />
+          Withdraw Funds
         </button>
         <button
           className={`funding-tab-btn ${activeTab === 'bank' ? 'active' : ''}`}
@@ -634,7 +766,321 @@ export default function ClientFundingView({ user, onWalletUpdated }) {
         </>
       )}
 
-      {/* Tab 2: Bank Account Management */}
+      {/* Tab 2: Withdraw Funds to Bank */}
+      {activeTab === 'withdraw' && (
+        <>
+          <div className="funding-content-grid">
+            {/* Left: Withdrawal Configuration */}
+            <div className="portal-panel">
+              <h2 className="panel-title">
+                <ArrowDownLeft className="w-5 h-5 text-emerald-400" />
+                Select Withdrawal Amount
+              </h2>
+
+              {/* Preset Chips */}
+              <div className="preset-amount-grid">
+                {WITHDRAW_PRESETS.map((val) => (
+                  <button
+                    key={val}
+                    type="button"
+                    className={`preset-chip-btn ${withdrawAmount === String(val) ? 'active' : ''}`}
+                    onClick={() => setWithdrawAmount(String(val))}
+                  >
+                    ₹{val.toLocaleString('en-IN')}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className={`preset-chip-btn withdraw-all-chip ${withdrawAmount === String(Math.floor(walletBalance)) && walletBalance > 0 ? 'active' : ''}`}
+                  onClick={() => setWithdrawAmount(String(Math.floor(walletBalance)))}
+                  disabled={walletBalance <= 0}
+                >
+                  Withdraw All ({formatINR(walletBalance)})
+                </button>
+              </div>
+
+              {/* Custom Input */}
+              <div className="amount-input-group">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <label>Custom Withdrawal Amount (INR)</label>
+                  <span style={{ fontSize: '12px', color: '#94a3b8' }}>
+                    Available: <strong style={{ color: '#34d399' }}>{formatINR(walletBalance)}</strong>
+                  </span>
+                </div>
+                <div className="amount-input-wrapper">
+                  <span className="amount-currency-symbol">₹</span>
+                  <input
+                    type="number"
+                    min="100"
+                    max={walletBalance || 500000}
+                    step="1"
+                    className="amount-field"
+                    value={withdrawAmount}
+                    onChange={(e) => setWithdrawAmount(e.target.value)}
+                    placeholder="Enter amount (min ₹100)"
+                  />
+                </div>
+                {Number(withdrawAmount) > walletBalance && (
+                  <p style={{ color: '#f87171', fontSize: '12px', marginTop: '6px' }}>
+                    Amount exceeds available balance of {formatINR(walletBalance)}.
+                  </p>
+                )}
+                {Number(withdrawAmount) > 0 && Number(withdrawAmount) < 100 && (
+                  <p style={{ color: '#f87171', fontSize: '12px', marginTop: '6px' }}>
+                    Minimum withdrawal threshold is ₹100.00.
+                  </p>
+                )}
+              </div>
+
+              {/* Destination Bank Account Section */}
+              <div style={{ marginTop: '24px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                  <h2 className="panel-title" style={{ margin: 0 }}>
+                    <Landmark className="w-5 h-5 text-emerald-400" />
+                    Destination Bank Account
+                  </h2>
+                  <button
+                    type="button"
+                    className="link-add-bank-btn"
+                    onClick={() => {
+                      setActiveTab('bank');
+                      setShowAddBankModal(true);
+                    }}
+                  >
+                    <PlusCircle className="w-4 h-4" />
+                    + Add New Account
+                  </button>
+                </div>
+
+                {verifiedAccounts.length === 0 ? (
+                  <div className="no-verified-bank-banner">
+                    <AlertCircle className="w-6 h-6 text-amber-400 flex-shrink-0" />
+                    <div style={{ flex: 1 }}>
+                      <h4 style={{ margin: '0 0 4px 0', color: '#fde047', fontSize: '14px', fontWeight: 600 }}>
+                        No Verified Bank Account Linked
+                      </h4>
+                      <p style={{ margin: '0 0 10px 0', fontSize: '13px', color: '#cbd5e1' }}>
+                        {bankAccounts.length > 0
+                          ? 'You have registered accounts awaiting penny-drop validation. Please verify your account first.'
+                          : 'You must link and verify an active Indian bank account to disburse withdrawals.'}
+                      </p>
+                      <button
+                        type="button"
+                        className="btn-inline-verify"
+                        onClick={() => setActiveTab('bank')}
+                      >
+                        {bankAccounts.length > 0 ? 'Go to Bank Verification' : '+ Add Bank Account Now'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bank-selection-list">
+                    {verifiedAccounts.map((acc) => {
+                      const isSelected = selectedBankId === acc.id;
+                      return (
+                        <div
+                          key={acc.id}
+                          className={`bank-select-card ${isSelected ? 'selected' : ''}`}
+                          onClick={() => setSelectedBankId(acc.id)}
+                        >
+                          <div className="bank-radio-indicator">
+                            <div className="radio-circle">
+                              {isSelected && <div className="radio-inner" />}
+                            </div>
+                          </div>
+                          <div className="bank-card-details">
+                            <div className="bank-card-title-row">
+                              <h4>{acc.bankName}</h4>
+                              <span className="verified-pill">
+                                <CheckCircle2 className="w-3.5 h-3.5" />
+                                Verified Beneficiary
+                              </span>
+                            </div>
+                            <p className="bank-card-holder">{acc.accountHolderName}</p>
+                            <div className="bank-card-acc-row">
+                              <span className="masked-acc">{acc.accountNumber}</span>
+                              <span className="ifsc-tag">IFSC: {acc.routingNumber || acc.ifscCode}</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Right: Withdrawal Payout Summary */}
+            <div className="portal-panel" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+              <div>
+                <h2 className="panel-title">
+                  <ShieldCheck className="w-5 h-5 text-emerald-400" />
+                  Withdrawal & Payout Summary
+                </h2>
+
+                <div className="funding-breakdown-card withdraw-card">
+                  <div className="breakdown-row">
+                    <span>Gross Withdrawal Amount:</span>
+                    <span>{formatINR(withdrawAmount)}</span>
+                  </div>
+                  <div className="breakdown-row">
+                    <span>Payout Processing Fee:</span>
+                    <span style={{ color: '#34d399' }}>₹0.00 (Waived / 100% Free)</span>
+                  </div>
+                  <div className="breakdown-row">
+                    <span>Settlement Rail:</span>
+                    <span style={{ color: '#60a5fa' }}>Instant IMPS / NEFT (24x7 Settlement)</span>
+                  </div>
+                  <div className="breakdown-row">
+                    <span>Destination Bank:</span>
+                    <span style={{ color: '#f1f5f9' }}>
+                      {selectedBank ? `${selectedBank.bankName} (${selectedBank.accountNumber.slice(-4)})` : 'None Selected'}
+                    </span>
+                  </div>
+                  <div className="breakdown-row total-row" style={{ borderTopColor: 'rgba(16, 185, 129, 0.3)' }}>
+                    <span>Net Amount to be Credited:</span>
+                    <span style={{ color: '#34d399' }}>{formatINR(withdrawAmount)}</span>
+                  </div>
+                </div>
+
+                <div
+                  className="zero-credential-callout"
+                  style={{
+                    marginTop: 0,
+                    borderColor: 'rgba(16, 185, 129, 0.3)',
+                    background: 'rgba(16, 185, 129, 0.08)',
+                  }}
+                >
+                  <Lock className="w-5 h-5 flex-shrink-0 text-emerald-400" />
+                  <div>
+                    <strong style={{ color: '#34d399' }}>Instant Payout Security:</strong>
+                    <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: '#a7f3d0' }}>
+                      Disbursements are executed via encrypted RBI-authorized banking rails directly into your verified bank account. No passwords, debit card PINs, or net banking credentials are ever asked.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                className="btn-proceed-fund btn-proceed-withdraw"
+                onClick={handleProceedWithdrawal}
+                disabled={
+                  isWithdrawing ||
+                  !withdrawAmount ||
+                  Number(withdrawAmount) < 100 ||
+                  Number(withdrawAmount) > walletBalance ||
+                  !selectedBankId ||
+                  verifiedAccounts.length === 0
+                }
+              >
+                {isWithdrawing ? (
+                  <>
+                    <RefreshCw className="w-5 h-5 animate-spin" />
+                    Processing Bank Payout...
+                  </>
+                ) : (
+                  <>
+                    Confirm & Withdraw {formatINR(withdrawAmount)}
+                    <ArrowDownLeft className="w-5 h-5" />
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Withdrawals History Section */}
+          <div className="funding-history-section">
+            <div className="table-header-row">
+              <h2 className="panel-title" style={{ margin: 0 }}>
+                <Clock className="w-5 h-5 text-emerald-400" />
+                Recent Bank Withdrawals ({filteredWithdrawals.length})
+              </h2>
+
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                <div style={{ position: 'relative' }}>
+                  <Search className="w-4 h-4" style={{ position: 'absolute', left: '10px', top: '10px', color: '#64748b' }} />
+                  <input
+                    type="text"
+                    placeholder="Search by ID or Bank..."
+                    value={withdrawSearch}
+                    onChange={(e) => setWithdrawSearch(e.target.value)}
+                    className="history-search-input"
+                  />
+                </div>
+
+                <select
+                  value={withdrawStatusFilter}
+                  onChange={(e) => setWithdrawStatusFilter(e.target.value)}
+                  className="history-status-select"
+                >
+                  <option value="ALL">All Statuses</option>
+                  <option value="COMPLETED">Completed</option>
+                  <option value="PROCESSING">Processing</option>
+                  <option value="FAILED">Failed</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="portal-table-wrapper">
+              <table className="portal-table">
+                <thead>
+                  <tr>
+                    <th>Date & Time</th>
+                    <th>Withdrawal ID</th>
+                    <th>Destination Bank</th>
+                    <th>Amount</th>
+                    <th>Rail</th>
+                    <th>Status</th>
+                    <th>Reference / UTR</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredWithdrawals.length === 0 ? (
+                    <tr>
+                      <td colSpan="7" style={{ textAlign: 'center', padding: '36px', color: '#64748b' }}>
+                        No withdrawal requests found. When you withdraw funds, your transaction records will appear here.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredWithdrawals.map((w) => (
+                      <tr key={w.id}>
+                        <td>{formatDate(w.createdAt)}</td>
+                        <td style={{ fontFamily: 'monospace', color: '#38bdf8', fontWeight: 600 }}>
+                          {w.id.slice(-10)}
+                        </td>
+                        <td>
+                          <div>
+                            <strong>{w.bankName || 'Verified Bank'}</strong>
+                            <div style={{ fontSize: '11px', color: '#94a3b8' }}>{w.accountNumber}</div>
+                          </div>
+                        </td>
+                        <td style={{ fontWeight: 700, color: '#34d399' }}>{formatINR(w.amount)}</td>
+                        <td>
+                          <span className="rail-badge imps">IMPS Instant</span>
+                        </td>
+                        <td>
+                          <span className={`status-badge ${w.status?.toLowerCase()}`}>
+                            {(w.status === 'COMPLETED' || w.status === 'PAID') && <CheckCircle2 className="w-3 h-3 text-emerald-400" />}
+                            {w.status === 'PROCESSING' && <Clock className="w-3 h-3 text-amber-400" />}
+                            {w.status === 'FAILED' && <XCircle className="w-3 h-3 text-red-400" />}
+                            {w.status}
+                          </span>
+                        </td>
+                        <td style={{ fontFamily: 'monospace', fontSize: '11px', color: '#94a3b8' }}>
+                          {w.externalTransactionId || '—'}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Tab 3: Bank Account Management */}
       {activeTab === 'bank' && (
         <div className="portal-panel">
           <div className="table-header-row">

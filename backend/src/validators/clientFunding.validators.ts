@@ -57,3 +57,14 @@ export const listClientFundingOrdersQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(100).optional().default(20),
   status: z.enum(['ALL', 'CREATED', 'PENDING', 'PROCESSING', 'SUCCEEDED', 'FAILED', 'CANCELLED', 'REVERSED']).optional().default('ALL'),
 });
+
+export const requestClientWithdrawalSchema = z.object({
+  amount: z.coerce
+    .number({ required_error: 'Withdrawal amount is required' })
+    .positive('Withdrawal amount must be greater than zero')
+    .min(100, 'Minimum withdrawal amount is ₹100.00')
+    .max(500000, 'Maximum per-transaction withdrawal limit is ₹500,000.00'),
+  bankAccountId: z.string({ required_error: 'Bank account is required' }).min(1, 'Bank account ID is required'),
+  notes: z.string().trim().max(500, 'Notes cannot exceed 500 characters').optional(),
+});
+

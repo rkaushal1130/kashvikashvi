@@ -522,3 +522,254 @@
 .btn-add-bank:hover {
   filter: brightness(1.1);
 }
+
+/* Metric Quick Actions */
+.metric-card-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.metric-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.metric-action-btn.withdraw {
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  color: #34d399;
+}
+
+.metric-action-btn.withdraw:hover {
+  background: rgba(16, 185, 129, 0.28);
+  border-color: #10b981;
+  transform: translateY(-1px);
+}
+
+.metric-action-btn.fund {
+  background: rgba(234, 179, 8, 0.15);
+  border: 1px solid rgba(234, 179, 8, 0.4);
+  color: #fde047;
+}
+
+.metric-action-btn.fund:hover {
+  background: rgba(234, 179, 8, 0.28);
+  border-color: #eab308;
+  transform: translateY(-1px);
+}
+
+/* Preset withdraw all */
+.preset-chip-btn.withdraw-all-chip {
+  grid-column: span 3;
+  background: rgba(16, 185, 129, 0.1);
+  border-color: rgba(16, 185, 129, 0.3);
+  color: #34d399;
+}
+
+.preset-chip-btn.withdraw-all-chip:hover {
+  background: rgba(16, 185, 129, 0.2);
+  border-color: #10b981;
+}
+
+.preset-chip-btn.withdraw-all-chip.active {
+  background: #10b981;
+  color: #0f172a;
+  border-color: #10b981;
+}
+
+/* Destination Bank Selector */
+.link-add-bank-btn {
+  background: transparent;
+  border: none;
+  color: #38bdf8;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: color 0.2s;
+}
+
+.link-add-bank-btn:hover {
+  color: #7dd3fc;
+  text-decoration: underline;
+}
+
+.no-verified-bank-banner {
+  background: rgba(234, 179, 8, 0.1);
+  border: 1px solid rgba(234, 179, 8, 0.3);
+  border-radius: 10px;
+  padding: 16px;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.btn-inline-verify {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: #eab308;
+  color: #0f172a;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-inline-verify:hover {
+  filter: brightness(1.1);
+}
+
+.bank-selection-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.bank-select-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  background: #0f172a;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.bank-select-card:hover {
+  border-color: rgba(16, 185, 129, 0.4);
+  background: #131d33;
+}
+
+.bank-select-card.selected {
+  border-color: #10b981;
+  background: rgba(16, 185, 129, 0.08);
+  box-shadow: 0 0 0 1px #10b981;
+}
+
+.bank-radio-indicator {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.radio-circle {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid #64748b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.2s;
+}
+
+.bank-select-card.selected .radio-circle {
+  border-color: #10b981;
+}
+
+.radio-inner {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #10b981;
+}
+
+.bank-card-details {
+  flex: 1;
+}
+
+.bank-card-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2px;
+}
+
+.bank-card-title-row h4 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: #f1f5f9;
+}
+
+.verified-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #34d399;
+  background: rgba(16, 185, 129, 0.15);
+  padding: 2px 8px;
+  border-radius: 9999px;
+}
+
+.bank-card-holder {
+  margin: 0 0 4px 0;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.bank-card-acc-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+}
+
+.bank-card-acc-row .masked-acc {
+  font-family: monospace;
+  font-weight: 600;
+  color: #e2e8f0;
+  letter-spacing: 0.05em;
+}
+
+.bank-card-acc-row .ifsc-tag {
+  color: #64748b;
+  font-size: 11px;
+}
+
+/* Withdraw Action Button */
+.btn-proceed-withdraw {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);
+}
+
+.btn-proceed-withdraw:hover:not(:disabled) {
+  background: linear-gradient(135deg, #059669, #047857);
+  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.5);
+  transform: translateY(-1px);
+}
+
+.btn-proceed-withdraw:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.rail-badge.imps {
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+}

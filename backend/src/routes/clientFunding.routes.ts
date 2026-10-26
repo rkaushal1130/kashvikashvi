@@ -24,3 +24,7 @@ clientFundingRouter.get('/bank-accounts', ClientFundingController.listBankAccoun
 clientFundingRouter.post('/bank-accounts', ClientFundingController.addBankAccount);
 clientFundingRouter.post('/bank-accounts/:id/verify', ClientFundingController.verifyBankAccount);
 clientFundingRouter.delete('/bank-accounts/:id', ClientFundingController.deleteBankAccount);
+
+// 3. Client Withdrawals to Verified Bank Account
+clientFundingRouter.post('/withdraw', ClientFundingController.requestWithdrawal);
+clientFundingRouter.get('/withdrawals', ClientFundingController.listWithdrawals);
