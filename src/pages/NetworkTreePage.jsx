@@ -12,6 +12,7 @@ import {
   CheckCircle2,
   Clock,
   Building,
+  Trash2,
 } from 'lucide-react';
 import NetworkTree from '../components/networkTree/NetworkTree';
 import TreeControls from '../components/networkTree/TreeControls';
@@ -134,6 +135,43 @@ function NetworkTreePage({ embedded = false }) {
   const [moveSubmitting, setMoveSubmitting] = useState(false);
   const [moveError, setMoveError] = useState(null);
   const [moveSuccess, setMoveSuccess] = useState(null);
+
+  // Clear Tree Data (Fresh Start)
+  const [clearTreeModalOpen, setClearTreeModalOpen] = useState(false);
+  const [clearSubmitting, setClearSubmitting] = useState(false);
+  const [clearSuccessToast, setClearSuccessToast] = useState(null);
+
+  const handleClearTreeData = async () => {
+    setClearSubmitting(true);
+    try {
+      api.clearTreeData();
+      setCurrentRootId(initialDistributorId);
+      setBreadcrumbs([
+        { id: initialDistributorId, name: `${currentUser?.name || 'Rahul Kaushal'} (My Root)` },
+      ]);
+      setSearchParams({});
+      setSelectedMember(null);
+      setNetworkSummary({
+        distributorId: initialDistributorId,
+        directMembers: 0,
+        leftTeamCount: 0,
+        rightTeamCount: 0,
+        totalTeamCount: 0,
+        leftBV: 0,
+        rightBV: 0,
+        personalBV: 250,
+        totalBV: 250,
+      });
+      await fetchTreeData(initialDistributorId, depth);
+      setClearTreeModalOpen(false);
+      setClearSuccessToast('Tree data cleared! Network tree reset to fresh initial state with 0 team members.');
+      setTimeout(() => setClearSuccessToast(null), 5000);
+    } catch (err) {
+      console.error('Error clearing tree data:', err);
+    } finally {
+      setClearSubmitting(false);
+    }
+  };
 
   const handleOpenAuditLogs = async (memberToFilter) => {
     setAuditLogsModalOpen(true);
@@ -639,6 +677,15 @@ function NetworkTreePage({ embedded = false }) {
                     <ArrowLeftRight size={14} />
                     <span>Move Distributor</span>
                   </button>
+                  <button
+                    type="button"
+                    className="btn-tree-clear-action"
+                    onClick={() => setClearTreeModalOpen(true)}
+                    title="Clear tree data and reset to fresh initial state"
+                  >
+                    <Trash2 size={14} />
+                    <span>Clear Tree Data</span>
+                  </button>
                 </div>
               )}
             </div>
@@ -685,6 +732,7 @@ function NetworkTreePage({ embedded = false }) {
             onZoomChange={handleZoomChange}
             onResetZoom={handleResetZoom}
             onResetToRoot={handleResetToRoot}
+            onClearTree={() => setClearTreeModalOpen(true)}
             onCenterTree={() => handleCenterTree()}
             onExpand={handleExpand}
             onCollapse={handleCollapse}
@@ -1307,6 +1355,117 @@ function NetworkTreePage({ embedded = false }) {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Clear Tree Data Confirmation Modal */}
+      {clearTreeModalOpen && (
+        <div className="audit-modal-backdrop" onClick={() => !clearSubmitting && setClearTreeModalOpen(false)}>
+          <div
+            className="audit-modal-content"
+            style={{ maxWidth: '480px' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="audit-modal-header" style={{ borderBottomColor: '#fecaca' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ background: '#fee2e2', padding: '6px', borderRadius: '8px', color: '#dc2626', display: 'flex' }}>
+                  <Trash2 size={18} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: '#991b1b' }}>
+                    Clear Network Tree Data
+                  </h3>
+                  <p style={{ margin: 0, fontSize: '12px', color: '#64748b' }}>
+                    Reset dual-leg binary genealogy to fresh starting state
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="audit-modal-close-btn"
+                disabled={clearSubmitting}
+                onClick={() => setClearTreeModalOpen(false)}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div style={{ padding: '20px', fontSize: '13px', color: '#334155', lineHeight: 1.6 }}>
+              <p style={{ marginTop: 0, marginBottom: '12px' }}>
+                Are you sure you want to clear all enrolled tree data and make the tree fresh?
+              </p>
+              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px', marginBottom: '16px' }}>
+                <ul style={{ margin: 0, paddingLeft: '18px', color: '#475569' }}>
+                  <li>All enrolled downline members will be removed</li>
+                  <li>Total team count and BV will reset to 0</li>
+                  <li>Left &amp; Right legs will be reset to open (+ Available)</li>
+                  <li>Rahul Kaushal (KV-1001) will remain as root organization</li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="admin-move-footer" style={{ borderTop: '1px solid #f1f5f9', padding: '16px 20px', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                type="button"
+                className="btn-auth-dismiss"
+                disabled={clearSubmitting}
+                onClick={() => setClearTreeModalOpen(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn-admin-submit-move"
+                style={{ background: '#dc2626', borderColor: '#b91c1c', color: '#fff' }}
+                disabled={clearSubmitting}
+                onClick={handleClearTreeData}
+              >
+                {clearSubmitting ? (
+                  <>
+                    <RefreshCw size={14} className="animate-spin" />
+                    <span>Clearing...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 size={14} />
+                    <span>Yes, Clear Tree Data</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Clear Success Toast */}
+      {clearSuccessToast && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: '24px',
+            right: '24px',
+            background: '#065f46',
+            color: '#fff',
+            padding: '12px 20px',
+            borderRadius: '8px',
+            boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.2)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            zIndex: 10000,
+            fontSize: '13px',
+            fontWeight: 500,
+          }}
+        >
+          <CheckCircle2 size={18} className="text-emerald-300" />
+          <span>{clearSuccessToast}</span>
+          <button
+            type="button"
+            onClick={() => setClearSuccessToast(null)}
+            style={{ background: 'none', border: 'none', color: '#a7f3d0', cursor: 'pointer', padding: 0, marginLeft: '8px' }}
+          >
+            <X size={16} />
+          </button>
         </div>
       )}
     </div>

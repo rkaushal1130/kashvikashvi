@@ -11,6 +11,7 @@ import {
   Focus,
   ChevronsDown,
   ChevronsUp,
+  Trash2,
 } from 'lucide-react';
 
 /**
@@ -31,6 +32,7 @@ function TreeControls({
   onZoomChange,
   onResetZoom,
   onResetToRoot,
+  onClearTree,
   onCenterTree,
   onExpand,
   onCollapse,
@@ -148,6 +150,21 @@ function TreeControls({
           <RefreshCw size={14} className={loading ? 'spin' : ''} />
           <span>Refresh</span>
         </button>
+
+        {/* Clear Tree / Fresh Start Button */}
+        {onClearTree && (
+          <button
+            type="button"
+            className="control-action-btn clear-tree-btn"
+            onClick={onClearTree}
+            title="Clear all tree downline data and make it fresh"
+            aria-label="Clear tree data"
+            style={{ color: '#b91c1c' }}
+          >
+            <Trash2 size={15} />
+            <span>Clear Tree</span>
+          </button>
+        )}
       </div>
 
       {/* Breadcrumbs Trail */}

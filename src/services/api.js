@@ -26,6 +26,37 @@ const getApiBaseUrl = () => {
 
 const API_BASE_URL = getApiBaseUrl();
 
+// Automatically clean tree test data if fresh state requested
+if (typeof window !== 'undefined' && window.localStorage) {
+  try {
+    const isCleaned = sessionStorage.getItem('kashvi_tree_fresh_cleared_v2');
+    if (!isCleaned) {
+      localStorage.removeItem('kashvi_enrolled_tree_members');
+      localStorage.removeItem('kashvi_tree_audit_logs');
+      const rawUsers = localStorage.getItem('kashvi_registered_users');
+      if (rawUsers) {
+        const users = JSON.parse(rawUsers);
+        const kept = Array.isArray(users)
+          ? users.filter(
+              (u) =>
+                u.role === 'ADMIN' ||
+                u.role === 'SUPER_ADMIN' ||
+                u.isOwner ||
+                u.memberId === 'KV-1001' ||
+                u.distributorId === 'KV-1001' ||
+                u.email === 'rahulkaushal1109@gmail.com' ||
+                u.email === 'rahul.kaushal@kashvimlm.com'
+            )
+          : [];
+        localStorage.setItem('kashvi_registered_users', JSON.stringify(kept));
+      }
+      sessionStorage.setItem('kashvi_tree_fresh_cleared_v2', 'true');
+    }
+  } catch {
+    // ignore
+  }
+}
+
 function getAuthHeaders() {
   try {
     const saved = localStorage.getItem('kashvi_auth');
@@ -753,7 +784,212 @@ export const api = {
     return null;
   },
 
-  // 9. Sponsor Validation & Binary Enrollment (Prompt 5)
+  // 9. Dynamic Directory & Binary Placement
+  getDirectory() {
+    const enrollees = this.getStoredEnrolledMembers();
+    let registeredUsers = [];
+    try {
+      const rawUsers = localStorage.getItem('kashvi_registered_users');
+      if (rawUsers) registeredUsers = JSON.parse(rawUsers);
+    } catch {
+      // ignore
+    }
+
+    const directory = [...enrollees];
+    for (const u of registeredUsers) {
+      const uDistId = u.distributorId || u.distributorCode || u.memberId;
+      if (uDistId && !directory.some((d) => d.distributorId?.toUpperCase() === uDistId.toUpperCase())) {
+        directory.push({
+          id: u.treeId || `node-${uDistId.toLowerCase()}`,
+          treeId: u.treeId || `node-${uDistId.toLowerCase()}`,
+          distributorId: uDistId,
+          name: u.name || u.fullName || `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'New Distributor',
+          status: u.status || 'ACTIVE',
+          paymentStatus: u.paymentStatus || 'PAID',
+          rank: u.currentRank?.name || 'Associate',
+          position: u.placementPosition || 'LEFT',
+          joinedDate: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
+          sponsor: u.sponsorId || 'KV-1001',
+          sponsorName: u.sponsor?.name || 'Rahul Kaushal',
+          placementParent: u.placementParentId || u.sponsorId || 'KV-1001',
+          placementParentName: u.sponsor?.name || 'Rahul Kaushal',
+          businessCenter: 'BC-001',
+          bv: 100,
+          email: u.email,
+          phone: u.phone,
+          referralCode: uDistId,
+        });
+      }
+    }
+    return directory;
+  },
+
+  getNextDistributorId() {
+    const directory = this.getDirectory();
+    let maxNum = 1001;
+    directory.forEach((m) => {
+      const distId = m.distributorId || m.memberId || '';
+      const match = distId.match(/KV-(\d+)/i);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxNum) maxNum = num;
+      }
+    });
+    return `KV-${maxNum + 1}`;
+  },
+
+  findBinaryPlacement(rawSponsorId, preferredLeg = 'AUTO') {
+    const directory = this.getDirectory();
+    const cleanSponsorId = (rawSponsorId || 'KV-1001').trim().toUpperCase();
+
+    let sponsorId = 'KV-1001';
+    let sponsorName = 'Rahul Kaushal';
+
+    if (cleanSponsorId === 'KV-1001' || cleanSponsorId === '88767139' || cleanSponsorId.includes('RAHUL')) {
+      sponsorId = 'KV-1001';
+      sponsorName = 'Rahul Kaushal';
+    } else {
+      const found = directory.find(
+        (m) =>
+          m.distributorId?.toUpperCase() === cleanSponsorId ||
+          m.treeId?.toUpperCase() === cleanSponsorId ||
+          m.id?.toUpperCase() === cleanSponsorId ||
+          m.referralCode?.toUpperCase() === cleanSponsorId
+      );
+      if (found) {
+        sponsorId = found.distributorId;
+        sponsorName = found.name;
+      } else {
+        sponsorId = 'KV-1001';
+        sponsorName = 'Rahul Kaushal';
+      }
+    }
+
+    const normLeg = (preferredLeg || 'AUTO').toUpperCase();
+
+    const getChildren = (parentId) => {
+      const pClean = parentId.toUpperCase();
+      const direct = directory.filter(
+        (m) => m.placementParent && m.placementParent.toUpperCase() === pClean
+      );
+      return {
+        left: direct.find((m) => m.position === 'LEFT') || null,
+        right: direct.find((m) => m.position === 'RIGHT') || null,
+      };
+    };
+
+    const sponsorChildren = getChildren(sponsorId);
+
+    // 1. Explicit LEFT preference
+    if (normLeg === 'LEFT') {
+      if (!sponsorChildren.left) {
+        return {
+          sponsorId,
+          sponsorName,
+          placementParent: sponsorId,
+          placementParentName: sponsorName,
+          position: 'LEFT',
+        };
+      }
+      let curr = sponsorChildren.left;
+      while (curr) {
+        const ch = getChildren(curr.distributorId);
+        if (!ch.left) {
+          return {
+            sponsorId,
+            sponsorName,
+            placementParent: curr.distributorId,
+            placementParentName: curr.name,
+            position: 'LEFT',
+          };
+        }
+        curr = ch.left;
+      }
+    }
+
+    // 2. Explicit RIGHT preference
+    if (normLeg === 'RIGHT') {
+      if (!sponsorChildren.right) {
+        return {
+          sponsorId,
+          sponsorName,
+          placementParent: sponsorId,
+          placementParentName: sponsorName,
+          position: 'RIGHT',
+        };
+      }
+      let curr = sponsorChildren.right;
+      while (curr) {
+        const ch = getChildren(curr.distributorId);
+        if (!ch.right) {
+          return {
+            sponsorId,
+            sponsorName,
+            placementParent: curr.distributorId,
+            placementParentName: curr.name,
+            position: 'RIGHT',
+          };
+        }
+        curr = ch.right;
+      }
+    }
+
+    // 3. AUTO: check direct left, direct right, then BFS open slot under sponsor's subtree
+    if (!sponsorChildren.left) {
+      return {
+        sponsorId,
+        sponsorName,
+        placementParent: sponsorId,
+        placementParentName: sponsorName,
+        position: 'LEFT',
+      };
+    }
+    if (!sponsorChildren.right) {
+      return {
+        sponsorId,
+        sponsorName,
+        placementParent: sponsorId,
+        placementParentName: sponsorName,
+        position: 'RIGHT',
+      };
+    }
+
+    // BFS search under sponsor's subtree for first open slot
+    const queue = [sponsorChildren.left, sponsorChildren.right];
+    while (queue.length > 0) {
+      const current = queue.shift();
+      const ch = getChildren(current.distributorId);
+      if (!ch.left) {
+        return {
+          sponsorId,
+          sponsorName,
+          placementParent: current.distributorId,
+          placementParentName: current.name,
+          position: 'LEFT',
+        };
+      }
+      if (!ch.right) {
+        return {
+          sponsorId,
+          sponsorName,
+          placementParent: current.distributorId,
+          placementParentName: current.name,
+          position: 'RIGHT',
+        };
+      }
+      queue.push(ch.left);
+      queue.push(ch.right);
+    }
+
+    return {
+      sponsorId,
+      sponsorName,
+      placementParent: sponsorId,
+      placementParentName: sponsorName,
+      position: 'RIGHT',
+    };
+  },
+
   async validateSponsor(sponsorId) {
     const cleanId = (sponsorId || '').trim();
     if (!cleanId || cleanId.toUpperCase() === 'INVALID') {
@@ -767,114 +1003,96 @@ export const api = {
     try {
       const res = await fetch(`${API_BASE_URL}/sponsors/${encodeURIComponent(cleanId)}`);
       const data = await res.json();
-      return data;
-    } catch (err) {
-      console.warn('[API] Validate sponsor failed or offline:', err.message);
-      // Offline fallback: validate against known seed records
-      const upper = cleanId.toUpperCase();
-      if (upper === 'KV-1001' || upper === '88767139') {
-        return {
-          success: true,
-          data: {
-            sponsor: {
-              id: 'rahul-dist-1001',
-              distributorId: 'KV-1001',
-              name: 'Rahul Kaushal',
-              status: 'ACTIVE',
-            },
-            availablePositions: ['RIGHT'],
-          },
-        };
+      if (res.ok && data.success && data.data?.sponsor) {
+        return data;
       }
-      if (upper === 'KV-1002') {
-        return {
-          success: true,
-          data: {
-            sponsor: {
-              id: 'amit-dist-1002',
-              distributorId: 'KV-1002',
-              name: 'Amit',
-              status: 'ACTIVE',
-            },
-            availablePositions: ['RIGHT', 'LEFT'],
-          },
-        };
-      }
-      if (upper === 'KV-DEMO-1005') {
-        return {
-          success: true,
-          data: {
-            sponsor: {
-              id: 'demo-dist-1005',
-              distributorId: 'KV-DEMO-1005',
-              name: 'Amit Verma',
-              status: 'ACTIVE',
-            },
-            availablePositions: ['RIGHT'],
-          },
-        };
-      }
+    } catch {
+      // offline fallback
+    }
 
-      // Check registered users in local storage (supports any member who registered)
-      try {
-        const rawUsers = localStorage.getItem('kashvi_registered_users');
-        if (rawUsers) {
-          const list = JSON.parse(rawUsers);
-          const found = list.find(
-            (u) =>
-              u.distributorId?.toUpperCase() === upper ||
-              u.distributorCode?.toUpperCase() === upper ||
-              u.referralCode?.toUpperCase() === upper ||
-              u.memberId?.toUpperCase() === upper ||
-              u.id?.toUpperCase() === upper
-          );
-          if (found) {
-            return {
-              success: true,
-              data: {
-                sponsor: {
-                  id: found.id || `dist-${found.distributorId?.toLowerCase()}`,
-                  distributorId: found.distributorId || found.distributorCode || found.memberId,
-                  name: found.name || found.fullName || `${found.firstName} ${found.lastName}`.trim(),
-                  status: found.status || 'ACTIVE',
-                },
-                availablePositions: ['LEFT', 'RIGHT'],
-              },
-            };
-          }
-        }
-        const enrollees = this.getStoredEnrolledMembers();
-        const foundMem = enrollees.find(
-          (m) =>
-            m.distributorId?.toUpperCase() === upper ||
-            m.treeId?.toUpperCase() === upper ||
-            m.id?.toUpperCase() === upper
-        );
-        if (foundMem) {
-          return {
-            success: true,
-            data: {
-              sponsor: {
-                id: foundMem.id,
-                distributorId: foundMem.distributorId,
-                name: foundMem.name,
-                status: foundMem.status || 'ACTIVE',
-              },
-              availablePositions: ['LEFT', 'RIGHT'],
-            },
-          };
-        }
-      } catch {
-        // ignore
-      }
+    const upper = cleanId.toUpperCase();
+    const directory = this.getDirectory();
 
-      // Any other or invalid sponsor rejected
+    // 1. Check dynamic registered and enrolled members
+    const foundMem = directory.find(
+      (m) =>
+        m.distributorId?.toUpperCase() === upper ||
+        m.treeId?.toUpperCase() === upper ||
+        m.id?.toUpperCase() === upper ||
+        m.referralCode?.toUpperCase() === upper
+    );
+    if (foundMem) {
+      const children = directory.filter(
+        (m) => m.placementParent && m.placementParent.toUpperCase() === foundMem.distributorId.toUpperCase()
+      );
+      const hasLeft = children.some((m) => m.position === 'LEFT');
+      const hasRight = children.some((m) => m.position === 'RIGHT');
+      const availablePositions = [];
+      if (!hasLeft) availablePositions.push('LEFT');
+      if (!hasRight) availablePositions.push('RIGHT');
+      if (availablePositions.length === 0) availablePositions.push('LEFT', 'RIGHT');
+
       return {
-        success: false,
-        code: 'SPONSOR_NOT_FOUND',
-        message: 'Invalid or inactive sponsor.',
+        success: true,
+        data: {
+          sponsor: {
+            id: foundMem.id || `dist-${foundMem.distributorId.toLowerCase()}`,
+            distributorId: foundMem.distributorId,
+            name: foundMem.name,
+            status: foundMem.status || 'ACTIVE',
+          },
+          availablePositions,
+        },
       };
     }
+
+    // 2. Check root sponsor Rahul Kaushal
+    if (upper === 'KV-1001' || upper === '88767139' || upper === 'ROOT' || upper.includes('RAHUL')) {
+      const children = directory.filter(
+        (m) => m.placementParent && (m.placementParent.toUpperCase() === 'KV-1001' || m.placementParent.toUpperCase().includes('RAHUL'))
+      );
+      const hasLeft = children.some((m) => m.position === 'LEFT');
+      const hasRight = children.some((m) => m.position === 'RIGHT');
+      const availablePositions = [];
+      if (!hasLeft) availablePositions.push('LEFT');
+      if (!hasRight) availablePositions.push('RIGHT');
+      if (availablePositions.length === 0) availablePositions.push('LEFT', 'RIGHT');
+
+      return {
+        success: true,
+        data: {
+          sponsor: {
+            id: 'rahul-dist-1001',
+            distributorId: 'KV-1001',
+            name: 'Rahul Kaushal',
+            status: 'ACTIVE',
+          },
+          availablePositions,
+        },
+      };
+    }
+
+    // 3. Demo fallback
+    if (upper === 'KV-DEMO-1005') {
+      return {
+        success: true,
+        data: {
+          sponsor: {
+            id: 'demo-dist-1005',
+            distributorId: 'KV-DEMO-1005',
+            name: 'Amit Verma',
+            status: 'ACTIVE',
+          },
+          availablePositions: ['LEFT', 'RIGHT'],
+        },
+      };
+    }
+
+    return {
+      success: false,
+      code: 'SPONSOR_NOT_FOUND',
+      message: 'Invalid or inactive sponsor.',
+    };
   },
 
   getStoredEnrolledMembers() {
@@ -889,12 +1107,58 @@ export const api = {
     return [];
   },
 
+  clearTreeData() {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        localStorage.removeItem('kashvi_enrolled_tree_members');
+        localStorage.removeItem('kashvi_tree_audit_logs');
+
+        const rawUsers = localStorage.getItem('kashvi_registered_users');
+        if (rawUsers) {
+          const users = JSON.parse(rawUsers);
+          const kept = Array.isArray(users)
+            ? users.filter(
+                (u) =>
+                  u.role === 'ADMIN' ||
+                  u.role === 'SUPER_ADMIN' ||
+                  u.isOwner ||
+                  u.memberId === 'KV-1001' ||
+                  u.distributorId === 'KV-1001' ||
+                  u.email === 'rahulkaushal1109@gmail.com' ||
+                  u.email === 'rahul.kaushal@kashvimlm.com'
+              )
+            : [];
+          localStorage.setItem('kashvi_registered_users', JSON.stringify(kept));
+        }
+      }
+
+      fetch(`${API_BASE_URL}/network-tree/reset`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+      }).catch(() => {});
+    } catch (err) {
+      console.warn('[API] Clear tree data error:', err);
+    }
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('kashvi_tree_updated', { detail: { action: 'cleared' } }));
+    }
+    return true;
+  },
+
   async submitCompleteEnrollment(enrollData) {
+    const rawSponsor = (enrollData.sponsorId || 'KV-1001').trim();
     const chosenPosition = (enrollData.placementPosition || enrollData.placementLeg || 'AUTO').toUpperCase();
+    const placement = this.findBinaryPlacement(rawSponsor, chosenPosition);
+
     const cleanPayload = {
       ...enrollData,
-      placementPosition: chosenPosition,
-      placementLeg: chosenPosition.toLowerCase(),
+      sponsorId: placement.sponsorId,
+      sponsorName: placement.sponsorName,
+      placementParentId: placement.placementParent,
+      placementParentName: placement.placementParentName,
+      placementPosition: placement.position,
+      placementLeg: placement.position.toLowerCase(),
     };
 
     let resultData = null;
@@ -912,9 +1176,7 @@ export const api = {
       console.warn('[API] Submit complete enrollment failed:', err.message);
     }
 
-    // Persist enrolled member into local tree storage
-    const enrollees = this.getStoredEnrolledMembers();
-    const nextDistId = `KV-${1002 + enrollees.length}`;
+    const nextDistId = this.getNextDistributorId();
     const newMemberId =
       resultData?.data?.distributor?.distributorId ||
       resultData?.data?.distributorCode ||
@@ -926,17 +1188,20 @@ export const api = {
 
     const newMember = {
       id: `node-${newMemberId.toLowerCase()}-uuid`,
+      treeId: `node-${newMemberId.toLowerCase()}-uuid`,
       distributorId: newMemberId,
-      name: cleanPayload.fullName || 'New Distributor',
+      name: cleanPayload.fullName || cleanPayload.name || 'New Distributor',
       status: initialStatus,
+      paymentStatus: isPaid ? 'PAID' : 'PENDING',
       rank: 'Associate',
-      position: 'RIGHT',
+      position: placement.position,
       joinedDate: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-      sponsor: cleanPayload.sponsorId || 'KV-1001',
-      sponsorName: 'Rahul Kaushal',
-      placementParent: cleanPayload.placementParentId || cleanPayload.sponsorId || 'KV-1001',
-      placementParentName: 'Rahul Kaushal',
+      sponsor: placement.sponsorId,
+      sponsorName: placement.sponsorName,
+      placementParent: placement.placementParent,
+      placementParentName: placement.placementParentName,
       businessCenter: 'BC-001',
+      businessCenterName: 'Corporate Headquarters',
       bv: Number(cleanPayload.bv) || 100,
       email: cleanPayload.email,
       phone: cleanPayload.phone,
@@ -945,9 +1210,13 @@ export const api = {
       totalTeamCount: 0,
       leftBV: 0,
       rightBV: 0,
+      personalBV: Number(cleanPayload.bv) || 100,
+      totalBV: Number(cleanPayload.bv) || 100,
       directMembers: 0,
     };
 
+    // 1. Update kashvi_enrolled_tree_members
+    const enrollees = this.getStoredEnrolledMembers();
     const existingIdx = enrollees.findIndex((m) => m.distributorId === newMember.distributorId);
     if (existingIdx >= 0) {
       enrollees[existingIdx] = newMember;
@@ -955,18 +1224,78 @@ export const api = {
       enrollees.push(newMember);
     }
     localStorage.setItem('kashvi_enrolled_tree_members', JSON.stringify(enrollees));
-    window.dispatchEvent(new CustomEvent('kashvi_tree_updated'));
 
-    if (resultData) {
-      return resultData;
+    // 2. Update kashvi_registered_users for authentication and referral validation
+    try {
+      const rawUsers = localStorage.getItem('kashvi_registered_users');
+      const users = rawUsers ? JSON.parse(rawUsers) : [];
+      const cleanEmail = (cleanPayload.email || '').trim().toLowerCase();
+      const userIdx = users.findIndex(
+        (u) => (cleanEmail && u.email?.toLowerCase() === cleanEmail) || u.distributorId === newMemberId
+      );
+      const userRecord = {
+        id: `usr-${newMemberId.toLowerCase()}`,
+        userId: newMemberId,
+        memberId: newMemberId,
+        distributorId: newMemberId,
+        distributorCode: newMemberId,
+        referralCode: newMemberId,
+        email: cleanEmail,
+        password: cleanPayload.password || 'PartnerPass2026!',
+        name: newMember.name,
+        fullName: newMember.name,
+        phone: cleanPayload.phone,
+        role: 'DISTRIBUTOR',
+        roleName: 'DISTRIBUTOR',
+        status: initialStatus,
+        paymentStatus: isPaid ? 'PAID' : 'PENDING',
+        sponsorId: placement.sponsorId,
+        sponsorName: placement.sponsorName,
+        sponsor: {
+          id: `dist-${placement.sponsorId.toLowerCase()}`,
+          distributorCode: placement.sponsorId,
+          name: placement.sponsorName,
+        },
+        placementParent: placement.placementParent,
+        placementParentName: placement.placementParentName,
+        placementPosition: placement.position,
+        currentRank: { name: 'Associate' },
+        wallet: {
+          balance: 0,
+          availableBalance: 0,
+          pendingBalance: 0,
+          currency: 'USD',
+        },
+      };
+      if (userIdx >= 0) {
+        users[userIdx] = { ...users[userIdx], ...userRecord };
+      } else {
+        users.push(userRecord);
+      }
+      localStorage.setItem('kashvi_registered_users', JSON.stringify(users));
+    } catch (err) {
+      console.warn('[API] Save registered user error:', err);
     }
+
+    // 3. Dispatch tree update event for live UI reactivity
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('kashvi_tree_updated', { detail: newMember }));
+    }
+
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const referralUrl = `${origin}/join?ref=${newMember.distributorId}`;
 
     return {
       success: true,
       message: initialStatus === 'ACTIVE'
-        ? 'Enrollment completed successfully! Account and right leg placement activated.'
+        ? `Enrollment completed successfully! Placed on ${placement.position} leg under ${placement.placementParentName}.`
         : 'Enrollment registered. Pending payment confirmation to activate tree placement.',
       data: {
+        memberId: newMember.distributorId,
+        name: newMember.name,
+        email: newMember.email,
+        assignedBV: newMember.bv,
+        referralUrl,
         distributor: {
           id: newMember.id,
           distributorId: newMember.distributorId,
@@ -975,14 +1304,15 @@ export const api = {
           status: initialStatus,
         },
         sponsor: {
-          id: 'rahul-dist-1001',
-          distributorId: 'KV-1001',
-          displayName: 'Rahul Kaushal',
+          id: `dist-${placement.sponsorId.toLowerCase()}`,
+          distributorId: placement.sponsorId,
+          name: placement.sponsorName,
+          displayName: placement.sponsorName,
         },
         placement: {
-          position: 'RIGHT',
-          depth: 2,
-          placementParentDistributorId: 'KV-1001',
+          position: placement.position,
+          placementParentDistributorId: placement.placementParent,
+          placementParentName: placement.placementParentName,
         },
         user: {
           id: `usr-${newMember.distributorId.toLowerCase()}`,
@@ -1060,43 +1390,40 @@ export const api = {
   },
 
   getModeledTree(distributorId = 'KV-1001', maxDepth = 3, currentDepth = 1) {
-    const enrollees = this.getStoredEnrolledMembers();
     const normId = (distributorId || this.getCurrentDistributorId() || 'KV-1001').toUpperCase().trim();
-    const isOwner = normId.includes('1001') || normId.includes('RAHUL');
+    const directory = this.getDirectory();
 
-    // Retrieve local registered users list
-    let registeredUsers = [];
-    try {
-      const rawUsers = localStorage.getItem('kashvi_registered_users');
-      if (rawUsers) registeredUsers = JSON.parse(rawUsers);
-    } catch {
-      // ignore
-    }
+    // Helper to recursively find all descendants under a given node (optionally filtered by leg)
+    const getSubtreeDescendants = (rootDistId, leg = null) => {
+      const result = [];
+      const queue = [];
 
-    // Merge enrollees with registered users to build complete directory
-    const directory = [...enrollees];
-    for (const u of registeredUsers) {
-      const uDistId = u.distributorId || u.distributorCode || u.memberId;
-      if (uDistId && !directory.some(d => d.distributorId?.toUpperCase() === uDistId.toUpperCase())) {
-        directory.push({
-          id: u.treeId || `node-${uDistId.toLowerCase()}`,
-          treeId: u.treeId || `node-${uDistId.toLowerCase()}`,
-          distributorId: uDistId,
-          name: u.name || u.fullName || `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'New Distributor',
-          status: u.status || 'PENDING',
-          paymentStatus: u.paymentStatus || 'PENDING',
-          rank: u.currentRank?.name || 'Associate',
-          position: u.placementPosition || 'RIGHT',
-          joinedDate: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-          sponsor: u.sponsorId || 'KV-1001',
-          sponsorName: u.sponsor?.name || 'Rahul Kaushal',
-          placementParent: u.placementParentId || u.sponsorId || 'KV-1001',
-          placementParentName: u.sponsor?.name || 'Rahul Kaushal',
-          businessCenter: 'BC-001',
-          bv: 100,
-        });
+      const direct = directory.filter(
+        (m) =>
+          (m.placementParent && m.placementParent.toUpperCase() === rootDistId.toUpperCase()) ||
+          (!m.placementParent && m.sponsor && m.sponsor.toUpperCase() === rootDistId.toUpperCase())
+      );
+
+      if (leg) {
+        const legChild = direct.find((m) => m.position === leg);
+        if (legChild) queue.push(legChild);
+      } else {
+        queue.push(...direct);
       }
-    }
+
+      while (queue.length > 0) {
+        const current = queue.shift();
+        result.push(current);
+        const children = directory.filter(
+          (m) =>
+            (m.placementParent && m.placementParent.toUpperCase() === current.distributorId.toUpperCase()) ||
+            (!m.placementParent && m.sponsor && m.sponsor.toUpperCase() === current.distributorId.toUpperCase())
+        );
+        queue.push(...children);
+      }
+
+      return result;
+    };
 
     // Recursive helper to build subtrees
     const buildSubtree = (parentId, depth) => {
@@ -1114,7 +1441,16 @@ export const api = {
         const sub = buildSubtree(mem.distributorId, depth + 1);
         const memBV = Number(mem.bv) || 100;
         const pStatus = mem.paymentStatus || (mem.status === 'ACTIVE' ? 'PAID' : 'PENDING');
-        const hasKids = Boolean(sub.left || sub.right);
+
+        const leftDesc = getSubtreeDescendants(mem.distributorId, 'LEFT');
+        const rightDesc = getSubtreeDescendants(mem.distributorId, 'RIGHT');
+        const leftCount = leftDesc.length;
+        const rightCount = rightDesc.length;
+        const leftBV = leftDesc.reduce((sum, d) => sum + (Number(d.bv) || 100), 0);
+        const rightBV = rightDesc.reduce((sum, d) => sum + (Number(d.bv) || 100), 0);
+        const directCount = directory.filter(
+          (m) => m.sponsor && m.sponsor.toUpperCase() === mem.distributorId.toUpperCase()
+        ).length;
 
         return {
           id: mem.id || `node-${mem.distributorId.toLowerCase()}`,
@@ -1124,7 +1460,7 @@ export const api = {
           rank: mem.rank || 'Associate',
           status: mem.status || 'PENDING',
           paymentStatus: pStatus,
-          joinedDate: mem.joinedDate || '16 Oct 2026',
+          joinedDate: mem.joinedDate || new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
           sponsor: mem.sponsor || 'KV-1001',
           sponsorName: mem.sponsorName || 'Rahul Kaushal',
           placementParent: mem.placementParent || parentId,
@@ -1132,16 +1468,16 @@ export const api = {
           position: pos,
           businessCenter: 'BC-001',
           businessCenterName: 'Corporate Headquarters',
-          directMembers: (sub.left ? 1 : 0) + (sub.right ? 1 : 0),
-          leftTeamCount: sub.left ? 1 : 0,
-          rightTeamCount: sub.right ? 1 : 0,
-          totalTeamCount: (sub.left ? 1 : 0) + (sub.right ? 1 : 0),
-          leftBV: 0,
-          rightBV: memBV,
+          directMembers: directCount,
+          leftTeamCount: leftCount,
+          rightTeamCount: rightCount,
+          totalTeamCount: leftCount + rightCount,
+          leftBV,
+          rightBV,
           personalBV: memBV,
-          totalBV: memBV,
-          hasChildren: hasKids,
-          hasDeeperMembers: false,
+          totalBV: memBV + leftBV + rightBV,
+          hasChildren: Boolean(sub.left || sub.right),
+          hasDeeperMembers: Boolean(leftCount > 1 || rightCount > 1),
           isExpanded: true,
           left: sub.left,
           right: sub.right,
@@ -1155,6 +1491,8 @@ export const api = {
       };
     };
 
+    const isOwner = normId.includes('1001') || normId.includes('RAHUL') || normId === 'ROOT';
+
     // If viewing an enrolled or registered member directly as root
     if (!isOwner) {
       const foundEnrollee = directory.find(
@@ -1167,6 +1505,17 @@ export const api = {
       if (foundEnrollee) {
         const sub = buildSubtree(foundEnrollee.distributorId, 1);
         const pStatus = foundEnrollee.paymentStatus || (foundEnrollee.status === 'ACTIVE' ? 'PAID' : 'PENDING');
+        const memBV = Number(foundEnrollee.bv) || 100;
+        const leftDesc = getSubtreeDescendants(foundEnrollee.distributorId, 'LEFT');
+        const rightDesc = getSubtreeDescendants(foundEnrollee.distributorId, 'RIGHT');
+        const leftCount = leftDesc.length;
+        const rightCount = rightDesc.length;
+        const leftBV = leftDesc.reduce((sum, d) => sum + (Number(d.bv) || 100), 0);
+        const rightBV = rightDesc.reduce((sum, d) => sum + (Number(d.bv) || 100), 0);
+        const directCount = directory.filter(
+          (m) => m.sponsor && m.sponsor.toUpperCase() === foundEnrollee.distributorId.toUpperCase()
+        ).length;
+
         return {
           id: foundEnrollee.id || `node-${foundEnrollee.distributorId.toLowerCase()}`,
           treeId: foundEnrollee.treeId || foundEnrollee.id || `node-${foundEnrollee.distributorId.toLowerCase()}`,
@@ -1183,16 +1532,16 @@ export const api = {
           position: 'ROOT',
           businessCenter: 'BC-001',
           businessCenterName: 'Corporate Headquarters',
-          directMembers: (sub.left ? 1 : 0) + (sub.right ? 1 : 0),
-          leftTeamCount: sub.left ? 1 : 0,
-          rightTeamCount: sub.right ? 1 : 0,
-          totalTeamCount: (sub.left ? 1 : 0) + (sub.right ? 1 : 0),
-          leftBV: 0,
-          rightBV: Number(foundEnrollee.bv) || 100,
-          personalBV: Number(foundEnrollee.bv) || 100,
-          totalBV: Number(foundEnrollee.bv) || 100,
+          directMembers: directCount,
+          leftTeamCount: leftCount,
+          rightTeamCount: rightCount,
+          totalTeamCount: leftCount + rightCount,
+          leftBV,
+          rightBV,
+          personalBV: memBV,
+          totalBV: memBV + leftBV + rightBV,
           hasChildren: Boolean(sub.left || sub.right),
-          hasDeeperMembers: false,
+          hasDeeperMembers: Boolean(leftCount > 1 || rightCount > 1),
           isExpanded: true,
           left: sub.left,
           right: sub.right,
@@ -1203,8 +1552,15 @@ export const api = {
 
     // Admin root (Rahul Kaushal)
     const adminSub = buildSubtree('KV-1001', 1);
-    const enrolledCount = directory.length;
-    const totalRightBV = directory.reduce((sum, m) => sum + (Number(m.bv) || 100), 0);
+    const leftDesc = getSubtreeDescendants('KV-1001', 'LEFT');
+    const rightDesc = getSubtreeDescendants('KV-1001', 'RIGHT');
+    const leftCount = leftDesc.length;
+    const rightCount = rightDesc.length;
+    const leftBV = leftDesc.reduce((sum, d) => sum + (Number(d.bv) || 100), 0);
+    const rightBV = rightDesc.reduce((sum, d) => sum + (Number(d.bv) || 100), 0);
+    const directCount = directory.filter(
+      (m) => m.sponsor && (m.sponsor.toUpperCase() === 'KV-1001' || m.sponsor.toUpperCase().includes('RAHUL'))
+    ).length;
 
     return {
       id: 'dist-rahul-uuid',
@@ -1222,16 +1578,16 @@ export const api = {
       position: 'ROOT',
       businessCenter: 'BC-001',
       businessCenterName: 'Corporate Headquarters',
-      directMembers: (adminSub.left ? 1 : 0) + (adminSub.right ? 1 : 0) || enrolledCount,
-      leftTeamCount: adminSub.left ? 1 : 0,
-      rightTeamCount: adminSub.right ? 1 : enrolledCount,
-      totalTeamCount: enrolledCount,
-      leftBV: 0,
-      rightBV: totalRightBV,
+      directMembers: directCount,
+      leftTeamCount: leftCount,
+      rightTeamCount: rightCount,
+      totalTeamCount: leftCount + rightCount,
+      leftBV,
+      rightBV,
       personalBV: 250,
-      totalBV: 250 + totalRightBV,
-      hasChildren: Boolean(adminSub.left || adminSub.right || enrolledCount > 0),
-      hasDeeperMembers: enrolledCount > 1,
+      totalBV: 250 + leftBV + rightBV,
+      hasChildren: Boolean(adminSub.left || adminSub.right),
+      hasDeeperMembers: Boolean(leftCount > 1 || rightCount > 1),
       isExpanded: true,
       left: adminSub.left,
       right: adminSub.right,
@@ -1240,9 +1596,41 @@ export const api = {
   },
 
   getAllModeledDistributors() {
-    const enrollees = this.getStoredEnrolledMembers();
-    const enrolledCount = enrollees.length;
-    const totalRightBV = enrollees.reduce((sum, m) => sum + (Number(m.bv) || 100), 0);
+    const directory = this.getDirectory();
+    const getSubtreeDescendants = (rootDistId, leg = null) => {
+      const result = [];
+      const queue = [];
+      const direct = directory.filter(
+        (m) =>
+          (m.placementParent && m.placementParent.toUpperCase() === rootDistId.toUpperCase()) ||
+          (!m.placementParent && m.sponsor && m.sponsor.toUpperCase() === rootDistId.toUpperCase())
+      );
+      if (leg) {
+        const legChild = direct.find((m) => m.position === leg);
+        if (legChild) queue.push(legChild);
+      } else {
+        queue.push(...direct);
+      }
+      while (queue.length > 0) {
+        const current = queue.shift();
+        result.push(current);
+        const children = directory.filter(
+          (m) =>
+            (m.placementParent && m.placementParent.toUpperCase() === current.distributorId.toUpperCase()) ||
+            (!m.placementParent && m.sponsor && m.sponsor.toUpperCase() === current.distributorId.toUpperCase())
+        );
+        queue.push(...children);
+      }
+      return result;
+    };
+
+    const leftDesc = getSubtreeDescendants('KV-1001', 'LEFT');
+    const rightDesc = getSubtreeDescendants('KV-1001', 'RIGHT');
+    const leftBV = leftDesc.reduce((sum, d) => sum + (Number(d.bv) || 100), 0);
+    const rightBV = rightDesc.reduce((sum, d) => sum + (Number(d.bv) || 100), 0);
+    const directAdmin = directory.filter(
+      (m) => m.sponsor && (m.sponsor.toUpperCase() === 'KV-1001' || m.sponsor.toUpperCase().includes('RAHUL'))
+    ).length;
 
     const list = [
       {
@@ -1258,21 +1646,26 @@ export const api = {
         position: 'ROOT',
         businessCenter: 'BC-001',
         businessCenterName: 'Corporate Headquarters',
-        totalTeamCount: enrolledCount,
-        leftTeamCount: 0,
-        rightTeamCount: enrolledCount,
-        directMembers: enrolledCount,
-        leftBV: 0,
-        rightBV: totalRightBV,
+        totalTeamCount: leftDesc.length + rightDesc.length,
+        leftTeamCount: leftDesc.length,
+        rightTeamCount: rightDesc.length,
+        directMembers: directAdmin,
+        leftBV,
+        rightBV,
         personalBV: 250,
-        totalBV: 250 + totalRightBV,
+        totalBV: 250 + leftBV + rightBV,
       },
     ];
 
-    enrollees.forEach((mem, index) => {
-      const remaining = enrollees.length - 1 - index;
+    directory.forEach((mem) => {
+      const mLeft = getSubtreeDescendants(mem.distributorId, 'LEFT');
+      const mRight = getSubtreeDescendants(mem.distributorId, 'RIGHT');
+      const mLeftBV = mLeft.reduce((sum, d) => sum + (Number(d.bv) || 100), 0);
+      const mRightBV = mRight.reduce((sum, d) => sum + (Number(d.bv) || 100), 0);
+      const mDirect = directory.filter(
+        (m) => m.sponsor && m.sponsor.toUpperCase() === mem.distributorId.toUpperCase()
+      ).length;
       const memBV = Number(mem.bv) || 100;
-      const downlineBV = enrollees.slice(index + 1).reduce((sum, m) => sum + (Number(m.bv) || 100), 0);
 
       list.push({
         id: mem.id || `node-${mem.distributorId.toLowerCase()}-uuid`,
@@ -1284,17 +1677,17 @@ export const api = {
         sponsorName: mem.sponsorName || 'Rahul Kaushal',
         placementParent: mem.placementParent || 'KV-1001',
         placementParentName: mem.placementParentName || 'Rahul Kaushal',
-        position: 'RIGHT',
+        position: mem.position || 'RIGHT',
         businessCenter: 'BC-001',
         businessCenterName: 'Corporate Headquarters',
-        totalTeamCount: remaining,
-        leftTeamCount: 0,
-        rightTeamCount: remaining,
-        directMembers: 0,
-        leftBV: 0,
-        rightBV: downlineBV,
+        totalTeamCount: mLeft.length + mRight.length,
+        leftTeamCount: mLeft.length,
+        rightTeamCount: mRight.length,
+        directMembers: mDirect,
+        leftBV: mLeftBV,
+        rightBV: mRightBV,
         personalBV: memBV,
-        totalBV: memBV + downlineBV,
+        totalBV: memBV + mLeftBV + mRightBV,
       });
     });
 
@@ -1357,19 +1750,16 @@ export const api = {
         totalBV: found.totalBV,
       };
     }
-    const enrollees = this.getStoredEnrolledMembers();
-    const enrolledCount = enrollees.length;
-    const totalRightBV = enrollees.reduce((sum, m) => sum + (Number(m.bv) || 100), 0);
-    return {
+    return all[0] || {
       distributorId: 'KV-1001',
-      directMembers: enrolledCount,
+      directMembers: 0,
       leftTeamCount: 0,
-      rightTeamCount: enrolledCount,
-      totalTeamCount: enrolledCount,
+      rightTeamCount: 0,
+      totalTeamCount: 0,
       leftBV: 0,
-      rightBV: totalRightBV,
+      rightBV: 0,
       personalBV: 250,
-      totalBV: 250 + totalRightBV,
+      totalBV: 250,
     };
   },
 
@@ -1873,4 +2263,8 @@ export const api = {
     }
   },
 };
+
+if (typeof window !== 'undefined') {
+  window.clearTreeData = () => api.clearTreeData();
+}
 

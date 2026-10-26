@@ -2150,6 +2150,37 @@
   border-color: #f59e0b;
 }
 
+.btn-tree-clear-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fca5a5;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-tree-clear-action:hover {
+  background: #fee2e2;
+  border-color: #ef4444;
+  color: #991b1b;
+}
+
+.control-action-btn.clear-tree-btn {
+  color: #b91c1c;
+}
+
+.control-action-btn.clear-tree-btn:hover {
+  background: #fef2f2;
+  border-color: #fca5a5;
+  color: #991b1b;
+}
+
 /* Audit Modal Backdrop */
 .audit-modal-backdrop {
   position: fixed;

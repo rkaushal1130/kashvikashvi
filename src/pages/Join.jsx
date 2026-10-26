@@ -19,6 +19,7 @@ import {
   EyeOff,
   RefreshCw,
   Search,
+  Network,
 } from 'lucide-react';
 import PageContainer from '../components/PageContainer';
 import { api } from '../services/api';
@@ -54,7 +55,10 @@ function Join() {
 
   // Form State
   const [showPassword, setShowPassword] = useState(false);
-  const [selectedPosition, setSelectedPosition] = useState('LEFT');
+  const [selectedPosition, setSelectedPosition] = useState(() => {
+    const urlLeg = (searchParams.get('leg') || searchParams.get('position') || '').toUpperCase();
+    return urlLeg === 'LEFT' || urlLeg === 'RIGHT' ? urlLeg : 'LEFT';
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
   const [enrollmentSuccess, setEnrollmentSuccess] = useState(null);
@@ -106,8 +110,11 @@ function Join() {
         setErrorMessage('');
 
         // Pre-select first available placement position (LEFT or RIGHT)
+        const urlLeg = (searchParams.get('leg') || searchParams.get('position') || '').toUpperCase();
         const avail = res.data.availablePositions || [];
-        if (avail.length === 1) {
+        if (urlLeg && (urlLeg === 'LEFT' || urlLeg === 'RIGHT')) {
+          setSelectedPosition(urlLeg);
+        } else if (avail.length === 1) {
           setSelectedPosition(avail[0]);
         } else if (avail.includes(selectedPosition)) {
           // Keep current selection
@@ -237,18 +244,21 @@ function Join() {
       const res = await api.submitCompleteEnrollment(payload);
       if (res && res.success && res.data) {
         const d = res.data;
-        // The enrollment service returns a flat record ({ memberId, name, ... }).
         const newDistributorId = d.memberId || d.distributor?.distributorId;
+
+        const placementText = d.placement?.position
+          ? `${d.placement.position} Leg (Under ${d.placement.placementParentName || d.placement.placementParentDistributorId || 'Sponsor'})`
+          : (typeof d.placement === 'string' ? d.placement : `${selectedPosition} Leg`);
 
         const result = {
           memberId: newDistributorId,
           name: d.name || d.distributor?.displayName || formData.fullName,
           email: d.email || d.user?.email || formData.email,
-          sponsorId: d.sponsorId || sponsorData.sponsor.distributorId,
-          sponsorName: d.sponsorName || sponsorData.sponsor.name,
-          placement: d.placement || `${selectedPosition} Leg`,
+          sponsorId: d.sponsor?.distributorId || d.sponsorId || sponsorData?.sponsor?.distributorId || 'KV-1001',
+          sponsorName: d.sponsor?.displayName || d.sponsor?.name || d.sponsorName || sponsorData?.sponsor?.name || 'Rahul Kaushal',
+          placement: placementText,
           assignedBV: d.assignedBV ?? kitBV,
-          referralUrl: `${window.location.origin}/join?ref=${newDistributorId}`,
+          referralUrl: d.referralUrl || `${window.location.origin}/join?ref=${newDistributorId}`,
         };
 
         setEnrollmentSuccess(result);
@@ -365,6 +375,15 @@ function Join() {
             <button
               type="button"
               className="btn-primary-join"
+              onClick={() => navigate(`/network-tree?member=${encodeURIComponent(enrollmentSuccess.memberId)}`)}
+            >
+              <Network size={18} />
+              View in Network Tree
+            </button>
+            <button
+              type="button"
+              className="btn-secondary-link"
+              style={{ background: '#f8fafc', border: '1px solid #cbd5e1', color: '#0f172a', display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '12px 20px', borderRadius: '10px', fontWeight: 600, cursor: 'pointer' }}
               onClick={() => navigate('/profile')}
             >
               Go to Distributor Dashboard

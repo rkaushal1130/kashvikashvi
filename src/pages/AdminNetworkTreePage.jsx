@@ -878,6 +878,14 @@ export default function AdminNetworkTreePage() {
           }}
           onResetZoom={() => setZoomLevel(1)}
           onResetToRoot={handleResetToRoot}
+          onClearTree={async () => {
+            if (window.confirm('Clear all enrolled downline data and reset the binary tree to fresh state?')) {
+              api.clearTreeData();
+              setCurrentRootId('KV-1001');
+              setBreadcrumbs([{ id: 'KV-1001', name: 'Rahul Kaushal (Root)' }]);
+              await fetchAdminTree('KV-1001', depth);
+            }
+          }}
           onCenterTree={handleCenterTree}
           onExpand={() => setDepth((d) => Math.min(5, d + 1))}
           onCollapse={() => setDepth((d) => Math.max(2, d - 1))}

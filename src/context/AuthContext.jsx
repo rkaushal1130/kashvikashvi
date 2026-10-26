@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { authApi } from '../api/authApi.js';
 import { apiClient } from '../api/apiClient.js';
+import { api } from '../services/api.js';
 
 const AuthContext = createContext(null);
 
@@ -336,11 +337,15 @@ export function AuthProvider({ children }) {
         const parts = fullNameStr ? fullNameStr.split(/\s+/) : [];
         const firstName = parts[0] || 'Distributor';
         const lastName = parts.length > 1 ? parts.slice(1).join(' ') : 'Member';
-        const randomCode = `DST-${Math.floor(10000 + Math.random() * 90000)}`;
+
+        const chosenPosition = (registrationData.placementPosition || registrationData.placementLeg || 'AUTO').toUpperCase();
+        const rawSponsor = registrationData.sponsorId || registrationData.referralCode || 'KV-1001';
+        const placement = api.findBinaryPlacement(rawSponsor, chosenPosition);
+        const nextDistId = api.getNextDistributorId();
 
         const fallbackUser = {
           id: `usr-reg-${Date.now()}`,
-          userId: randomCode,
+          userId: nextDistId,
           email: registrationData.email?.trim().toLowerCase(),
           fullName: fullNameStr || `${firstName} ${lastName}`.trim(),
           name: fullNameStr || `${firstName} ${lastName}`.trim(),
@@ -349,29 +354,33 @@ export function AuthProvider({ children }) {
           phone: registrationData.phone || undefined,
           role: 'DISTRIBUTOR',
           roleName: 'DISTRIBUTOR',
-          status: 'PENDING',
-          referralCode: randomCode,
-          distributorCode: randomCode,
-          memberId: randomCode,
-          distributorId: randomCode,
-          sponsorId: registrationData.sponsorId || registrationData.referralCode || 'KV-1001',
+          status: 'ACTIVE',
+          paymentStatus: 'PAID',
+          referralCode: nextDistId,
+          distributorCode: nextDistId,
+          memberId: nextDistId,
+          distributorId: nextDistId,
+          sponsorId: placement.sponsorId,
           sponsor: {
-            id: 'sponsor-rahul-id',
-            distributorCode: registrationData.sponsorId || registrationData.referralCode || 'KV-1001',
-            name: 'Rahul Kaushal',
+            id: `sponsor-${placement.sponsorId.toLowerCase()}`,
+            distributorCode: placement.sponsorId,
+            name: placement.sponsorName,
           },
+          placementParent: placement.placementParent,
+          placementParentName: placement.placementParentName,
+          placementPosition: placement.position,
           distributorProfile: {
             id: `prof-reg-${Date.now()}`,
-            distributorCode: randomCode,
+            distributorCode: nextDistId,
             firstName,
             lastName,
             displayName: fullNameStr,
-            status: 'PENDING',
-            activatedAt: null,
-            sponsorId: registrationData.sponsorId || 'KV-1001',
-            currentRank: { name: 'Distributor' },
-            lifetimePV: 0,
-            lifetimeGV: 0,
+            status: 'ACTIVE',
+            activatedAt: new Date().toISOString(),
+            sponsorId: placement.sponsorId,
+            currentRank: { name: 'Associate' },
+            lifetimePV: 100,
+            lifetimeGV: 100,
           },
           wallet: {
             balance: 0,
@@ -440,20 +449,25 @@ export function AuthProvider({ children }) {
           const rawTree = localStorage.getItem('kashvi_enrolled_tree_members');
           const treeList = rawTree ? JSON.parse(rawTree) : [];
           const existingIdx = treeList.findIndex((m) => m.distributorId === memberDistId);
+
+          const rawSponsor = user.sponsorId || registrationData.sponsorId || registrationData.referralCode || 'KV-1001';
+          const chosenPos = user.placementPosition || registrationData.placementPosition || 'AUTO';
+          const dynamicPlacement = api.findBinaryPlacement(rawSponsor, chosenPos);
+
           const treeEntry = {
             id: treeNodeId,
             treeId: treeNodeId,
             distributorId: memberDistId,
             name: user.name || user.fullName || `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'New Distributor',
-            status: user.status || 'PENDING',
-            paymentStatus: user.paymentStatus || 'PENDING',
+            status: user.status || 'ACTIVE',
+            paymentStatus: user.paymentStatus || 'PAID',
             rank: user.currentRank?.name || 'Associate',
-            position: user.placementPosition || registrationData.placementPosition || 'RIGHT',
+            position: user.placementPosition || dynamicPlacement.position,
             joinedDate: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-            sponsor: user.sponsorId || registrationData.sponsorId || 'KV-1001',
-            sponsorName: user.sponsor?.name || 'Rahul Kaushal',
-            placementParent: user.placementParentId || user.sponsorId || 'KV-1001',
-            placementParentName: user.sponsor?.name || 'Rahul Kaushal',
+            sponsor: user.sponsorId || dynamicPlacement.sponsorId,
+            sponsorName: user.sponsor?.name || dynamicPlacement.sponsorName,
+            placementParent: user.placementParent || dynamicPlacement.placementParent,
+            placementParentName: user.placementParentName || dynamicPlacement.placementParentName,
             businessCenter: 'BC-001',
             bv: 100,
           };

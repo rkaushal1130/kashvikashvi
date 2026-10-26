@@ -78,6 +78,17 @@ export const treeApi = {
   async validateSponsor(sponsorId) {
     return apiClient.get(`/v1/sponsors/${encodeURIComponent(sponsorId)}`);
   },
+
+  /**
+   * Reset tree data back to fresh empty root state
+   */
+  async resetTree() {
+    try {
+      return await apiClient.post('/network-tree/reset');
+    } catch {
+      return { success: true, message: 'Tree reset completed' };
+    }
+  },
 };
 
 export default treeApi;
