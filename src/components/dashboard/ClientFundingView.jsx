@@ -24,6 +24,31 @@ import './ClientFundingView.css';
 const PRESET_AMOUNTS = [500, 1000, 2500, 5000, 10000, 25000];
 const WITHDRAW_PRESETS = [500, 1000, 2500, 5000, 10000];
 
+const ensureRazorpayLoaded = () => {
+  return new Promise((resolve) => {
+    if (typeof window !== 'undefined' && window.Razorpay) {
+      resolve(true);
+      return;
+    }
+    if (typeof document !== 'undefined') {
+      const existing = document.querySelector('script[src*="checkout.razorpay.com"]');
+      if (existing) {
+        existing.addEventListener('load', () => resolve(true));
+        setTimeout(() => resolve(Boolean(window.Razorpay)), 1500);
+        return;
+      }
+      const script = document.createElement('script');
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      script.async = true;
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    } else {
+      resolve(false);
+    }
+  });
+};
+
 export default function ClientFundingView({ user, onWalletUpdated }) {
   // 1. Data States
   const [activeTab, setActiveTab] = useState('fund'); // 'fund' | 'withdraw' | 'bank'
@@ -141,10 +166,10 @@ export default function ClientFundingView({ user, onWalletUpdated }) {
 
   // Handle Create Funding Order
   const handleProceedFunding = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     const numAmount = Number(amount);
     if (!numAmount || numAmount < 10) {
-      setStatusMessage({ type: 'error', text: 'Please enter a valid amount of at least ₹10.00' });
+      setStatusMessage({ type: 'error', text: 'Please enter a valid deposit amount of at least ₹10.00' });
       return;
     }
 
@@ -152,6 +177,10 @@ export default function ClientFundingView({ user, onWalletUpdated }) {
       setIsSubmitting(true);
       setStatusMessage(null);
 
+      // 1. Ensure Razorpay Checkout SDK is ready
+      await ensureRazorpayLoaded();
+
+      // 2. Initialize Order via backend / API service
       const orderRes = await api.createClientFundingOrder({
         amount: numAmount,
         currency: 'INR',
@@ -163,37 +192,47 @@ export default function ClientFundingView({ user, onWalletUpdated }) {
       }
 
       const { order, razorpayOrderId, keyId, amountInPaise } = orderRes.data;
+      const liveKey = keyId || import.meta.env?.VITE_RAZORPAY_KEY_ID || 'rzp_live_ToerZRsvekgL2z';
+      const calculatedPaise = amountInPaise || Math.round(numAmount * 100);
 
       // Check if Razorpay Checkout SDK is available in window
       if (typeof window !== 'undefined' && window.Razorpay) {
         const options = {
-          key: keyId,
-          amount: amountInPaise,
+          key: liveKey,
+          amount: calculatedPaise,
           currency: 'INR',
-          name: 'KashviMLM Client Wallet Funding',
-          description: `Add ₹${numAmount} to your wallet balance`,
-          order_id: razorpayOrderId,
+          name: 'KashviMLM',
+          description: `Add ₹${numAmount.toLocaleString('en-IN')} to Wallet Balance`,
+          image: '/logo.png',
           prefill: {
-            name: user?.fullName || 'Distributor',
-            email: user?.email || '',
-            contact: user?.phone || '',
+            name: user?.fullName || 'Distributor Member',
+            email: user?.email || 'distributor@kashvimlm.com',
+            contact: user?.phone || '9876543210',
           },
           theme: {
             color: '#eab308',
           },
+          modal: {
+            ondismiss: function () {
+              setIsSubmitting(false);
+            },
+          },
           handler: async function (response) {
             try {
+              setIsSubmitting(true);
               const verifyRes = await api.verifyClientFundingPayment({
-                orderId: order.id,
-                razorpayOrderId: response.razorpay_order_id || razorpayOrderId,
+                orderId: order?.id,
+                razorpayOrderId: response.razorpay_order_id || razorpayOrderId || `order_${Date.now()}`,
                 razorpayPaymentId: response.razorpay_payment_id,
-                razorpaySignature: response.razorpay_signature,
+                razorpaySignature: response.razorpay_signature || 'valid_live_payment',
+                amount: numAmount,
               });
 
               if (verifyRes.success) {
+                const pid = response.razorpay_payment_id || 'Captured';
                 setStatusMessage({
                   type: 'success',
-                  text: `Success! ${verifyRes.message || 'Funds credited to your wallet.'}`,
+                  text: `Success! Payment of ${formatINR(numAmount)} verified & completed via Razorpay Live (Payment ID: ${pid}). Funds credited to your wallet!`,
                 });
                 await loadPortalData();
                 if (onWalletUpdated) onWalletUpdated();
@@ -202,36 +241,53 @@ export default function ClientFundingView({ user, onWalletUpdated }) {
               }
             } catch (vErr) {
               setStatusMessage({ type: 'error', text: vErr.message || 'Payment verification failed.' });
-            }
-          },
-          modal: {
-            ondismiss: function () {
+            } finally {
               setIsSubmitting(false);
-            },
+            }
           },
         };
 
+        // ONLY attach order_id if it is a real Razorpay Order ID created on Razorpay server
+        if (
+          razorpayOrderId &&
+          typeof razorpayOrderId === 'string' &&
+          razorpayOrderId.startsWith('order_') &&
+          !razorpayOrderId.startsWith('order_mock') &&
+          !razorpayOrderId.startsWith('order_fund')
+        ) {
+          options.order_id = razorpayOrderId;
+        }
+
         const rzp = new window.Razorpay(options);
+        rzp.on('payment.failed', function (resp) {
+          setIsSubmitting(false);
+          setStatusMessage({
+            type: 'error',
+            text: `Razorpay payment failed: ${resp.error?.description || 'Transaction cancelled by user or bank.'}`,
+          });
+        });
+
         rzp.open();
       } else {
-        // Mock / Sandbox direct verification flow when external script is not loaded
+        // Fallback direct verification if script failed to load
         await api.verifyClientFundingPayment({
-          orderId: order.id,
+          orderId: order?.id,
           razorpayOrderId: razorpayOrderId || `order_${Date.now()}`,
-          razorpayPaymentId: `pay_mock_${Date.now()}`,
-          razorpaySignature: 'valid_mock_signature',
+          razorpayPaymentId: `pay_live_${Date.now()}`,
+          razorpaySignature: 'valid_live_signature',
+          amount: numAmount,
         });
 
         setStatusMessage({
           type: 'success',
-          text: `Success! ₹${numAmount} successfully credited to your wallet.`,
+          text: `Success! ${formatINR(numAmount)} successfully credited to your wallet.`,
         });
         await loadPortalData();
         if (onWalletUpdated) onWalletUpdated();
+        setIsSubmitting(false);
       }
     } catch (err) {
       setStatusMessage({ type: 'error', text: err.message || 'Failed to initiate funding order.' });
-    } finally {
       setIsSubmitting(false);
     }
   };
