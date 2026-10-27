@@ -19,16 +19,6 @@ import {
 
 import './Home.css';
 
-import card1 from '../assets/home/float_cards/card_1.png';
-import card2 from '../assets/home/float_cards/card_2.png';
-import card3 from '../assets/home/float_cards/card_3.png';
-import card4 from '../assets/home/float_cards/card_4.png';
-import card5 from '../assets/home/float_cards/card_5.png';
-import card6 from '../assets/home/float_cards/card_6.png';
-import card7 from '../assets/home/float_cards/card_7.png';
-import card8 from '../assets/home/float_cards/card_8.png';
-import card9 from '../assets/home/float_cards/card_9.png';
-
 import togetherWeRiseImg from '../assets/home/together_we_rise.png';
 
 /**
@@ -65,233 +55,86 @@ function Home() {
   const binaryNodes = {
     // Stage 1: Ruby (Apex Leader)
     ruby: {
-      name: 'You (Leader)',
+      name: 'ID: 1001',
       rank: 'Ruby',
     },
     // Stage 2: Diamond (Dual Frontline Leaders)
     diamond1: {
-      name: 'Rahul Sharma',
+      name: 'ID: 1002',
       rank: 'Diamond',
     },
     diamond2: {
-      name: 'Priya Mehta',
+      name: 'ID: 1003',
       rank: 'Diamond',
     },
     // Stage 3: Platinum (Senior Directors)
     plat1: {
-      name: 'Amit Kumar',
+      name: 'ID: 1004',
       rank: 'Platinum',
     },
     plat2: {
-      name: 'Sneha Patel',
+      name: 'ID: 1005',
       rank: 'Platinum',
     },
     plat3: {
-      name: 'Vikram D.',
+      name: 'ID: 1006',
       rank: 'Platinum',
     },
     plat4: {
-      name: 'Ananya Roy',
+      name: 'ID: 1007',
       rank: 'Platinum',
     },
     // Stage 4: Gold (Team Managers)
     gold1: {
-      name: 'Kavita S.',
+      name: 'ID: 1008',
       rank: 'Gold',
     },
     gold2: {
-      name: 'Rohan V.',
+      name: 'ID: 1009',
       rank: 'Gold',
     },
     gold3: {
-      name: 'Pooja J.',
+      name: 'ID: 1010',
       rank: 'Gold',
     },
     gold4: {
-      name: 'Manish T.',
+      name: 'ID: 1011',
       rank: 'Gold',
     },
     // Stage 5: Silver (Foundation Associates)
     silver1: {
-      name: 'Deepak N.',
+      name: 'ID: 1012',
       rank: 'Silver',
     },
     silver2: {
-      name: 'Sunita M.',
+      name: 'ID: 1013',
       rank: 'Silver',
     },
     silver3: {
-      name: 'Rajesh K.',
+      name: 'ID: 1014',
       rank: 'Silver',
     },
     silver4: {
-      name: 'Kiran B.',
+      name: 'ID: 1015',
       rank: 'Silver',
     },
     silver5: {
-      name: 'Arjun P.',
+      name: 'ID: 1016',
       rank: 'Silver',
     },
     silver6: {
-      name: 'Neha G.',
+      name: 'ID: 1017',
       rank: 'Silver',
     },
     silver7: {
-      name: 'Suresh M.',
+      name: 'ID: 1018',
       rank: 'Silver',
     },
     silver8: {
-      name: 'Divya K.',
+      name: 'ID: 1019',
       rank: 'Silver',
     },
   };
-
-  // 3D Parallax Tilt State for Hero Cards Stage
-  const [heroTilt, setHeroTilt] = useState({ x: 0, y: 0 });
-
-  const handleHeroMouseMove = (e) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width - 0.5) * 2;
-    const y = ((e.clientY - rect.top) / rect.height - 0.5) * 2;
-    setHeroTilt({
-      x: Number(-(y * 9).toFixed(2)),
-      y: Number((x * 9).toFixed(2)),
-    });
-  };
-
-  const handleHeroMouseLeave = () => {
-    setHeroTilt({ x: 0, y: 0 });
-  };
-
-  // 9 React 3D Floating Cards (derived from ChatGPT Image Sep 19, 2026 3x3 Lookbook)
-  const heroFloatingCards = [
-    {
-      id: 1,
-      title: 'Smart Tech & Computing Hub',
-      tag: '5G SMART TECH',
-      badge: '2X BV Points',
-      img: card1,
-      desc: 'High-speed 5G smartphones, ultra-portable notebooks, and intelligent computing devices built for performance.',
-      price: 24999,
-      originalPrice: 31999,
-      delay: 0,
-      duration: 6.2,
-      z: 25,
-      rotZ: -5,
-    },
-    {
-      id: 2,
-      title: 'Precision Lifestyle Audio & Gear',
-      tag: 'AUDIO & MEDIA',
-      badge: '4.9 ★ Top Rated',
-      img: card2,
-      desc: 'Active noise-canceling wireless earbuds and high-fidelity smart audio gear engineered for acoustic clarity.',
-      price: 4499,
-      originalPrice: 6999,
-      delay: -1.6,
-      duration: 7.1,
-      z: 45,
-      rotZ: 4,
-    },
-    {
-      id: 3,
-      title: 'Connected Smart Home Ecosystem',
-      tag: 'HOME IOT',
-      badge: 'Trending',
-      img: card3,
-      desc: 'Energy-efficient smart lighting, automated surveillance hubs, and voice-assisted connected home accessories.',
-      price: 8999,
-      originalPrice: 12499,
-      delay: -3.2,
-      duration: 7.8,
-      z: -15,
-      rotZ: -3,
-    },
-    {
-      id: 4,
-      title: 'Modern Intelligent Appliances',
-      tag: 'APPLIANCES',
-      badge: 'Best Seller',
-      img: card4,
-      desc: 'Sleek induction cooktops, rapid-boil smart kettles, and compact air fryers for modern healthy living.',
-      price: 5499,
-      originalPrice: 7999,
-      delay: -2.1,
-      duration: 6.8,
-      z: 15,
-      rotZ: 6,
-    },
-    {
-      id: 5,
-      title: 'Kashvi Flagship Tech Suite',
-      tag: 'FLAGSHIP SELECTION',
-      badge: 'Zero EMI',
-      img: card5,
-      desc: 'Premium curved 4K gaming monitors, AI workstations, and high-efficiency peripheral stations for power users.',
-      price: 38999,
-      originalPrice: 48999,
-      delay: -0.8,
-      duration: 5.9,
-      z: 75,
-      rotZ: -2,
-    },
-    {
-      id: 6,
-      title: 'Smart Health & Wellness Tech',
-      tag: 'WELLNESS TECH',
-      badge: 'Certified',
-      img: card6,
-      desc: 'Pulse oximeters, smart body analysis scales, and ergonomic percussion massagers for active recovery.',
-      price: 3299,
-      originalPrice: 4999,
-      delay: -4.0,
-      duration: 7.4,
-      z: 35,
-      rotZ: 5,
-    },
-    {
-      id: 7,
-      title: 'Compact Smart Utility Innovations',
-      tag: 'CONVENIENCE',
-      badge: 'Fast Delivery',
-      img: card7,
-      desc: 'Multi-port GaN turbo chargers, magnetic power banks, and cordless desktop vacuums for modern workspaces.',
-      price: 2199,
-      originalPrice: 3299,
-      delay: -1.2,
-      duration: 6.5,
-      z: 55,
-      rotZ: -4,
-    },
-    {
-      id: 8,
-      title: 'Eco-Smart Personal Care Devices',
-      tag: 'PERSONAL CARE',
-      badge: 'Direct Factory',
-      img: card8,
-      desc: 'Precision titanium hair stylers, sonic electric toothbrushes, and rechargeable ionic trimmers.',
-      price: 1899,
-      originalPrice: 2899,
-      delay: -2.7,
-      duration: 7.2,
-      z: 20,
-      rotZ: 3,
-    },
-    {
-      id: 9,
-      title: 'Pure Combed Cotton Luxury Hozri',
-      tag: 'LUXURY TEXTILES',
-      badge: 'Pure Cotton',
-      img: card9,
-      desc: 'Bio-washed combed cotton crewneck t-shirts, fleece winter hoodies, and luxury activewear crafted in Ludhiana.',
-      price: 1499,
-      originalPrice: 2299,
-      delay: -3.6,
-      duration: 8.0,
-      z: -5,
-      rotZ: -5,
-    },
-  ];
   useEffect(() => {
     const handleScroll = () => {
       if (window.scrollY > 320) {
@@ -342,9 +185,7 @@ function Home() {
           ========================================================================= */}
       <section
         className="vadic-hero-section ref-style-hero"
-        aria-label="Kashvi99 MLM Showcase"
-        onMouseMove={handleHeroMouseMove}
-        onMouseLeave={handleHeroMouseLeave}
+        aria-label="Kashvi MLM Showcase"
       >
         {/* Static Glowing Particle Waves Background */}
         <div className="hero-wave-canvas-wrap" aria-hidden="true">
@@ -413,8 +254,13 @@ function Home() {
         <div className="hero-stage-glow-ambient" aria-hidden="true" />
 
         <div className="hero-ref-container hero-split-layout">
-          {/* Left Column: Focused Headline, Narrative & Feature Checklist */}
+          {/* Main Hero Column: Focused Headline, Narrative, Checklist & CTAs */}
           <div className="hero-ref-left-col">
+            <div className="hero-interactive-hint">
+              <Sparkles size={15} className="hint-sparkle-icon" />
+              <span>India&apos;s Leading Direct Selling &amp; E-Commerce Platform</span>
+            </div>
+
             {/* Main Headline with Highlight Colors */}
             <h1 className="hero-ref-title">
               Empower Your Future With{' '}
@@ -449,55 +295,107 @@ function Home() {
               </div>
             </div>
 
-            {/* Ambient Lookbook Badge */}
-            <div className="hero-interactive-hint">
-              <Sparkles size={15} className="hint-sparkle-icon" />
-              <span>3D Ambient Lookbook • Zero-Gravity Floating Showcase</span>
+            {/* Hero CTA Action Buttons */}
+            <div className="hero-cta-actions">
+              <button
+                type="button"
+                className="btn-vadic-orange-cta"
+                onClick={() => setIsJoinModalOpen(true)}
+              >
+                <span>JOIN NETWORK</span>
+                <ArrowRight size={17} />
+              </button>
+              <Link to="/contact" className="btn-vadic-ghost-cta">
+                <span>CONNECT WITH US</span>
+              </Link>
             </div>
           </div>
 
-          {/* Right Column: React 3D Floating Cards Animation Stage (9 Cards) */}
-          <div className="hero-3d-cards-viewport">
-            <div
-              className="hero-3d-cards-stage"
-              style={{
-                transform: `perspective(1200px) rotateX(${heroTilt.x}deg) rotateY(${heroTilt.y}deg)`,
-              }}
-            >
-              {heroFloatingCards.map((card) => (
-                <div
-                  key={card.id}
-                  className={`floating-3d-card card-item-${card.id}`}
-                  style={{
-                    '--card-delay': `${card.delay}s`,
-                    '--card-duration': `${card.duration}s`,
-                    '--card-depth': `${card.z}px`,
-                    '--card-rot': `${card.rotZ}deg`,
-                  }}
-                  aria-hidden="true"
-                >
-                  <div className="card-glass-frame">
-                    <div className="card-badge-pill">
-                      <span>{card.badge}</span>
-                    </div>
+          {/* Right Column: Dynamic Falling Convergence Balls & Kashvimlm Reveal Stage */}
+          <div className="hero-brand-stage-col" aria-label="Kashvimlm Convergence Animation">
+            <div className="brand-anim-wrapper">
+              {/* Background Ambient Glow */}
+              <div className="anim-glow-backdrop" />
 
-                    <div className="card-image-container">
-                      <img
-                        src={card.img}
-                        alt={card.title}
-                        className="card-floating-img"
-                        loading="eager"
-                      />
-                      <div className="card-gloss-sheen" />
-                    </div>
-
-                    <div className="card-caption-banner">
-                      <span className="card-caption-tag">{card.tag}</span>
-                      <h4 className="card-caption-title">{card.title}</h4>
-                    </div>
-                  </div>
+              {/* Falling Balls (Scattered points -> crashing to center) */}
+              <div className="anim-balls-cluster">
+                <div className="anim-ball ball-pos-1">
+                  <div className="ball-inner-sphere ball-color-cyan" />
+                  <div className="ball-trail-flare flare-cyan" />
                 </div>
-              ))}
+                <div className="anim-ball ball-pos-2">
+                  <div className="ball-inner-sphere ball-color-gold" />
+                  <div className="ball-trail-flare flare-gold" />
+                </div>
+                <div className="anim-ball ball-pos-3">
+                  <div className="ball-inner-sphere ball-color-pink" />
+                  <div className="ball-trail-flare flare-pink" />
+                </div>
+                <div className="anim-ball ball-pos-4">
+                  <div className="ball-inner-sphere ball-color-emerald" />
+                  <div className="ball-trail-flare flare-emerald" />
+                </div>
+                <div className="anim-ball ball-pos-5">
+                  <div className="ball-inner-sphere ball-color-sky" />
+                  <div className="ball-trail-flare flare-sky" />
+                </div>
+                <div className="anim-ball ball-pos-6">
+                  <div className="ball-inner-sphere ball-color-orange" />
+                  <div className="ball-trail-flare flare-orange" />
+                </div>
+                <div className="anim-ball ball-pos-7">
+                  <div className="ball-inner-sphere ball-color-purple" />
+                  <div className="ball-trail-flare flare-purple" />
+                </div>
+                <div className="anim-ball ball-pos-8">
+                  <div className="ball-inner-sphere ball-color-yellow" />
+                  <div className="ball-trail-flare flare-yellow" />
+                </div>
+                <div className="anim-ball ball-pos-9">
+                  <div className="ball-inner-sphere ball-color-apex-gold" />
+                  <div className="ball-trail-flare flare-gold" />
+                </div>
+              </div>
+
+              {/* Collision Impact Flash & Spark Rays */}
+              <div className="anim-impact-burst">
+                <div className="impact-flash" />
+                <div className="impact-spark-rays">
+                  <span className="spark-ray ray-1" />
+                  <span className="spark-ray ray-2" />
+                  <span className="spark-ray ray-3" />
+                  <span className="spark-ray ray-4" />
+                  <span className="spark-ray ray-5" />
+                  <span className="spark-ray ray-6" />
+                  <span className="spark-ray ray-7" />
+                  <span className="spark-ray ray-8" />
+                </div>
+              </div>
+
+              {/* Emergence of "Kashvimlm" Name */}
+              <div className="anim-brand-reveal">
+                <div className="brand-badge-crest">
+                  <Crown size={26} className="crest-crown-icon" />
+                  <Sparkles size={18} className="crest-sparkle-icon" />
+                </div>
+
+                <div className="brand-logo-text-wrap">
+                  <span className="brand-logo-glow-underlay">KASHVIMLM</span>
+                  <h2 className="brand-logo-main">
+                    <span className="logo-part-kashvi">Kashvi</span>
+                    <span className="logo-part-mlm">mlm</span>
+                  </h2>
+                  <div className="brand-shine-sweep" />
+                </div>
+
+                <p className="brand-tagline">
+                  <span>SMART TECH</span>
+                  <span className="tagline-dot">&bull;</span>
+                  <span>LUXURY HOZRI</span>
+                  <span className="tagline-dot">&bull;</span>
+                  <span>WEALTH</span>
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -548,25 +446,19 @@ function Home() {
           <div className="story-copy-column">
             <div className="story-badge-pill">
               <Sparkles size={14} />
-              <span>INTRODUCTION</span>
+              <span>ABOUT KASHVI MLM</span>
             </div>
 
             <h2 className="story-heading">
-              Introduction
+              Empowering Financial Growth &amp; Entrepreneurship
             </h2>
 
             <p className="story-paragraph">
-              Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut
-              labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco
-              laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in
-              voluptate velit esse cillum dolore eu fugiat nulla pariatur.
+              Kashvi MLM is India&apos;s next-generation direct selling and e-commerce platform dedicated to empowering aspiring entrepreneurs, distributors, and households with sustainable financial independence. We bridge the gap between premier manufacturing and everyday consumers by delivering certified high-performance 5G electronics, smart lifestyle appliances, and premium combed cotton apparel at honest factory-direct pricing.
             </p>
 
             <p className="story-paragraph">
-              Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim
-              id est laborum. Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium
-              doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi
-              architecto beatae vitae dicta sunt explicabo.
+              Built on a foundation of transparency, integrity, and community success, our rewarding 1:1 binary compensation structure pairs instant Business Volume (BV) tracking with automated daily payouts and clear leadership advancement from Silver to Ruby tiers. Backed by extensive regional hub fulfillment and dedicated mentorship, Kashvi MLM equips every partner with the tools needed to build long-term generational wealth.
             </p>
 
             <div className="story-actions">

@@ -126,12 +126,12 @@
   position: relative;
   z-index: 2;
   width: 100%;
-  max-width: 1440px;
+  max-width: 1400px;
   margin: 0 auto;
   display: grid;
-  grid-template-columns: 1fr 1.25fr;
+  grid-template-columns: 1.05fr 1fr;
   align-items: center;
-  gap: 2.5rem;
+  gap: 2rem;
 }
 
 @media (max-width: 1080px) {
@@ -148,8 +148,8 @@
   flex-direction: column;
   align-items: flex-start;
   text-align: left;
-  gap: 1.6rem;
-  max-width: 600px;
+  gap: 1.5rem;
+  max-width: 640px;
   position: relative;
   z-index: 3;
 }
@@ -164,7 +164,7 @@
 }
 
 .hero-ref-title {
-  font-size: clamp(2.3rem, 4.2vw, 3.8rem);
+  font-size: clamp(2.3rem, 3.8vw, 3.6rem);
   font-weight: 900;
   line-height: 1.14;
   letter-spacing: -0.02em;
@@ -192,14 +192,14 @@
   font-size: 1.05rem;
   color: #94a3b8;
   line-height: 1.7;
-  max-width: 560px;
+  max-width: 580px;
   margin: 0;
 }
 
 .hero-checklist-container {
   display: flex;
   flex-direction: column;
-  gap: 0.9rem;
+  gap: 0.85rem;
   width: 100%;
   max-width: 560px;
 }
@@ -218,6 +218,20 @@
   .hero-check-item {
     justify-content: center;
     text-align: center;
+  }
+}
+
+.hero-cta-actions {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+
+@media (max-width: 1080px) {
+  .hero-cta-actions {
+    justify-content: center;
   }
 }
 
@@ -261,283 +275,548 @@
 }
 
 /* ==========================================================================
-   REACT 3D FLOATING CARDS ANIMATION VIEWPORT & STAGE
+   HERO BRAND CONVERGENCE & KASHVIMLM REVEAL ANIMATION STAGE
    ========================================================================== */
-.hero-3d-cards-viewport {
+.hero-brand-stage-col {
   position: relative;
   width: 100%;
-  height: 590px;
-  perspective: 1200px;
-  perspective-origin: 50% 50%;
+  min-height: 570px;
   display: flex;
   align-items: center;
   justify-content: center;
-  user-select: none;
-}
-
-@media (max-width: 1280px) {
-  .hero-3d-cards-viewport {
-    height: 530px;
-  }
-}
-
-@media (max-width: 768px) {
-  .hero-3d-cards-viewport {
-    height: 480px;
-    perspective: 800px;
-  }
-}
-
-.hero-3d-cards-stage {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  transform-style: preserve-3d;
-  transition: transform 0.18s cubic-bezier(0.2, 0, 0.38, 0.9);
-  will-change: transform;
-}
-
-/* Individual 3D Floating Card Base — Non-clickable, Zero-gravity Ambient Floating */
-.floating-3d-card {
-  position: absolute;
-  transform-style: preserve-3d;
-  animation: floatCard3D var(--card-duration, 7s) ease-in-out infinite alternate;
-  animation-delay: var(--card-delay, 0s);
-  will-change: transform, box-shadow;
-  pointer-events: none;
-  user-select: none;
-  cursor: default;
-  outline: none;
-}
-
-@keyframes floatCard3D {
-  0% {
-    transform: translate3d(0, 0, var(--card-depth, 0px)) rotateZ(var(--card-rot, 0deg));
-  }
-  50% {
-    transform: translate3d(6px, -16px, calc(var(--card-depth, 0px) + 16px)) rotateZ(calc(var(--card-rot, 0deg) + 1.8deg));
-  }
-  100% {
-    transform: translate3d(-6px, 12px, calc(var(--card-depth, 0px) - 12px)) rotateZ(calc(var(--card-rot, 0deg) - 1.8deg));
-  }
-}
-
-/* Glass Frame Wrapper */
-.card-glass-frame {
-  position: relative;
-  width: 100%;
-  border-radius: 16px;
-  overflow: hidden;
-  background: rgba(11, 23, 42, 0.88);
-  border: 1.5px solid rgba(56, 189, 248, 0.32);
-  box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.85), 0 0 20px rgba(0, 229, 255, 0.12);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-color: rgba(56, 189, 248, 0.4);
-  box-shadow: 0 20px 45px -8px rgba(0, 0, 0, 0.85), 0 0 22px rgba(0, 229, 255, 0.15);
-}
-
-/* Floating Badge (Top Right) */
-.card-badge-pill {
-  position: absolute;
-  top: 8px;
-  right: 8px;
   z-index: 4;
-  padding: 0.22rem 0.6rem;
-  background: rgba(2, 6, 23, 0.85);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  border: 1px solid rgba(56, 189, 248, 0.45);
-  border-radius: 9999px;
-  font-size: 0.62rem;
-  font-weight: 800;
-  color: #38bdf8;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
-  pointer-events: none;
+  overflow: visible;
 }
 
-/* Image Container (3:2 Ratio) */
-.card-image-container {
+.brand-anim-wrapper {
   position: relative;
   width: 100%;
-  aspect-ratio: 512 / 341;
-  overflow: hidden;
-  background: #091322;
-}
-
-.card-floating-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-  filter: saturate(1.15) contrast(1.05);
-}
-
-/* Gloss Sheen Reflection */
-.card-gloss-sheen {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.25) 0%, transparent 45%, rgba(0, 229, 255, 0.1) 75%, transparent 100%);
-  pointer-events: none;
-  opacity: 0.55;
-}
-
-/* Bottom Caption Banner */
-.card-caption-banner {
-  padding: 0.5rem 0.75rem 0.6rem 0.75rem;
-  background: linear-gradient(180deg, rgba(15, 23, 42, 0.95) 0%, #060e1c 100%);
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  max-width: 580px;
+  height: 550px;
   display: flex;
-  flex-direction: column;
-  gap: 0.18rem;
-  text-align: left;
+  align-items: center;
+  justify-content: center;
 }
 
-.card-caption-tag {
-  font-size: 0.58rem;
-  font-weight: 800;
-  color: #fbbf24;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+/* Background Ambient Glow */
+.anim-glow-backdrop {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 500px;
+  height: 500px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0, 229, 255, 0.18) 0%, rgba(245, 158, 11, 0.13) 42%, rgba(2, 12, 27, 0) 72%);
+  filter: blur(48px);
+  pointer-events: none;
+  animation: pulseGlow 6s ease-in-out infinite alternate;
 }
 
-.card-caption-title {
-  font-size: 0.72rem;
-  font-weight: 700;
-  color: #f1f5f9;
-  margin: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+@keyframes pulseGlow {
+  0% { transform: translate(-50%, -50%) scale(0.9); opacity: 0.7; }
+  100% { transform: translate(-50%, -50%) scale(1.15); opacity: 1; }
 }
 
-/* ==========================================================================
-   EXACT 3D CLOUD COORDINATES FOR THE 9 CARDS
-   Spans the entire right stage covering top, middle, bottom, left, center, right
-   ========================================================================== */
-
-/* 1. Top-Left */
-.card-item-1 {
-  top: 1%;
-  left: 1%;
-  width: 215px;
-  z-index: 5;
+/* Balls Cluster Container */
+.anim-balls-cluster {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  pointer-events: none;
 }
 
-/* 2. Top-Center */
-.card-item-2 {
-  top: -3%;
-  left: 35%;
-  width: 235px;
+.anim-ball {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border-radius: 50%;
+  pointer-events: none;
   z-index: 6;
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  transform: translateZ(0);
 }
 
-/* 3. Top-Right */
-.card-item-3 {
-  top: 2%;
-  left: 69%;
-  width: 210px;
-  z-index: 4;
+.ball-inner-sphere {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  box-sizing: border-box;
 }
 
-/* 4. Mid-Left */
-.card-item-4 {
-  top: 31%;
-  left: -5%;
-  width: 215px;
-  z-index: 6;
+.ball-trail-flare {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 160%;
+  height: 160%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  filter: blur(5px);
+  pointer-events: none;
+  opacity: 0.7;
 }
 
-/* 5. Center Anchor (Largest & Forefront) */
-.card-item-5 {
-  top: 28%;
-  left: 31%;
-  width: 265px;
-  z-index: 12;
+/* Sphere Color Variations */
+.ball-color-cyan {
+  background: radial-gradient(circle at 35% 35%, #ffffff 0%, #00e5ff 45%, #0369a1 100%);
+  box-shadow: 0 0 16px #00e5ff, inset -2px -3px 6px rgba(0, 0, 0, 0.6);
+}
+.flare-cyan { background: radial-gradient(circle, #00e5ff 0%, transparent 70%); }
+
+.ball-color-gold {
+  background: radial-gradient(circle at 35% 35%, #ffffff 0%, #fbbf24 45%, #b45309 100%);
+  box-shadow: 0 0 16px #fbbf24, inset -2px -3px 6px rgba(0, 0, 0, 0.6);
+}
+.flare-gold { background: radial-gradient(circle, #fbbf24 0%, transparent 70%); }
+
+.ball-color-pink {
+  background: radial-gradient(circle at 35% 35%, #ffffff 0%, #ec4899 45%, #9d174d 100%);
+  box-shadow: 0 0 14px #ec4899, inset -2px -3px 6px rgba(0, 0, 0, 0.6);
+}
+.flare-pink { background: radial-gradient(circle, #ec4899 0%, transparent 70%); }
+
+.ball-color-emerald {
+  background: radial-gradient(circle at 35% 35%, #ffffff 0%, #10b981 45%, #065f46 100%);
+  box-shadow: 0 0 14px #10b981, inset -2px -3px 6px rgba(0, 0, 0, 0.6);
+}
+.flare-emerald { background: radial-gradient(circle, #10b981 0%, transparent 70%); }
+
+.ball-color-sky {
+  background: radial-gradient(circle at 35% 35%, #ffffff 0%, #38bdf8 45%, #0284c7 100%);
+  box-shadow: 0 0 12px #38bdf8, inset -2px -3px 6px rgba(0, 0, 0, 0.6);
+}
+.flare-sky { background: radial-gradient(circle, #38bdf8 0%, transparent 70%); }
+
+.ball-color-orange {
+  background: radial-gradient(circle at 35% 35%, #ffffff 0%, #f97316 45%, #c2410c 100%);
+  box-shadow: 0 0 15px #f97316, inset -2px -3px 6px rgba(0, 0, 0, 0.6);
+}
+.flare-orange { background: radial-gradient(circle, #f97316 0%, transparent 70%); }
+
+.ball-color-purple {
+  background: radial-gradient(circle at 35% 35%, #ffffff 0%, #a855f7 45%, #6b21a8 100%);
+  box-shadow: 0 0 12px #a855f7, inset -2px -3px 6px rgba(0, 0, 0, 0.6);
+}
+.flare-purple { background: radial-gradient(circle, #a855f7 0%, transparent 70%); }
+
+.ball-color-yellow {
+  background: radial-gradient(circle at 35% 35%, #ffffff 0%, #fde047 45%, #ca8a04 100%);
+  box-shadow: 0 0 12px #fde047, inset -2px -3px 6px rgba(0, 0, 0, 0.6);
+}
+.flare-yellow { background: radial-gradient(circle, #fde047 0%, transparent 70%); }
+
+.ball-color-apex-gold {
+  background: radial-gradient(circle at 35% 35%, #ffffff 0%, #f59e0b 45%, #78350f 100%);
+  box-shadow: 0 0 20px #f59e0b, 0 0 35px rgba(245, 158, 11, 0.5), inset -2px -3px 6px rgba(0, 0, 0, 0.6);
 }
 
-/* 6. Mid-Right */
-.card-item-6 {
-  top: 32%;
-  left: 70%;
-  width: 225px;
+/* Ball 1: High Top-Left Cyan Sphere */
+.ball-pos-1 {
+  width: 36px;
+  height: 36px;
+  margin-top: -18px;
+  margin-left: -18px;
+  animation: ballTrajectory1 7s cubic-bezier(0.25, 1, 0.5, 1) infinite;
+}
+@keyframes ballTrajectory1 {
+  0% { transform: translate(-230px, -260px) scale(0.5); opacity: 0; }
+  5% { opacity: 1; transform: translate(-230px, -260px) scale(1); }
+  22% { transform: translate(-90px, -100px) scale(1.05); opacity: 1; }
+  31.5% { transform: translate(0px, 0px) scale(0.9); opacity: 1; }
+  33.5% { transform: translate(0px, 0px) scale(0.05); opacity: 0; }
+  100% { transform: translate(-230px, -260px) scale(0.5); opacity: 0; }
+}
+
+/* Ball 2: High Top-Right Gold Sphere */
+.ball-pos-2 {
+  width: 40px;
+  height: 40px;
+  margin-top: -20px;
+  margin-left: -20px;
+  animation: ballTrajectory2 7s cubic-bezier(0.25, 1, 0.5, 1) infinite;
+}
+@keyframes ballTrajectory2 {
+  0% { transform: translate(240px, -270px) scale(0.5); opacity: 0; }
+  5% { opacity: 1; transform: translate(240px, -270px) scale(1); }
+  22% { transform: translate(100px, -110px) scale(1.08); opacity: 1; }
+  32% { transform: translate(0px, 0px) scale(0.9); opacity: 1; }
+  34% { transform: translate(0px, 0px) scale(0.05); opacity: 0; }
+  100% { transform: translate(240px, -270px) scale(0.5); opacity: 0; }
+}
+
+/* Ball 3: Far Left Pink Sphere */
+.ball-pos-3 {
+  width: 30px;
+  height: 30px;
+  margin-top: -15px;
+  margin-left: -15px;
+  animation: ballTrajectory3 7s cubic-bezier(0.25, 1, 0.5, 1) infinite;
+}
+@keyframes ballTrajectory3 {
+  0% { transform: translate(-260px, -80px) scale(0.4); opacity: 0; }
+  5% { opacity: 1; transform: translate(-260px, -80px) scale(1); }
+  20% { transform: translate(-105px, -32px) scale(1.05); opacity: 1; }
+  31% { transform: translate(0px, 0px) scale(0.85); opacity: 1; }
+  33% { transform: translate(0px, 0px) scale(0.05); opacity: 0; }
+  100% { transform: translate(-260px, -80px) scale(0.4); opacity: 0; }
+}
+
+/* Ball 4: Far Right Emerald Sphere */
+.ball-pos-4 {
+  width: 28px;
+  height: 28px;
+  margin-top: -14px;
+  margin-left: -14px;
+  animation: ballTrajectory4 7s cubic-bezier(0.25, 1, 0.5, 1) infinite;
+}
+@keyframes ballTrajectory4 {
+  0% { transform: translate(250px, -70px) scale(0.4); opacity: 0; }
+  5% { opacity: 1; transform: translate(250px, -70px) scale(1); }
+  20% { transform: translate(100px, -28px) scale(1.05); opacity: 1; }
+  31.5% { transform: translate(0px, 0px) scale(0.85); opacity: 1; }
+  33.5% { transform: translate(0px, 0px) scale(0.05); opacity: 0; }
+  100% { transform: translate(250px, -70px) scale(0.4); opacity: 0; }
+}
+
+/* Ball 5: Sky Zenith Top Drop */
+.ball-pos-5 {
+  width: 25px;
+  height: 25px;
+  margin-top: -12.5px;
+  margin-left: -12.5px;
+  animation: ballTrajectory5 7s cubic-bezier(0.25, 1, 0.5, 1) infinite;
+}
+@keyframes ballTrajectory5 {
+  0% { transform: translate(-28px, -295px) scale(0.5); opacity: 0; }
+  5% { opacity: 1; transform: translate(-28px, -295px) scale(1); }
+  21% { transform: translate(-12px, -120px) scale(1.05); opacity: 1; }
+  32% { transform: translate(0px, 0px) scale(0.85); opacity: 1; }
+  34% { transform: translate(0px, 0px) scale(0.05); opacity: 0; }
+  100% { transform: translate(-28px, -295px) scale(0.5); opacity: 0; }
+}
+
+/* Ball 6: Top-Right Orange Sphere */
+.ball-pos-6 {
+  width: 32px;
+  height: 32px;
+  margin-top: -16px;
+  margin-left: -16px;
+  animation: ballTrajectory6 7s cubic-bezier(0.25, 1, 0.5, 1) infinite;
+}
+@keyframes ballTrajectory6 {
+  0% { transform: translate(140px, -280px) scale(0.5); opacity: 0; }
+  5% { opacity: 1; transform: translate(140px, -280px) scale(1); }
+  22% { transform: translate(60px, -115px) scale(1.08); opacity: 1; }
+  31.5% { transform: translate(0px, 0px) scale(0.88); opacity: 1; }
+  33.5% { transform: translate(0px, 0px) scale(0.05); opacity: 0; }
+  100% { transform: translate(140px, -280px) scale(0.5); opacity: 0; }
+}
+
+/* Ball 7: Lower-Left Arc Purple Sphere */
+.ball-pos-7 {
+  width: 24px;
+  height: 24px;
+  margin-top: -12px;
+  margin-left: -12px;
+  animation: ballTrajectory7 7s cubic-bezier(0.25, 1, 0.5, 1) infinite;
+}
+@keyframes ballTrajectory7 {
+  0% { transform: translate(-180px, 70px) scale(0.4); opacity: 0; }
+  5% { opacity: 1; transform: translate(-180px, 70px) scale(1); }
+  19% { transform: translate(-80px, 30px) scale(1.05); opacity: 1; }
+  31% { transform: translate(0px, 0px) scale(0.8); opacity: 1; }
+  33% { transform: translate(0px, 0px) scale(0.05); opacity: 0; }
+  100% { transform: translate(-180px, 70px) scale(0.4); opacity: 0; }
+}
+
+/* Ball 8: Lower-Right Arc Yellow Sphere */
+.ball-pos-8 {
+  width: 26px;
+  height: 26px;
+  margin-top: -13px;
+  margin-left: -13px;
+  animation: ballTrajectory8 7s cubic-bezier(0.25, 1, 0.5, 1) infinite;
+}
+@keyframes ballTrajectory8 {
+  0% { transform: translate(195px, 75px) scale(0.4); opacity: 0; }
+  5% { opacity: 1; transform: translate(195px, 75px) scale(1); }
+  20% { transform: translate(85px, 30px) scale(1.05); opacity: 1; }
+  31.5% { transform: translate(0px, 0px) scale(0.8); opacity: 1; }
+  33.5% { transform: translate(0px, 0px) scale(0.05); opacity: 0; }
+  100% { transform: translate(195px, 75px) scale(0.4); opacity: 0; }
+}
+
+/* Ball 9: Radiant Gold Heavy Sphere */
+.ball-pos-9 {
+  width: 44px;
+  height: 44px;
+  margin-top: -22px;
+  margin-left: -22px;
+  animation: ballTrajectory9 7s cubic-bezier(0.25, 1, 0.5, 1) infinite;
+}
+@keyframes ballTrajectory9 {
+  0% { transform: translate(18px, -290px) scale(0.6); opacity: 0; }
+  5% { opacity: 1; transform: translate(18px, -290px) scale(1); }
+  22% { transform: translate(8px, -105px) scale(1.12); opacity: 1; }
+  32% { transform: translate(0px, 0px) scale(1); opacity: 1; }
+  34% { transform: translate(0px, 0px) scale(0.05); opacity: 0; }
+  100% { transform: translate(18px, -290px) scale(0.6); opacity: 0; }
+}
+
+/* Impact Flash & Shockwaves Container */
+.anim-impact-burst {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  pointer-events: none;
   z-index: 7;
 }
 
-/* 7. Bottom-Left */
-.card-item-7 {
-  top: 63%;
-  left: 2%;
-  width: 215px;
-  z-index: 8;
+.impact-flash {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 170px;
+  height: 170px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(circle, #ffffff 0%, #00e5ff 40%, rgba(251, 191, 36, 0.6) 70%, transparent 100%);
+  filter: blur(8px);
+  will-change: transform, opacity;
+  animation: impactFlashAnim 7s ease-out infinite;
 }
 
-/* 8. Bottom-Center */
-.card-item-8 {
-  top: 65%;
-  left: 36%;
-  width: 230px;
-  z-index: 9;
+@keyframes impactFlashAnim {
+  0%, 30.5% { opacity: 0; transform: translate(-50%, -50%) scale(0.1); }
+  32% { opacity: 1; transform: translate(-50%, -50%) scale(1.6); }
+  36% { opacity: 0; transform: translate(-50%, -50%) scale(2.6); }
+  100% { opacity: 0; }
 }
 
-/* 9. Bottom-Right */
-.card-item-9 {
-  top: 62%;
-  left: 71%;
-  width: 210px;
-  z-index: 5;
+/* Impact Spark Rays */
+.impact-spark-rays {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  pointer-events: none;
 }
 
-/* Responsive adjustments for 1280px screen and below */
-@media (max-width: 1280px) {
-  .card-item-1 { width: 185px; left: 2%; top: 3%; }
-  .card-item-2 { width: 200px; left: 35%; top: 0%; }
-  .card-item-3 { width: 180px; left: 68%; top: 4%; }
-  .card-item-4 { width: 185px; left: -3%; top: 32%; }
-  .card-item-5 { width: 225px; left: 32%; top: 29%; }
-  .card-item-6 { width: 195px; left: 69%; top: 33%; }
-  .card-item-7 { width: 185px; left: 3%; top: 62%; }
-  .card-item-8 { width: 195px; left: 36%; top: 64%; }
-  .card-item-9 { width: 180px; left: 70%; top: 61%; }
+.spark-ray {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 2.5px;
+  height: 48px;
+  background: linear-gradient(to top, transparent, #00e5ff, #ffffff);
+  border-radius: 999px;
+  transform-origin: bottom center;
+  animation: sparkRayBurst 7s ease-out infinite;
 }
 
-/* Tablet & Mobile Layout (< 1080px) */
-@media (max-width: 1080px) {
-  .hero-3d-cards-viewport {
-    height: 520px;
-    max-width: 680px;
-    margin: 0 auto;
+.ray-1 { transform: rotate(0deg) translateY(-20px); }
+.ray-2 { transform: rotate(45deg) translateY(-20px); }
+.ray-3 { transform: rotate(90deg) translateY(-20px); }
+.ray-4 { transform: rotate(135deg) translateY(-20px); }
+.ray-5 { transform: rotate(180deg) translateY(-20px); }
+.ray-6 { transform: rotate(225deg) translateY(-20px); }
+.ray-7 { transform: rotate(270deg) translateY(-20px); }
+.ray-8 { transform: rotate(315deg) translateY(-20px); }
+
+@keyframes sparkRayBurst {
+  0%, 31.5% { opacity: 0; height: 12px; }
+  32.5% { opacity: 1; height: 58px; }
+  36% { opacity: 0; height: 85px; }
+  100% { opacity: 0; }
+}
+
+/* Emergence of Kashvimlm Logo Unit */
+.anim-brand-reveal {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  width: 100%;
+  max-width: 520px;
+  padding: 1.5rem 1rem;
+  z-index: 10;
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  filter: drop-shadow(0 0 28px rgba(0, 229, 255, 0.45));
+  animation: brandRevealCycle 7s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+
+@keyframes brandRevealCycle {
+  0%, 31% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.7);
+    pointer-events: none;
   }
-  .card-item-1 { width: 180px; left: 2%; top: 2%; }
-  .card-item-2 { width: 190px; left: 35%; top: 0%; }
-  .card-item-3 { width: 175px; left: 68%; top: 3%; }
-  .card-item-4 { width: 180px; left: 0%; top: 32%; }
-  .card-item-5 { width: 215px; left: 33%; top: 30%; }
-  .card-item-6 { width: 185px; left: 68%; top: 33%; }
-  .card-item-7 { width: 180px; left: 3%; top: 63%; }
-  .card-item-8 { width: 190px; left: 35%; top: 65%; }
-  .card-item-9 { width: 175px; left: 68%; top: 63%; }
+  35% {
+    opacity: 0.7;
+    transform: translate(-50%, -50%) scale(0.92);
+  }
+  39% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.05);
+  }
+  43% {
+    transform: translate(-50%, -50%) scale(1);
+  }
+  60% {
+    transform: translate(-50%, calc(-50% - 6px)) scale(1.01);
+  }
+  82% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  91% {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% + 8px)) scale(0.95);
+    pointer-events: none;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.7);
+    pointer-events: none;
+  }
 }
+
+.brand-badge-crest {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-bottom: 0.45rem;
+  color: #fbbf24;
+  filter: drop-shadow(0 0 14px rgba(251, 191, 36, 0.65));
+}
+
+.crest-crown-icon {
+  color: #fbbf24;
+}
+
+.crest-sparkle-icon {
+  color: #00e5ff;
+  animation: pulseSparkle 1.8s ease-in-out infinite alternate;
+}
+
+.brand-logo-text-wrap {
+  position: relative;
+  display: inline-block;
+  overflow: hidden;
+  padding: 0.2rem 0.5rem;
+}
+
+.brand-logo-glow-underlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: clamp(3.0rem, 5.0vw, 4.4rem);
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  color: rgba(0, 229, 255, 0.25);
+  filter: blur(18px);
+  user-select: none;
+  pointer-events: none;
+  text-transform: uppercase;
+}
+
+.brand-logo-main {
+  position: relative;
+  font-size: clamp(2.9rem, 4.8vw, 4.3rem);
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  margin: 0;
+  line-height: 1.1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+  text-transform: uppercase;
+  user-select: none;
+}
+
+.logo-part-kashvi {
+  background: linear-gradient(135deg, #ffffff 0%, #7dd3fc 45%, #00e5ff 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 3px 12px rgba(0, 229, 255, 0.4));
+}
+
+.logo-part-mlm {
+  background: linear-gradient(135deg, #fde047 0%, #fbbf24 45%, #ea580c 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 3px 12px rgba(245, 158, 11, 0.5));
+}
+
+.brand-shine-sweep {
+  position: absolute;
+  top: 0;
+  left: -120%;
+  width: 60%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.75) 50%, transparent 100%);
+  transform: skewX(-25deg);
+  pointer-events: none;
+  animation: shineSweepCycle 7s ease-in-out infinite;
+}
+
+@keyframes shineSweepCycle {
+  0%, 39% { left: -120%; opacity: 0; }
+  43% { opacity: 0.8; }
+  53% { left: 220%; opacity: 0; }
+  100% { left: 220%; opacity: 0; }
+}
+
+.brand-tagline {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  color: #94a3b8;
+  margin: 0.75rem 0 0.5rem 0;
+  text-transform: uppercase;
+}
+
+.tagline-dot {
+  color: #00e5ff;
+  font-size: 0.9rem;
+}
+
+
 
 @media (max-width: 640px) {
-  .hero-3d-cards-viewport {
-    height: 440px;
+  .hero-brand-stage-col {
+    min-height: 420px;
+  }
+  .brand-anim-wrapper {
+    height: 400px;
     max-width: 100%;
   }
-  .card-item-1 { width: 135px; left: 1%; top: 2%; }
-  .card-item-2 { width: 145px; left: 34%; top: 0%; }
-  .card-item-3 { width: 130px; left: 66%; top: 2%; }
-  .card-item-4 { width: 135px; left: -2%; top: 33%; }
-  .card-item-5 { width: 160px; left: 32%; top: 31%; }
-  .card-item-6 { width: 140px; left: 67%; top: 33%; }
-  .card-item-7 { width: 135px; left: 1%; top: 65%; }
-  .card-item-8 { width: 145px; left: 34%; top: 66%; }
-  .card-item-9 { width: 130px; left: 66%; top: 64%; }
-  .card-caption-banner { padding: 0.35rem 0.5rem; }
-  .card-caption-title { font-size: 0.65rem; }
-  .card-badge-pill { font-size: 0.52rem; padding: 0.15rem 0.45rem; }
+  .brand-logo-main {
+    font-size: 2.2rem;
+  }
+  .brand-tagline {
+    font-size: 0.68rem;
+    gap: 0.4rem;
+  }
 }
 
 /* --------------------------------------------------------------------------
