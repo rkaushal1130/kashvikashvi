@@ -30,6 +30,9 @@ import {
   Award,
   Filter,
   Calendar,
+  Copy,
+  MapPin,
+  Sparkles,
 } from 'lucide-react';
 import { adminFundingApi, sanitizeErrorMessage } from '../../api/adminFundingApi.js';
 import { INDIAN_BANKS, POPULAR_BANKS, BANK_CATEGORIES } from '../../data/indianBanks.js';
@@ -203,20 +206,43 @@ export default function AdminFundingPortalPage() {
   // 7. Connect Account Modal State
   const [connectModal, setConnectModal] = useState(false);
   const [connectFormData, setConnectFormData] = useState({
-    bankName: 'HDFC Bank',
-    bankCode: 'HDFC',
-    accountName: 'Kashvi Technologies Corp - Primary Treasury Float',
-    accountNumber: '',
-    confirmAccountNumber: '',
-    ifscCode: 'HDFC0001234',
-    branchName: 'Corporate Banking Branch',
+    bankName: 'Punjab National Bank',
+    bankCode: 'PUNB',
+    brandName: 'kashvimlm',
+    accountName: 'Kashvi MLM (kashvimlm)',
+    accountNumber: '1923102100000382',
+    confirmAccountNumber: '1923102100000382',
+    ifscCode: 'PUNB0192310',
+    branchName: 'Chamba, Himachal Pradesh',
     provider: 'RAZORPAYX',
-    maskedAccountNumber: '',
+    maskedAccountNumber: '•••• •••• •••• 0382',
     accountType: 'PRIMARY_OPERATING',
     isPrimary: true,
   });
   const [bankSearchTerm, setBankSearchTerm] = useState('');
   const [connectingAccount, setConnectingAccount] = useState(false);
+  const [copiedField, setCopiedField] = useState('');
+
+  // One-click clipboard copy helper
+  const handleCopyText = useCallback((text, fieldName) => {
+    if (!text) return;
+    try {
+      if (navigator?.clipboard?.writeText) {
+        navigator.clipboard.writeText(text);
+      } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+      setCopiedField(fieldName);
+      setTimeout(() => setCopiedField(''), 2200);
+    } catch (e) {
+      console.warn('Clipboard copy failed:', e);
+    }
+  }, []);
 
   // 8. Add Corporate Funds (Razorpay Live) Modal State
   const [addFundsModal, setAddFundsModal] = useState(false);
@@ -1305,69 +1331,115 @@ export default function AdminFundingPortalPage() {
 
           {activeAccount ? (
             <div className="bank-details-body">
-              <div className="bank-detail-row">
-                <span className="bank-detail-label">Bank Institution</span>
-                <strong className="bank-detail-val" style={{ color: '#1d4ed8', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Landmark size={14} style={{ color: '#2563eb' }} />
-                  {activeAccount.bankName || (activeAccount.metadata && activeAccount.metadata.bankName) || 'HDFC Bank (Commercial Corporate)'}
-                </strong>
+              {/* Row 1: Bank Institution & Brand Name */}
+              <div className="bank-detail-grid-2col">
+                <div className="bank-info-tile">
+                  <span className="bank-detail-label">Bank Institution</span>
+                  <div className="bank-institution-val">
+                    <Landmark size={15} className="bank-brand-icon" />
+                    <span className="bank-inst-name">{activeAccount.bankName || 'Punjab National Bank'}</span>
+                    <span className="bank-code-tag">{activeAccount.bankCode || 'PUNB'}</span>
+                  </div>
+                </div>
+
+                <div className="bank-info-tile">
+                  <span className="bank-detail-label">Brand Name</span>
+                  <div className="bank-brand-val">
+                    <span className="brand-badge-pill">{activeAccount.brandName || 'kashvimlm'}</span>
+                    <span className="brand-verified-tag">
+                      <CheckCircle2 size={12} />
+                      Verified
+                    </span>
+                  </div>
+                </div>
               </div>
 
-              <div className="bank-detail-row">
-                <span className="bank-detail-label">Account Name</span>
-                <span className="bank-detail-val">{activeAccount.accountName}</span>
-              </div>
-
-              <div className="bank-detail-row">
-                <span className="bank-detail-label">Masked Account Number</span>
-                <span className="masked-account-pill">
-                  {activeAccount.maskedAccountNumber || '•••• •••• •••• 8842'}
-                </span>
-              </div>
-
-              {(activeAccount.ifscCode || (activeAccount.metadata && activeAccount.metadata.ifscCode)) && (
-                <div className="bank-detail-row">
-                  <span className="bank-detail-label">IFSC Code</span>
-                  <span className="masked-account-pill" style={{ letterSpacing: '0.5px', background: '#f1f5f9', color: '#1e293b' }}>
-                    {activeAccount.ifscCode || activeAccount.metadata?.ifscCode}
+              {/* Row 2: Account Number & IFSC Code */}
+              <div className="bank-detail-grid-2col">
+                <div className="bank-info-tile">
+                  <div className="bank-tile-header">
+                    <span className="bank-detail-label">Account Number</span>
+                    <button
+                      type="button"
+                      className="copy-btn-inline"
+                      onClick={() => handleCopyText(activeAccount.accountNumber || '1923102100000382', 'accNo')}
+                      title="Copy Account Number"
+                    >
+                      {copiedField === 'accNo' ? (
+                        <span className="copied-text"><Check size={11} /> Copied</span>
+                      ) : (
+                        <><Copy size={11} /> Copy</>
+                      )}
+                    </button>
+                  </div>
+                  <span className="masked-account-pill font-mono">
+                    {activeAccount.accountNumber || '1923102100000382'}
                   </span>
                 </div>
-              )}
 
-              <div className="bank-detail-row">
-                <span className="bank-detail-label">Payment Rail & Gateway</span>
-                <span className="bank-detail-val" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <CreditCard size={14} style={{ color: '#059669' }} />
-                  <strong style={{ color: '#047857' }}>Razorpay Live Rail Active</strong>
-                  <span className="live-pill" style={{ marginLeft: '4px', fontSize: '9.5px', padding: '1px 5px' }}>LIVE</span>
-                </span>
+                <div className="bank-info-tile">
+                  <div className="bank-tile-header">
+                    <span className="bank-detail-label">IFSC Code</span>
+                    <button
+                      type="button"
+                      className="copy-btn-inline"
+                      onClick={() => handleCopyText(activeAccount.ifscCode || 'PUNB0192310', 'ifsc')}
+                      title="Copy IFSC Code"
+                    >
+                      {copiedField === 'ifsc' ? (
+                        <span className="copied-text"><Check size={11} /> Copied</span>
+                      ) : (
+                        <><Copy size={11} /> Copy</>
+                      )}
+                    </button>
+                  </div>
+                  <div className="ifsc-row-wrap">
+                    <span className="masked-account-pill font-mono ifsc-pill">
+                      {activeAccount.ifscCode || 'PUNB0192310'}
+                    </span>
+                    <span className="branch-subtag">Chamba, HP</span>
+                  </div>
+                </div>
               </div>
 
-              <div className="bank-detail-row">
-                <span className="bank-detail-label">Connected Date</span>
-                <span className="bank-detail-val">{formatDate(activeAccount.connectedAt || activeAccount.createdAt)}</span>
+              {/* Row 3: Corporate Registered Address Summary Link */}
+              <div className="bank-address-summary-strip">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <MapPin size={13} style={{ color: '#2563eb' }} />
+                  <span style={{ fontSize: '11.5px', color: '#475569', fontWeight: 600 }}>
+                    Jalukari, Mohalla Upper Julakhari, Chamba, HP - 176310
+                  </span>
+                </div>
+                <a href="#corporate-account-details" className="view-full-details-anchor">
+                  View Full Profile ↓
+                </a>
               </div>
 
-              <div className="bank-detail-row" style={{ marginTop: '4px', paddingTop: '10px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span className="bank-detail-label">Account Management</span>
-                <div style={{ display: 'flex', gap: '8px' }}>
+              {/* Row 4: Payment Rail & Gateway and Account Actions */}
+              <div className="bank-meta-footer-row">
+                <div className="bank-rail-badge">
+                  <CreditCard size={13} style={{ color: '#059669' }} />
+                  <span>Razorpay Live Banking Rail</span>
+                  <span className="live-pill">LIVE</span>
+                </div>
+
+                <div className="bank-action-buttons">
                   <button
                     type="button"
                     className="card-deposit-btn-pro"
                     onClick={() => setAddFundsModal(true)}
-                    title={`Deposit corporate funds using ${activeAccount.bankName}`}
+                    title={`Deposit corporate funds using ${activeAccount.bankName || 'Punjab National Bank'}`}
                   >
                     <CreditCard size={12} />
-                    <span>Pay with {activeAccount.bankName?.split(' ')[0] || 'Bank'}</span>
+                    <span>Pay with {activeAccount.bankName?.split(' ')[0] || 'PNB'}</span>
                   </button>
                   <button
                     type="button"
-                    className="admin-btn admin-btn-secondary admin-btn-sm"
-                    style={{ color: '#dc2626', borderColor: '#fecaca', background: '#fef2f2' }}
+                    className="admin-btn admin-btn-secondary admin-btn-sm btn-disconnect"
                     onClick={() => handleDisconnectAccount(activeAccount.id)}
                     title="Disconnect corporate bank account"
                   >
-                    <X size={13} />
+                    <X size={12} />
                     <span>Disconnect</span>
                   </button>
                 </div>
@@ -1408,6 +1480,191 @@ export default function AdminFundingPortalPage() {
           </div>
         </div>
       </div>
+
+      {/* 2.D DEDICATED OFFICIAL CORPORATE ACCOUNT & REGISTERED OFFICE SECTION */}
+      <section className="official-account-showcase-section" id="corporate-account-details" aria-label="Official Corporate Banking and Office Details">
+        <div className="showcase-section-header">
+          <div className="showcase-header-left">
+            <div className="showcase-badge">
+              <ShieldCheck size={14} className="badge-shield-icon" />
+              <span>OFFICIAL CORPORATE TREASURY DETAILS</span>
+            </div>
+            <h2 className="showcase-title">Company Bank Account &amp; Registered Office</h2>
+            <p className="showcase-subtitle">
+              Verified banking credentials for NEFT / RTGS / IMPS settlement and official legal registration of <strong>kashvimlm</strong>
+            </p>
+          </div>
+
+          <div className="showcase-header-actions">
+            <span className="account-verified-tag">
+              <CheckCircle2 size={14} />
+              <span>RBI / KYC Verified Active</span>
+            </span>
+          </div>
+        </div>
+
+        <div className="showcase-cards-grid">
+          {/* Card 1: Bank Account Details */}
+          <div className="showcase-bank-card">
+            <div className="showcase-card-topbar">
+              <div className="card-topbar-title">
+                <div className="bank-avatar-box">
+                  <Landmark size={22} />
+                </div>
+                <div>
+                  <span className="card-kicker">PRIMARY SETTLEMENT ACCOUNT</span>
+                  <h3 className="card-main-name">Punjab National Bank</h3>
+                </div>
+              </div>
+              <span className="pnb-code-badge">PUNB</span>
+            </div>
+
+            {/* Virtual Metallic Account Strip */}
+            <div className="virtual-account-strip">
+              <div className="strip-header">
+                <span className="strip-brand-label">BRAND NAME</span>
+                <span className="strip-brand-value">kashvimlm</span>
+              </div>
+
+              <div className="strip-field-group">
+                <span className="strip-field-lbl">ACCOUNT NUMBER</span>
+                <div className="strip-acc-number-row">
+                  <span className="strip-acc-digits">1923 1021 0000 0382</span>
+                  <button
+                    type="button"
+                    className="strip-copy-btn"
+                    onClick={() => handleCopyText('1923102100000382', 'showcaseAccNo')}
+                    title="Copy Account Number"
+                  >
+                    {copiedField === 'showcaseAccNo' ? (
+                      <span className="copied-pill"><Check size={12} /> Copied!</span>
+                    ) : (
+                      <><Copy size={12} /> Copy Number</>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              <div className="strip-footer-grid">
+                <div>
+                  <span className="strip-field-lbl">IFSC CODE</span>
+                  <div className="strip-ifsc-row">
+                    <span className="strip-ifsc-digits">PUNB0192310</span>
+                    <button
+                      type="button"
+                      className="strip-copy-btn-sm"
+                      onClick={() => handleCopyText('PUNB0192310', 'showcaseIfsc')}
+                      title="Copy IFSC Code"
+                    >
+                      {copiedField === 'showcaseIfsc' ? (
+                        <span className="copied-pill"><Check size={11} /> Copied</span>
+                      ) : (
+                        <><Copy size={11} /> Copy</>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <span className="strip-field-lbl">BRANCH</span>
+                  <span className="strip-branch-val">Chamba (HP)</span>
+                </div>
+
+                <div>
+                  <span className="strip-field-lbl">ACCOUNT TYPE</span>
+                  <span className="strip-branch-val">Current / Operating</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="showcase-bank-meta-chips">
+              <span className="transfer-mode-chip">IMPS</span>
+              <span className="transfer-mode-chip">NEFT</span>
+              <span className="transfer-mode-chip">RTGS</span>
+              <span className="transfer-mode-chip">Instant Payouts</span>
+            </div>
+          </div>
+
+          {/* Card 2: Registered Corporate Office Address */}
+          <div className="showcase-address-card">
+            <div className="showcase-card-topbar">
+              <div className="card-topbar-title">
+                <div className="address-avatar-box">
+                  <MapPin size={22} />
+                </div>
+                <div>
+                  <span className="card-kicker">GOVERNMENT &amp; MCA REGISTERED</span>
+                  <h3 className="card-main-name">Registered Corporate Office</h3>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                className="address-copy-all-btn"
+                onClick={() => handleCopyText(
+                  'Building No./Flat No.: Jalukari, Name Of Premises/Building: MOHALLA UPPER JULAKHARI, Road/Street: POST OFFICE CHAMBA, Locality/Sub Locality: TEHSIL CHAMBA, City/Town/Village: Chamba, District: Chamba, State: Himachal Pradesh, PIN Code: 176310',
+                  'showcaseAddrAll'
+                )}
+                title="Copy Full Official Address"
+              >
+                {copiedField === 'showcaseAddrAll' ? (
+                  <span className="copied-pill"><Check size={12} /> Copied Complete Address</span>
+                ) : (
+                  <><Copy size={12} /> Copy Full Address</>
+                )}
+              </button>
+            </div>
+
+            {/* Address Items Table Grid */}
+            <div className="showcase-address-table">
+              <div className="addr-table-row">
+                <span className="table-lbl">Building No. / Flat No.</span>
+                <span className="table-val highlight-building">Jalukari</span>
+              </div>
+
+              <div className="addr-table-row">
+                <span className="table-lbl">Name Of Premises / Building</span>
+                <span className="table-val">MOHALLA UPPER JULAKHARI</span>
+              </div>
+
+              <div className="addr-table-row">
+                <span className="table-lbl">Road / Street</span>
+                <span className="table-val">POST OFFICE CHAMBA</span>
+              </div>
+
+              <div className="addr-table-row">
+                <span className="table-lbl">Locality / Sub Locality</span>
+                <span className="table-val">TEHSIL CHAMBA</span>
+              </div>
+
+              <div className="addr-table-row">
+                <span className="table-lbl">City / Town / Village</span>
+                <span className="table-val">Chamba</span>
+              </div>
+
+              <div className="addr-table-row">
+                <span className="table-lbl">District</span>
+                <span className="table-val">Chamba</span>
+              </div>
+
+              <div className="addr-table-row">
+                <span className="table-lbl">State</span>
+                <span className="table-val state-val">Himachal Pradesh</span>
+              </div>
+
+              <div className="addr-table-row">
+                <span className="table-lbl">PIN Code</span>
+                <span className="table-val pin-val">176310</span>
+              </div>
+            </div>
+
+            <div className="address-legal-footer">
+              <Building2 size={13} style={{ color: '#0284c7' }} />
+              <span>Official Registered Headquarters for <strong>kashvimlm</strong> corporate operations</span>
+            </div>
+          </div>
+        </div>
+      </section>
 
       {/* 2.C ONE-CLICK COMMISSION PAYMENT BUTTON (Requirement 2) */}
       <div className="distribute-hero-card">

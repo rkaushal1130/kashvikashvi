@@ -387,14 +387,6 @@ function Home() {
                   </h2>
                   <div className="brand-shine-sweep" />
                 </div>
-
-                <p className="brand-tagline">
-                  <span>SMART TECH</span>
-                  <span className="tagline-dot">&bull;</span>
-                  <span>LUXURY HOZRI</span>
-                  <span className="tagline-dot">&bull;</span>
-                  <span>WEALTH</span>
-                </p>
               </div>
             </div>
           </div>

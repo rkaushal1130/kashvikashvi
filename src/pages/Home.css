@@ -782,26 +782,6 @@
   100% { left: 220%; opacity: 0; }
 }
 
-.brand-tagline {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.75rem;
-  font-size: 0.85rem;
-  font-weight: 800;
-  letter-spacing: 0.18em;
-  color: #94a3b8;
-  margin: 0.75rem 0 0.5rem 0;
-  text-transform: uppercase;
-}
-
-.tagline-dot {
-  color: #00e5ff;
-  font-size: 0.9rem;
-}
-
-
-
 @media (max-width: 640px) {
   .hero-brand-stage-col {
     min-height: 420px;
@@ -812,10 +792,6 @@
   }
   .brand-logo-main {
     font-size: 2.2rem;
-  }
-  .brand-tagline {
-    font-size: 0.68rem;
-    gap: 0.4rem;
   }
 }
 

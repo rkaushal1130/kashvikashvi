@@ -18,6 +18,7 @@ import {
   ArrowLeft,
   Sparkles,
   Landmark,
+  CreditCard,
 } from 'lucide-react';
 import './AdminLayout.css';
 
@@ -35,6 +36,7 @@ export function AdminLayout({ children }) {
   const navItems = [
     { label: 'Admin Dashboard', path: '/admin/dashboard', icon: LayoutDashboard },
     { label: 'Funding Portal', path: '/admin/funding-portal', icon: Landmark },
+    { label: 'Commission Distribution', path: '/admin/commission-distribution', icon: CreditCard },
     { label: 'Distributor Directory', path: '/admin/distributors', icon: Users },
     { label: 'Network Tree', path: '/admin/network', icon: Network },
     { label: 'Business Volume', path: '/admin/business-volume', icon: TrendingUp },

@@ -2099,7 +2099,9 @@ model PayoutBatch {
   id                  String             @id @default(uuid())
   batchNumber         String             @unique // e.g. "PB-20261016-1001"
   periodId            String?
-  initiatedByAdminId  String
+  initiatedByAdminId  String             // Maker ID
+  approvedByAdminId   String?            // Checker ID (Maker != Checker)
+  approvedAt          DateTime?
   totalAmount         Decimal            @db.Decimal(14, 2)
   successfulAmount    Decimal            @default(0.00) @db.Decimal(14, 2)
   failedAmount        Decimal            @default(0.00) @db.Decimal(14, 2)
@@ -2107,18 +2109,26 @@ model PayoutBatch {
   successfulCount     Int                @default(0)
   failedCount         Int                @default(0)
   pendingCount        Int                @default(0)
-  status              String             @default("PROCESSING") // PROCESSING, COMPLETED, PARTIALLY_FAILED, FAILED
-  payoutMethod        String             @default("WALLET_CREDIT") // WALLET_CREDIT, BANK_GATEWAY
+  status              String             @default("DRAFT") // DRAFT, PENDING_APPROVAL, APPROVED, PROCESSING, COMPLETED, PARTIALLY_FAILED, FAILED
+  payoutMethod        String             @default("PNB_BANK_TRANSFER") // PNB_BANK_TRANSFER, WALLET_CREDIT, PNB_PORTAL_BULK
+  payoutMode          String             @default("PNB_BANK_TRANSFER") // PNB_BANK_TRANSFER, WALLET_CREDIT
+  approvalStatus      String             @default("DRAFT") // DRAFT, PENDING_APPROVAL, APPROVED, REJECTED
+  pnbBatchReference   String?            // External PNB file reference or API batch ID
+  pnbFileHash         String?            // SHA-256 Checksum of exported file
+  reconciliationStatus String            @default("UNRECONCILED") // UNRECONCILED, PARTIALLY_RECONCILED, FULLY_RECONCILED
   notes               String?
   metadata            Json?
   createdAt           DateTime           @default(now())
   completedAt         DateTime?
 
   items               PayoutBatchItem[]
+  bankBatchFiles      BankBatchFile[]
 
   @@index([batchNumber])
   @@index([status])
+  @@index([approvalStatus])
   @@index([initiatedByAdminId])
+  @@index([approvedByAdminId])
   @@index([createdAt])
   @@map("payout_batches")
 }
@@ -2131,11 +2141,31 @@ model PayoutBatchItem {
   distributorName     String
   distributorCode     String
   sponsorId           String?
-  rankCode            String?
+  rankCode            String?            // SILVER, GOLD, PLATINUM, DIAMOND, RUBY
   amount              Decimal            @db.Decimal(12, 2)
   status              String             @default("PENDING") // SUCCESS, PENDING, FAILED
+
+  // Banking Beneficiary Snapshot
+  bankAccountId       String?
+  accountHolderName   String?
+  maskedAccountNumber String?            // Stored masked for audit safety: "XXXXXXXX0382"
+  encryptedAccountNumber String?         // Encrypted payload for bank rail generation
+  ifscCode            String?            // e.g. "PUNB0192310"
+  bankName            String?
+
+  // Bank Transaction & Tracking
+  utrNumber           String?            // Bank UTR (Unique Transaction Reference)
+  payoutReference     String?            // Client-generated reference e.g. "KV-PB26-ITEM-001"
+  transferStatus      String             @default("PENDING_APPROVAL") // PENDING_APPROVAL, READY_FOR_DISBURSAL, SUBMITTED, SETTLED, FAILED, QUARANTINED
   walletTransactionId String?
-  payoutReference     String?
+
+  // Quarantine & Remediation
+  quarantineReason    String?            // e.g. "INVALID_IFSC", "ACCOUNT_DORMANT", "NAME_MISMATCH"
+  quarantineStatus    String?            @default("NONE") // NONE, QUARANTINED, RESOLVED
+  quarantinedAt       DateTime?
+  remediatedAt        DateTime?
+  remediatedByAdminId String?
+
   failureReason       String?
   retryCount          Int                @default(0)
   lastRetryAt         DateTime?
@@ -2149,7 +2179,35 @@ model PayoutBatchItem {
   @@index([batchId])
   @@index([distributorId])
   @@index([status])
+  @@index([transferStatus])
+  @@index([quarantineStatus])
+  @@index([utrNumber])
   @@index([createdAt])
   @@map("payout_batch_items")
+}
+
+// 65. BankBatchFile (Audited Bank Interchange & MIS Logs)
+model BankBatchFile {
+  id                  String             @id @default(uuid())
+  batchId             String
+  fileName            String
+  fileType            String             // "PNB_BULK_UPLOAD_CSV", "PNB_BULK_UPLOAD_TXT", "PNB_REVERSE_MIS"
+  fileDirection       String             // "OUTBOUND_DISBURSAL", "INBOUND_RECONCILIATION"
+  checksumSha256      String             // Mandatory cryptographic integrity hash
+  totalRecords        Int
+  totalAmount         Decimal            @db.Decimal(14, 2)
+  generatedByAdminId  String
+  uploadedByAdminId   String?
+  fileSizeBytes       Int?
+  storagePath         String?            // Secure private storage path
+  createdAt           DateTime           @default(now())
+  reconciledAt        DateTime?
+
+  batch               PayoutBatch        @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@index([batchId])
+  @@index([checksumSha256])
+  @@index([createdAt])
+  @@map("bank_batch_files")
 }
 

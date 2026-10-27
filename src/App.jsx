@@ -33,6 +33,7 @@ import CommissionManagementPage from './pages/admin/CommissionManagementPage';
 import AuditLogsPage from './pages/admin/AuditLogsPage';
 import CommissionSettingsPage from './pages/admin/CommissionSettingsPage';
 import AdminFundingPortalPage from './pages/admin/AdminFundingPortalPage';
+import CommissionDistributionPage from './pages/admin/CommissionDistributionPage';
 
 function AppContent() {
   const location = useLocation();
@@ -163,6 +164,16 @@ function AppContent() {
               <ProtectedRoute adminOnly>
                 <AdminLayout>
                   <AdminFundingPortalPage />
+                </AdminLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/commission-distribution"
+            element={
+              <ProtectedRoute adminOnly>
+                <AdminLayout>
+                  <CommissionDistributionPage />
                 </AdminLayout>
               </ProtectedRoute>
             }

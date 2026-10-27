@@ -103,18 +103,32 @@ let mockPayoutBatches = [
 
 const MOCK_ACCOUNTS = [
   {
-    id: 'acc-corp-hdfc-01',
+    id: 'acc-corp-pnb-01',
     provider: 'RAZORPAYX',
     providerAccountId: 'acc_rzpx_corp_9941',
     accountType: 'PRIMARY_OPERATING',
-    accountName: 'Kashvi Technologies Corp - Primary Treasury Float',
-    bankName: 'HDFC Bank',
-    bankCode: 'HDFC',
-    ifscCode: 'HDFC0001234',
-    maskedAccountNumber: '•••• •••• •••• 8842',
+    brandName: 'kashvimlm',
+    accountName: 'Kashvi MLM (kashvimlm)',
+    bankName: 'Punjab National Bank',
+    bankCode: 'PUNB',
+    ifscCode: 'PUNB0192310',
+    accountNumber: '1923102100000382',
+    maskedAccountNumber: '•••• •••• •••• 0382',
+    branchName: 'Chamba, Himachal Pradesh',
     currency: 'INR',
     status: 'ACTIVE',
     isPrimary: true,
+    address: {
+      buildingNo: 'Jalukari',
+      premisesName: 'MOHALLA UPPER JULAKHARI',
+      roadStreet: 'POST OFFICE CHAMBA',
+      locality: 'TEHSIL CHAMBA',
+      city: 'Chamba',
+      district: 'Chamba',
+      state: 'Himachal Pradesh',
+      pinCode: '176310',
+      fullAddress: 'Jalukari, Mohalla Upper Julakhari, Post Office Chamba, Tehsil Chamba, Chamba, Himachal Pradesh - 176310',
+    },
     connectedAt: '2026-01-15T10:00:00.000Z',
     createdAt: '2026-01-15T10:00:00.000Z',
     updatedAt: '2026-10-01T08:30:00.000Z',
@@ -124,6 +138,7 @@ const MOCK_ACCOUNTS = [
     provider: 'CASHFREE',
     providerAccountId: 'cf_payout_corp_1028',
     accountType: 'COMMISSION_RESERVE',
+    brandName: 'kashvimlm',
     accountName: 'Kashvi Corp Reserve Escrow Account',
     bankName: 'ICICI Bank',
     bankCode: 'ICIC',
@@ -141,7 +156,7 @@ const MOCK_ACCOUNTS = [
 let mockTransactions = [
   {
     id: 'FTX-2026-1001',
-    fundingAccountId: 'acc-corp-hdfc-01',
+    fundingAccountId: 'acc-corp-pnb-01',
     initiatedByAdminId: 'ADM-KV-01',
     amount: 2500000.0,
     currency: 'INR',
@@ -598,12 +613,12 @@ export const adminFundingApi = {
         timestamp: new Date().toISOString(),
         detail: 'External provider confirmed settlement match. Platform Treasury credited.',
       });
-      MOCK_TREASURY.availableBalance += tx.amount;
+      mockTreasury.availableBalance += tx.amount;
       mockTreasuryTransactions.unshift({
         id: tx.platformWalletTransactionId,
         type: 'CAPITAL_FUNDING',
         amount: tx.amount,
-        balanceAfter: MOCK_TREASURY.availableBalance,
+        balanceAfter: mockTreasury.availableBalance,
         referenceId: tx.id,
         status: 'COMPLETED',
         description: `External provider reconciliation settlement credit for ${tx.id}`,
@@ -612,7 +627,7 @@ export const adminFundingApi = {
       return {
         transaction: tx,
         isCredited: true,
-        treasuryBalance: MOCK_TREASURY.availableBalance,
+        treasuryBalance: mockTreasury.availableBalance,
         message: 'Transaction successfully reconciled against external provider. Platform Treasury credited.',
       };
     }
@@ -652,12 +667,12 @@ export const adminFundingApi = {
       timestamp: new Date().toISOString(),
       detail: `Reversal executed: ${reason}. Platform Treasury debited.`,
     });
-    MOCK_TREASURY.availableBalance -= tx.amount;
+    mockTreasury.availableBalance -= tx.amount;
     mockTreasuryTransactions.unshift({
       id: `TTX-REV-${Date.now()}`,
       type: 'FUNDING_REVERSAL',
       amount: -tx.amount,
-      balanceAfter: MOCK_TREASURY.availableBalance,
+      balanceAfter: mockTreasury.availableBalance,
       referenceId: tx.id,
       status: 'COMPLETED',
       description: `Reversal of corporate funding transaction ${tx.id}: ${reason}`,
@@ -666,7 +681,7 @@ export const adminFundingApi = {
 
     return {
       transaction: tx,
-      treasuryBalance: MOCK_TREASURY.availableBalance,
+      treasuryBalance: mockTreasury.availableBalance,
       message: 'Transaction reversed and treasury debited successfully.',
     };
   },
