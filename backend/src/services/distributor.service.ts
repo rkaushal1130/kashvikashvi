@@ -273,8 +273,14 @@ export class DistributorService {
   }
 
   private static formatProfile(p: any) {
-    const code = p.distributorCode || p.distributorId || p.memberId || 'KV-1002';
+    const code = p.distributorCode || p.distributorId || p.memberId || p.id;
     const name = p.displayName || p.name || `${p.firstName || ''} ${p.lastName || ''}`.trim() || 'Distributor';
+    const rawPayment = (p.paymentStatus || '').toUpperCase();
+    const paymentStatus = rawPayment === 'PAID' ? 'PAID' : rawPayment === 'FAILED' ? 'FAILED' : 'PENDING';
+    const status = p.status || 'PENDING';
+    const accountStatus = p.user?.status || (status === 'ACTIVE' && paymentStatus === 'PAID' ? 'ACTIVE' : 'PENDING_PAYMENT');
+    const isActive = Boolean(p.user?.isActive ?? (status === 'ACTIVE' && paymentStatus === 'PAID'));
+
     return {
       id: p.id,
       userId: p.user?.id || p.userId || p.id,
@@ -290,12 +296,15 @@ export class DistributorService {
       phone: p.user?.phone,
       gender: p.gender,
       dateOfBirth: p.dateOfBirth,
-      status: p.status || 'ACTIVE',
-      accountStatus: p.user?.status || 'ACTIVE',
-      currentRank: p.currentRank?.name || 'Silver Director',
-      highestRank: p.highestRank?.name || 'Silver Director',
-      lifetimePV: Number(p.lifetimePV || 1200),
-      lifetimeGV: Number(p.lifetimeGV || 8500),
+      status,
+      accountStatus,
+      paymentStatus,
+      isActive,
+      paymentVerifiedAt: p.activatedAt,
+      currentRank: p.currentRank?.name || 'Associate',
+      highestRank: p.highestRank?.name || 'Associate',
+      lifetimePV: Number(p.lifetimePV || 0),
+      lifetimeGV: Number(p.lifetimeGV || 0),
       joinedAt: p.joinedAt,
       sponsor: p.sponsor,
       businessCenters: p.businessCenters?.map((bc: any) => ({
@@ -303,10 +312,10 @@ export class DistributorService {
         centerCode: bc.centerCode,
         centerNumber: bc.centerNumber,
         status: bc.status,
-        leftVolume: Number(bc.leftVolume),
-        rightVolume: Number(bc.rightVolume),
-        accumulatedLeftVolume: Number(bc.accumulatedLeftVolume),
-        accumulatedRightVolume: Number(bc.accumulatedRightVolume),
+        leftVolume: Number(bc.leftVolume || 0),
+        rightVolume: Number(bc.rightVolume || 0),
+        accumulatedLeftVolume: Number(bc.accumulatedLeftVolume || 0),
+        accumulatedRightVolume: Number(bc.accumulatedRightVolume || 0),
         hasNode: !!bc.mlmNode,
       })),
       badges: p.badges?.map((b: any) => ({
@@ -321,8 +330,14 @@ export class DistributorService {
 
   private static formatInMemoryUser(u: any) {
     const p = u.distributorProfile || {};
-    const code = u.memberId || u.distributorCode || p.distributorCode || 'KV-1002';
+    const code = u.memberId || u.distributorCode || p.distributorCode || p.distributorId || u.referralCode || u.id;
     const name = u.name || u.fullName || p.displayName || `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'Distributor';
+    const rawPayment = (u.paymentStatus || p.paymentStatus || '').toUpperCase();
+    const paymentStatus = rawPayment === 'PAID' ? 'PAID' : rawPayment === 'FAILED' ? 'FAILED' : 'PENDING';
+    const status = u.status === 'ACTIVE' && paymentStatus === 'PAID' ? 'ACTIVE' : (p.status || u.status || 'PENDING');
+    const accountStatus = u.status === 'ACTIVE' && paymentStatus === 'PAID' ? 'ACTIVE' : 'PENDING_PAYMENT';
+    const isActive = u.status === 'ACTIVE' && paymentStatus === 'PAID';
+
     return {
       id: p.id || u.id,
       userId: u.id,
@@ -338,17 +353,20 @@ export class DistributorService {
       phone: u.phone,
       gender: u.gender || 'NOT_SPECIFIED',
       dateOfBirth: u.dateOfBirth,
-      status: u.status || 'ACTIVE',
-      accountStatus: u.status || 'ACTIVE',
+      status,
+      accountStatus,
+      paymentStatus,
+      isActive,
+      paymentVerifiedAt: p.activatedAt || u.activatedAt || null,
       role: u.role || u.roleName || 'DISTRIBUTOR',
-      currentRank: p.currentRank?.name || 'Silver Director',
-      highestRank: p.highestRank?.name || 'Silver Director',
-      lifetimePV: Number(p.lifetimePV || 1200),
-      lifetimeGV: Number(p.lifetimeGV || 8500),
+      currentRank: p.currentRank?.name || 'Associate',
+      highestRank: p.highestRank?.name || 'Associate',
+      lifetimePV: Number(p.lifetimePV || u.bv || 0),
+      lifetimeGV: Number(p.lifetimeGV || 0),
       joinedAt: u.createdAt || new Date().toISOString(),
       sponsor: p.sponsor || { distributorCode: 'KV-1001', firstName: 'Rahul', lastName: 'Kaushal', displayName: 'Rahul Kaushal' },
       businessCenters: p.businessCenters || [
-        { id: 'bc-1', centerCode: `${code}-BC1`, centerNumber: 1, status: 'ACTIVE', leftVolume: 2400, rightVolume: 1950, accumulatedLeftVolume: 4800, accumulatedRightVolume: 3900 }
+        { id: 'bc-1', centerCode: `${code}-BC1`, centerNumber: 1, status: isActive ? 'ACTIVE' : 'INACTIVE', leftVolume: 0, rightVolume: 0, accumulatedLeftVolume: 0, accumulatedRightVolume: 0 }
       ],
       badges: [],
     };

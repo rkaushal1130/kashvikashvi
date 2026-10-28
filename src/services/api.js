@@ -877,8 +877,8 @@ export const api = {
             treeId: m.treeId || m.id || `node-${String(distId).toLowerCase()}`,
             distributorId: String(distId),
             name: m.name || m.fullName || 'Distributor',
-            status: String(m.status || 'ACTIVE').toUpperCase(),
-            paymentStatus: String(m.paymentStatus || 'PAID').toUpperCase(),
+            status: String(m.status || 'PENDING').toUpperCase(),
+            paymentStatus: String(m.paymentStatus || 'PENDING').toUpperCase(),
             rank: m.rank || 'Associate',
             position: String(m.position || 'LEFT').toUpperCase(),
             sponsor: safeId(m.sponsor) || 'KV-1001',
@@ -905,8 +905,8 @@ export const api = {
             treeId: u.treeId || `node-${String(uDistId).toLowerCase()}`,
             distributorId: String(uDistId),
             name: u.name || u.fullName || `${u.firstName || ''} ${u.lastName || ''}`.trim() || 'New Distributor',
-            status: String(u.status || 'ACTIVE').toUpperCase(),
-            paymentStatus: String(u.paymentStatus || 'PAID').toUpperCase(),
+            status: String(u.status || 'PENDING').toUpperCase(),
+            paymentStatus: String(u.paymentStatus || 'PENDING').toUpperCase(),
             rank: u.currentRank?.name || u.rank || 'Associate',
             position: String(u.placementPosition || u.position || 'LEFT').toUpperCase(),
             joinedDate: u.joinedDate || new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
@@ -1562,8 +1562,8 @@ export const api = {
           distributorId: mDistId,
           name: mem.name || 'Distributor',
           rank: mem.rank || 'Associate',
-          status: String(mem.status || 'ACTIVE').toUpperCase(),
-          paymentStatus: String(pStatus || 'PAID').toUpperCase(),
+          status: String(mem.status || 'PENDING').toUpperCase(),
+          paymentStatus: String(pStatus || 'PENDING').toUpperCase(),
           joinedDate: mem.joinedDate || new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
           sponsor: safeId(mem.sponsor) || 'KV-1001',
           sponsorName: mem.sponsorName || 'Rahul Kaushal',
@@ -2669,9 +2669,10 @@ export const api = {
         rankProgressPercent = Number(Math.min(100, bvP, leftP, rightP).toFixed(1));
       }
 
-      const rawPayment = (userTarget?.paymentStatus || 'PAID').toUpperCase();
-      const paymentStatus = rawPayment === 'FAILED' ? 'FAILED' : rawPayment === 'PENDING' ? 'PENDING' : 'PAID';
-      const accountStatus = (userTarget?.status || 'ACTIVE').toUpperCase();
+      const rawPayment = (userTarget?.paymentStatus || '').toUpperCase();
+      const paymentStatus = rawPayment === 'PAID' ? 'PAID' : rawPayment === 'FAILED' ? 'FAILED' : 'PENDING';
+      const rawAccount = (userTarget?.status || userTarget?.accountStatus || '').toUpperCase();
+      const accountStatus = rawAccount === 'ACTIVE' && paymentStatus === 'PAID' ? 'ACTIVE' : 'PENDING_PAYMENT';
 
       return {
         memberId,
@@ -2705,6 +2706,25 @@ export const api = {
     }
   },
 
+  async createEnrollmentOrder(payload) {
+    try {
+      const res = await fetch(`${API_BASE_URL}/payments/enrollment/order`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      return data;
+    } catch (err) {
+      return {
+        success: false,
+        paymentStatus: 'PENDING',
+        accountStatus: 'PENDING_PAYMENT',
+        message: err.message,
+      };
+    }
+  },
+
   async verifyEnrollmentPayment(payload) {
     try {
       const res = await fetch(`${API_BASE_URL}/enrollments/verify-payment`, {
@@ -2715,7 +2735,7 @@ export const api = {
       const data = await res.json();
       return data;
     } catch (err) {
-      return { success: true, paymentStatus: 'PAID', accountStatus: 'ACTIVE', offline: true };
+      return { success: false, paymentStatus: 'FAILED', accountStatus: 'PENDING_PAYMENT', message: err.message };
     }
   },
 
@@ -2733,7 +2753,7 @@ export const api = {
     } catch {
       // Fallback
     }
-    return { paymentStatus: 'PAID', accountStatus: 'ACTIVE' };
+    return { paymentStatus: 'PENDING', accountStatus: 'PENDING_PAYMENT' };
   },
 };
 

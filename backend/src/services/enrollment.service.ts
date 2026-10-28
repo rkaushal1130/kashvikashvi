@@ -922,13 +922,15 @@ export class EnrollmentService {
         fallback.submittedAt = new Date();
 
         // Prompt 16: Audit logging and tree registration
-        let distCode = 'KV-1002';
+        const { MemberIdService } = await import('./memberId.service');
+        const distCode = await MemberIdService.generateNextMemberId();
         try {
           const { NetworkTreeService } = await import('./networkTree.service');
-          distCode = `KV-${1002 + NetworkTreeService.getEnrolledMembers().length}`;
           NetworkTreeService.addEnrolledMember({
             distributorId: distCode,
             name: fallback.legalName || 'New Distributor',
+            status: 'PENDING',
+            paymentStatus: 'PENDING',
             position: 'RIGHT',
             sponsor: fallback.sponsorId || 'KV-1001',
             placementParent: fallback.placementParentId || fallback.sponsorId || 'KV-1001',
@@ -943,7 +945,7 @@ export class EnrollmentService {
             actorId: sponsorCode,
             memberId: distCode,
             sponsorId: sponsorCode,
-            details: { name: fallback.legalName || 'New Distributor', status: 'ACTIVE' },
+            details: { name: fallback.legalName || 'New Distributor', status: 'PENDING', paymentStatus: 'PENDING' },
           });
 
           await TreeAuditService.logSponsorAssigned({
@@ -1153,7 +1155,8 @@ export class EnrollmentService {
           email,
           passwordHash: initialPasswordHash,
           roleName: enrollment.enrollmentType,
-          status: 'ACTIVE',
+          status: 'INACTIVE',
+          isActive: false,
           phone,
           securityProfile: {
             create: {
@@ -1227,10 +1230,10 @@ export class EnrollmentService {
             firstName,
             lastName,
             displayName: legalName,
-            status: 'ACTIVE',
-            paymentStatus: 'PAID',
+            status: 'PENDING',
+            paymentStatus: 'PENDING',
             sponsorId: sponsor.id,
-            activatedAt: new Date(),
+            activatedAt: null,
           },
         });
 
@@ -1656,7 +1659,8 @@ export class EnrollmentService {
             email,
             passwordHash,
             roleName: input.enrollmentType as UserRole,
-            status: 'ACTIVE',
+            status: 'INACTIVE',
+            isActive: false,
             phone,
             securityProfile: {
               create: {
@@ -1693,7 +1697,6 @@ export class EnrollmentService {
         const newDistributorId = uniqueMemberId;
         const distributorCode = uniqueMemberId;
 
-        const isPaymentPaid = (input as any).paymentStatus === 'PAID' || Boolean((input as any).paymentId);
         const distributor = await tx.distributorProfile.create({
           data: {
             userId: user.id,
@@ -1702,11 +1705,11 @@ export class EnrollmentService {
             firstName,
             lastName,
             displayName: legalName,
-            status: isPaymentPaid ? 'ACTIVE' : 'PENDING',
-            paymentStatus: isPaymentPaid ? 'PAID' : 'PENDING',
+            status: 'PENDING',
+            paymentStatus: 'PENDING',
             sponsorId: sponsor.id,
             dateOfBirth: input.dob ? new Date(input.dob) : undefined,
-            activatedAt: isPaymentPaid ? new Date() : null,
+            activatedAt: null,
           },
         });
 
@@ -1853,7 +1856,8 @@ export class EnrollmentService {
         const newMember = NetworkTreeService.addEnrolledMember({
           distributorId: distId,
           name: legalName,
-          status: 'ACTIVE',
+          status: 'PENDING',
+          paymentStatus: 'PENDING',
           rank: 'Associate',
           position: (input.placementPosition as any) || 'RIGHT',
           sponsor: input.sponsorId || 'KV-1001',
@@ -1869,14 +1873,18 @@ export class EnrollmentService {
             id: `usr-${distId.toLowerCase()}`,
             email,
             roleName: 'DISTRIBUTOR',
-            status: 'ACTIVE',
+            status: 'INACTIVE',
+            paymentStatus: 'PENDING',
+            accountStatus: 'PENDING_PAYMENT',
           },
           distributor: {
             id: newMember.id,
             distributorId: distId,
             distributorCode: distId,
             displayName: legalName,
-            status: 'ACTIVE',
+            status: 'PENDING',
+            paymentStatus: 'PENDING',
+            accountStatus: 'PENDING_PAYMENT',
           },
           sponsor: {
             id: 'sponsor-root-id',

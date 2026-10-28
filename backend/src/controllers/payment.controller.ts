@@ -99,4 +99,59 @@ export class PaymentController {
       next(error);
     }
   }
+
+  /**
+   * Creates an enrollment payment order without activating account.
+   * POST /api/v1/payments/enrollment/order
+   */
+  public static async createEnrollmentOrder(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const result = await PaymentService.createEnrollmentPaymentOrder(req.body);
+      sendSuccess(res, {
+        statusCode: 201,
+        message: result.message,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Retrieves enrollment payment audit records for administrators.
+   * GET /api/v1/payments/admin/enrollments
+   */
+  public static async getAdminEnrollments(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const result = await PaymentService.getAdminEnrollments(req.query);
+      sendSuccess(res, {
+        statusCode: 200,
+        message: 'Admin enrollment records retrieved successfully.',
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Authorized administrative manual payment verification.
+   * POST /api/v1/payments/admin/verify-manual
+   */
+  public static async adminVerifyPayment(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const adminId = req.user?.id || 'admin';
+      const result = await PaymentService.adminVerifyPayment({
+        adminId,
+        ...req.body,
+      });
+      sendSuccess(res, {
+        statusCode: 200,
+        message: result.message,
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }

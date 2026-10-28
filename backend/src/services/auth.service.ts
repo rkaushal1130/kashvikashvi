@@ -852,7 +852,8 @@ export class AuthService {
           phone,
           referralCode: distributorCode,
           sponsorId: sponsorId || null,
-          status: 'ACTIVE', // backend controlled
+          status: 'INACTIVE', // backend controlled: pending enrollment payment
+          isActive: false,
           emailVerified: false,
           securityProfile: {
             create: {
@@ -1600,13 +1601,39 @@ export class AuthService {
     if (!user) {
       throw AppError.notFound('User not found.', 'AUTH_USER_NOT_FOUND');
     }
+    const dp = user.distributorProfile || {};
+    const memberId = user.distributorCode || user.referralCode || dp.distributorCode || dp.distributorId || user.memberId || user.id;
+    const paymentStatus = user.paymentStatus || dp.paymentStatus || 'PENDING';
+    const accountStatus = user.status === 'ACTIVE' && paymentStatus === 'PAID' ? 'ACTIVE' : 'PENDING_PAYMENT';
+    const isActive = user.status === 'ACTIVE' && paymentStatus === 'PAID';
+
     return {
       id: user.id,
+      userId: user.userId || user.id,
+      memberId,
+      distributorId: memberId,
+      distributorCode: memberId,
+      referralCode: memberId,
+      fullName: user.fullName || user.name || `${dp.firstName || ''} ${dp.lastName || ''}`.trim() || 'Distributor',
+      name: user.fullName || user.name || `${dp.firstName || ''} ${dp.lastName || ''}`.trim() || 'Distributor',
       email: user.email,
       role: user.roleName || user.role,
       status: user.status,
+      accountStatus,
+      paymentStatus,
+      isActive,
       phone: user.phone || undefined,
-      distributorProfile: user.distributorProfile,
+      distributorProfile: {
+        ...dp,
+        id: dp.id || user.id,
+        memberId,
+        distributorId: memberId,
+        distributorCode: memberId,
+        status: user.status === 'ACTIVE' && paymentStatus === 'PAID' ? 'ACTIVE' : (dp.status || 'PENDING'),
+        paymentStatus,
+        accountStatus,
+        isActive,
+      },
       wallet: user.wallet,
       addresses: user.addresses || [],
       createdAt: user.createdAt,
@@ -1640,25 +1667,49 @@ export class AuthService {
       return await this.getMeInMemory(userId);
     }
 
+    const dp = user.distributorProfile;
+    const memberId = dp?.distributorCode || dp?.distributorId || user.referralCode || user.id;
+    const rawPayment = (dp?.paymentStatus || '').toUpperCase();
+    const paymentStatus = rawPayment === 'PAID' ? 'PAID' : rawPayment === 'FAILED' ? 'FAILED' : 'PENDING';
+    const status = user.status;
+    const accountStatus = status === 'ACTIVE' && paymentStatus === 'PAID' ? 'ACTIVE' : 'PENDING_PAYMENT';
+    const isActive = Boolean(user.isActive && status === 'ACTIVE' && paymentStatus === 'PAID');
+
     return {
       id: user.id,
+      userId: user.userId || user.id,
+      memberId,
+      distributorId: memberId,
+      distributorCode: memberId,
+      referralCode: memberId,
+      fullName: user.fullName || `${dp?.firstName || ''} ${dp?.lastName || ''}`.trim() || 'Distributor',
+      name: user.fullName || `${dp?.firstName || ''} ${dp?.lastName || ''}`.trim() || 'Distributor',
       email: user.email,
       role: user.roleName,
       status: user.status,
+      accountStatus,
+      paymentStatus,
+      isActive,
       phone: user.phone || undefined,
-      distributorProfile: user.distributorProfile
+      distributorProfile: dp
         ? {
-            id: user.distributorProfile.id,
-            distributorCode: user.distributorProfile.distributorCode,
-            firstName: user.distributorProfile.firstName,
-            lastName: user.distributorProfile.lastName,
-            displayName: user.distributorProfile.displayName,
-            status: user.distributorProfile.status,
-            currentRank: user.distributorProfile.currentRank?.name || 'Unranked',
-            lifetimePV: Number(user.distributorProfile.lifetimePV),
-            lifetimeGV: Number(user.distributorProfile.lifetimeGV),
-            sponsor: user.distributorProfile.sponsor,
-            businessCenters: user.distributorProfile.businessCenters.map((bc) => ({
+            id: dp.id,
+            memberId,
+            distributorId: memberId,
+            distributorCode: dp.distributorCode || memberId,
+            firstName: dp.firstName,
+            lastName: dp.lastName,
+            displayName: dp.displayName,
+            status: dp.status,
+            accountStatus,
+            paymentStatus,
+            isActive,
+            paymentVerifiedAt: dp.activatedAt,
+            currentRank: dp.currentRank?.name || 'Unranked',
+            lifetimePV: Number(dp.lifetimePV),
+            lifetimeGV: Number(dp.lifetimeGV),
+            sponsor: dp.sponsor,
+            businessCenters: dp.businessCenters.map((bc) => ({
               id: bc.id,
               centerCode: bc.centerCode,
               centerNumber: bc.centerNumber,

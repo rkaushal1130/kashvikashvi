@@ -281,12 +281,13 @@ export class MemberPerformanceService {
   }
 
   private static buildFallbackPerformance(user: any, distCode: string): MemberPerformanceData {
-    const rawPayment = (user.paymentStatus || (user.status === 'ACTIVE' ? 'PAID' : 'PENDING')).toUpperCase();
+    const rawPayment = (user.paymentStatus || user.distributorProfile?.paymentStatus || '').toUpperCase();
     const paymentStatus: 'PAID' | 'PENDING' | 'FAILED' | 'UNPAID' =
-      rawPayment === 'PAID' ? 'PAID' : rawPayment === 'FAILED' ? 'FAILED' : rawPayment === 'UNPAID' ? 'UNPAID' : 'PENDING';
+      rawPayment === 'PAID' ? 'PAID' : rawPayment === 'FAILED' ? 'FAILED' : rawPayment === 'PENDING' ? 'PENDING' : 'UNPAID';
 
+    const rawAccount = (user.status || user.distributorProfile?.status || '').toUpperCase();
     const accountStatus: 'ACTIVE' | 'PENDING' | 'INACTIVE' | 'SUSPENDED' =
-      user.status === 'ACTIVE' ? 'ACTIVE' : user.status === 'SUSPENDED' ? 'SUSPENDED' : 'PENDING';
+      rawAccount === 'ACTIVE' && paymentStatus === 'PAID' ? 'ACTIVE' : rawAccount === 'SUSPENDED' ? 'SUSPENDED' : 'PENDING';
 
     const personalBV = Number(user.bv ?? user.personalBV ?? user.distributorProfile?.lifetimePV ?? 0);
     const leftBV = Number(user.leftBV ?? user.leftMatching ?? user.distributorProfile?.businessCenters?.[0]?.leftVolume ?? 0);
@@ -324,7 +325,7 @@ export class MemberPerformanceService {
       memberId: distCode,
       distributorId: distCode,
       distributorCode: distCode,
-      name: user.name || user.fullName || 'Rahul Kaushal',
+      name: user.name || user.fullName || user.displayName || 'Distributor',
       rank: achievedRank.name,
       currentRank: achievedRank.name,
       currentRankCode: achievedRank.code,

@@ -19,6 +19,8 @@ import {
   Search,
   AlertTriangle,
   CreditCard,
+  Sparkles,
+  Clock,
   X,
 } from 'lucide-react';
 import { api } from '../../services/api';
@@ -170,7 +172,7 @@ function EnrollmentView({ user, onNavigate }) {
     setPaymentModalOpen(true);
   };
 
-  const handleLaunchRazorpay = () => {
+  const handleLaunchRazorpay = async () => {
     setPaymentError(null);
     setPaymentProcessing(true);
 
@@ -190,77 +192,256 @@ function EnrollmentView({ user, onNavigate }) {
         ? 'Elite Leadership Pack'
         : 'Associate Welcome Pack';
 
-    const rzpKey = import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_live_ToerZRsvekgL2z';
+    try {
+      // Step 1: Submit enrollment as PENDING to generate unique KV ID and assign parent
+      const preRes = await api.submitCompleteEnrollment({
+        fullName: formData.fullName,
+        email: formData.email,
+        phone: formData.phone,
+        dob: formData.dob || undefined,
+        gender: formData.gender,
+        panNumber: formData.panNumber,
+        address: formData.address,
+        city: formData.city,
+        state: formData.state,
+        pincode: formData.pincode,
+        country: 'India',
+        sponsorId: sponsorInput.trim(),
+        placementParentId: sponsorInput.trim(),
+        placementPosition: selectedPlacementPosition || 'AUTO',
+        placementLeg: (selectedPlacementPosition || 'AUTO').toLowerCase(),
+        enrollmentType: enrollType === 'distributor' ? 'DISTRIBUTOR' : 'CUSTOMER',
+        starterKitId: formData.starterKitId,
+        productPackage: kitName,
+        price: kitPrice,
+        bv: kitBV,
+        bankName: formData.bankName,
+        accountNumber: formData.accountNumber,
+        ifscCode: formData.ifscCode,
+        password: formData.password || 'SecurePass2026!',
+        paymentStatus: 'PENDING',
+        status: 'PENDING',
+      });
 
-    const startCheckout = () => {
+      const assignedMemberId = preRes?.data?.distributor?.distributorId || preRes?.data?.memberId || 'KV-1002';
+
+      // Step 2: Create payment order with backend
+      let serverOrderId = '';
       try {
-        if (!window.Razorpay) {
-          throw new Error('Razorpay SDK could not load. You can complete enrollment with the Instant Test Payment option.');
-        }
-
-        const options = {
-          key: rzpKey,
-          amount: kitPrice * 100, // 100 paise = ₹1
-          currency: 'INR',
-          name: 'KASHVIMLM Platform',
-          description: `Starter Kit Activation: ${kitName} (₹${kitPrice})`,
-          image: '/logo.png',
-          prefill: {
-            name: formData.fullName || '',
-            email: formData.email || '',
-            contact: formData.phone || '',
-          },
-          notes: {
-            starterKitId: formData.starterKitId,
-            sponsorId: sponsorInput.trim(),
-            placementLeg: selectedPlacementPosition || 'AUTO',
-            bv: String(kitBV),
-          },
-          theme: {
-            color: '#005086',
-          },
-          handler: async function (response) {
-            const paymentId = response.razorpay_payment_id || `pay_rzp_${Date.now()}`;
-            await executeCompleteEnrollment(paymentId);
-          },
-          modal: {
-            ondismiss: function () {
-              setPaymentProcessing(false);
-            },
-          },
-        };
-
-        const rzp = new window.Razorpay(options);
-        rzp.on('payment.failed', function (resp) {
-          setPaymentProcessing(false);
-          setPaymentError(resp.error?.description || 'Razorpay payment was not completed.');
+        const orderRes = await api.createEnrollmentOrder({
+          memberId: assignedMemberId,
+          starterKitId: formData.starterKitId,
         });
-        rzp.open();
-      } catch (err) {
-        setPaymentProcessing(false);
-        setPaymentError(err.message || 'Unable to open Razorpay modal.');
+        if (orderRes?.success && orderRes?.data?.razorpayOrderId) {
+          serverOrderId = orderRes.data.razorpayOrderId;
+        }
+      } catch (e) {
+        console.warn('Backend order generation:', e);
       }
-    };
 
-    if (window.Razorpay) {
-      startCheckout();
-    } else {
-      const script = document.createElement('script');
-      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-      script.async = true;
-      script.onload = () => startCheckout();
-      script.onerror = () => {
-        setPaymentProcessing(false);
-        setPaymentError('Could not reach Razorpay network. Please use the Instant Test Payment button below.');
+      const rzpKey = import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_live_ToerZRsvekgL2z';
+
+      const startCheckout = () => {
+        try {
+          if (!window.Razorpay) {
+            throw new Error('Razorpay SDK could not load.');
+          }
+
+          const options = {
+            key: rzpKey,
+            amount: kitPrice * 100, // 100 paise = ₹1
+            currency: 'INR',
+            name: 'KASHVIMLM Platform',
+            description: `Starter Kit Activation: ${kitName} (₹${kitPrice})`,
+            order_id: serverOrderId || undefined,
+            image: '/logo.png',
+            prefill: {
+              name: formData.fullName || '',
+              email: formData.email || '',
+              contact: formData.phone || '',
+            },
+            notes: {
+              memberId: assignedMemberId,
+              starterKitId: formData.starterKitId,
+              sponsorId: sponsorInput.trim(),
+              placementLeg: selectedPlacementPosition || 'AUTO',
+              bv: String(kitBV),
+            },
+            theme: {
+              color: '#005086',
+            },
+            handler: async function (response) {
+              try {
+                // Step 3: Cryptographically verify payment on backend
+                const verifyRes = await api.verifyEnrollmentPayment({
+                  memberId: assignedMemberId,
+                  razorpayOrderId: response.razorpay_order_id || serverOrderId,
+                  razorpayPaymentId: response.razorpay_payment_id,
+                  razorpaySignature: response.razorpay_signature,
+                  starterKitId: formData.starterKitId,
+                  amount: kitPrice,
+                  bv: kitBV,
+                });
+
+                if (verifyRes?.success || verifyRes?.paymentStatus === 'PAID') {
+                  await executeCompleteEnrollment({
+                    isVerified: true,
+                    assignedMemberId,
+                    paymentId: response.razorpay_payment_id,
+                    paymentStatus: 'PAID',
+                    accountStatus: 'ACTIVE',
+                  });
+                } else {
+                  setPaymentError(verifyRes?.message || 'Payment verification failed.');
+                  await executeCompleteEnrollment({
+                    isVerified: false,
+                    assignedMemberId,
+                    paymentId: response.razorpay_payment_id,
+                    paymentStatus: 'FAILED',
+                    accountStatus: 'PENDING_PAYMENT',
+                  });
+                }
+              } catch (err) {
+                setPaymentError(err.message || 'Signature verification error.');
+              }
+            },
+            modal: {
+              ondismiss: function () {
+                setPaymentProcessing(false);
+              },
+            },
+          };
+
+          const rzp = new window.Razorpay(options);
+          rzp.on('payment.failed', async function (resp) {
+            setPaymentProcessing(false);
+            setPaymentError(resp.error?.description || 'Razorpay payment was not completed.');
+            await executeCompleteEnrollment({
+              isVerified: false,
+              assignedMemberId,
+              paymentId: resp.error?.metadata?.payment_id || `failed_${Date.now()}`,
+              paymentStatus: 'FAILED',
+              accountStatus: 'PENDING_PAYMENT',
+            });
+          });
+          rzp.open();
+        } catch (err) {
+          setPaymentProcessing(false);
+          setPaymentError(err.message || 'Unable to open Razorpay modal.');
+        }
       };
-      document.body.appendChild(script);
+
+      if (window.Razorpay) {
+        startCheckout();
+      } else {
+        const script = document.createElement('script');
+        script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+        script.async = true;
+        script.onload = () => startCheckout();
+        script.onerror = () => {
+          setPaymentProcessing(false);
+          setPaymentError('Could not reach Razorpay network.');
+        };
+        document.body.appendChild(script);
+      }
+    } catch (err) {
+      setPaymentProcessing(false);
+      setPaymentError(err.message || 'Failed to submit enrollment.');
     }
   };
 
-  const executeCompleteEnrollment = async (razorpayPaymentId = `pay_sim_${Date.now()}`) => {
+  const handleTestVerifiedPayment = async () => {
+    setPaymentError(null);
+    setPaymentProcessing(true);
+    const testPaymentId = `pay_test_${Date.now()}`;
+    const testSig = `test_sig_${Date.now()}`;
+
+    try {
+      // Create pending enrollment first
+      const preRes = await api.submitCompleteEnrollment({
+        fullName: formData.fullName,
+        email: formData.email,
+        phone: formData.phone,
+        dob: formData.dob || undefined,
+        gender: formData.gender,
+        panNumber: formData.panNumber,
+        address: formData.address,
+        city: formData.city,
+        state: formData.state,
+        pincode: formData.pincode,
+        country: 'India',
+        sponsorId: sponsorInput.trim(),
+        placementParentId: sponsorInput.trim(),
+        placementPosition: selectedPlacementPosition || 'AUTO',
+        placementLeg: (selectedPlacementPosition || 'AUTO').toLowerCase(),
+        enrollmentType: enrollType === 'distributor' ? 'DISTRIBUTOR' : 'CUSTOMER',
+        starterKitId: formData.starterKitId,
+        productPackage: 'Fast-Track Pro Pack',
+        price: 1,
+        bv: 100,
+        bankName: formData.bankName,
+        accountNumber: formData.accountNumber,
+        ifscCode: formData.ifscCode,
+        password: formData.password || 'SecurePass2026!',
+        paymentStatus: 'PENDING',
+        status: 'PENDING',
+      });
+
+      const assignedMemberId = preRes?.data?.distributor?.distributorId || preRes?.data?.memberId || 'KV-1002';
+
+      // Verify payment with server
+      const verifyRes = await api.verifyEnrollmentPayment({
+        memberId: assignedMemberId,
+        razorpayOrderId: `order_test_${Date.now()}`,
+        razorpayPaymentId: testPaymentId,
+        razorpaySignature: testSig,
+        starterKitId: formData.starterKitId,
+        amount: 1,
+        bv: 100,
+      });
+
+      if (verifyRes?.success || verifyRes?.paymentStatus === 'PAID') {
+        await executeCompleteEnrollment({
+          isVerified: true,
+          assignedMemberId,
+          paymentId: testPaymentId,
+          paymentStatus: 'PAID',
+          accountStatus: 'ACTIVE',
+        });
+      } else {
+        await executeCompleteEnrollment({
+          isVerified: false,
+          assignedMemberId,
+          paymentId: testPaymentId,
+          paymentStatus: 'FAILED',
+          accountStatus: 'PENDING_PAYMENT',
+        });
+      }
+    } catch (err) {
+      setPaymentError(err.message);
+    } finally {
+      setPaymentProcessing(false);
+    }
+  };
+
+  const handleRegisterPendingPayment = async () => {
+    await executeCompleteEnrollment({
+      isVerified: false,
+      paymentId: 'PAYMENT_PENDING',
+      paymentStatus: 'PENDING',
+      accountStatus: 'PENDING_PAYMENT',
+    });
+  };
+
+  const executeCompleteEnrollment = async (options = {}) => {
     setIsSubmitting(true);
     setPaymentProcessing(true);
     setSubmitError(null);
+
+    const isVerified = Boolean(options.isVerified);
+    const paymentStatus = options.paymentStatus || (isVerified ? 'PAID' : 'PENDING');
+    const accountStatus = options.accountStatus || (isVerified ? 'ACTIVE' : 'PENDING_PAYMENT');
+    const razorpayPaymentId = options.paymentId || (isVerified ? `pay_rzp_${Date.now()}` : 'PENDING');
 
     const kitBV =
       formData.starterKitId === 'kit_pro'
@@ -305,35 +486,37 @@ function EnrollmentView({ user, onNavigate }) {
       password: formData.password || 'SecurePass2026!',
       paymentId: razorpayPaymentId,
       paymentMethod: 'RAZORPAY',
-      paymentStatus: 'PAID',
+      paymentStatus,
+      status: isVerified ? 'ACTIVE' : 'PENDING',
     };
 
     try {
       const res = await api.submitCompleteEnrollment(enrollPayload);
       if (res && res.success && res.data) {
         const d = res.data;
+        const assignedId = options.assignedMemberId || d.distributor?.distributorId || d.distributor?.distributorCode || 'KV-NEW';
         const result = {
-          memberId: d.distributor?.distributorId || d.distributor?.distributorCode || 'KV-NEW',
+          memberId: assignedId,
           name: d.distributor?.displayName || formData.fullName,
           email: d.user?.email || formData.email,
           phone: formData.phone,
           type: enrollType === 'distributor' ? 'Brand Partner / Associate' : 'Preferred Customer',
           sponsorId: d.sponsor?.distributorId || sponsorInput,
           sponsorName: d.sponsor?.displayName || sponsorData?.sponsor?.name || sponsorName,
-          placement: 'RIGHT Leg',
+          placement: `${selectedPlacementPosition || 'RIGHT'} Leg`,
           placementParent: d.placement?.placementParentDistributorId || sponsorInput,
-          assignedBV: kitBV,
+          assignedBV: isVerified ? kitBV : 0,
           kitName,
           kitPrice,
           paymentId: razorpayPaymentId,
           paymentMethod: 'Razorpay Gateway',
-          paymentStatus: 'Paid (₹1.00 via Razorpay)',
+          paymentStatus,
           enrolledAt: new Date().toLocaleDateString('en-US', {
             month: 'short',
             day: 'numeric',
             year: 'numeric',
           }),
-          status: 'Active & Commission Qualified',
+          status: isVerified ? 'Active & Commission Qualified' : 'Pending Payment Activation',
         };
 
         // Save into downline history and persistent enrolled tree members in localStorage
@@ -344,13 +527,14 @@ function EnrollmentView({ user, onNavigate }) {
 
           const storedTree = JSON.parse(localStorage.getItem('kashvi_enrolled_tree_members') || '[]');
           const newMemberId = result.memberId;
-          const assignedPosition = (res?.data?.placementPosition || res?.data?.placement?.position || placementChoice || 'LEFT').toUpperCase();
+          const assignedPosition = (res?.data?.placementPosition || res?.data?.placement?.position || selectedPlacementPosition || 'RIGHT').toUpperCase();
           const assignedParent = res?.data?.placementParentId || res?.data?.placement?.placementParentDistributorId || result.placementParent || result.sponsorId;
           const newTreeEntry = {
             id: `node-${String(newMemberId).toLowerCase()}-uuid`,
             distributorId: newMemberId,
             name: result.name,
-            status: 'ACTIVE',
+            status: isVerified ? 'ACTIVE' : 'PENDING',
+            paymentStatus,
             rank: 'Associate',
             position: assignedPosition,
             joinedDate: result.enrolledAt,
@@ -359,7 +543,7 @@ function EnrollmentView({ user, onNavigate }) {
             placementParent: assignedParent,
             placementParentName: result.sponsorName,
             businessCenter: 'BC-001',
-            bv: kitBV,
+            bv: isVerified ? kitBV : 0,
             email: result.email,
             phone: result.phone,
             leftTeamCount: 0,
@@ -517,14 +701,38 @@ function EnrollmentView({ user, onNavigate }) {
 
             <div className="credential-row">
               <span className="cred-label">Payment Status:</span>
-              <span className="status-badge-active" style={{ backgroundColor: '#dcfce7', color: '#15803d' }}>
-                ✓ {enrollmentResult.paymentStatus || 'Paid (₹1.00 via Razorpay)'}
+              <span
+                style={{
+                  fontSize: '11px',
+                  padding: '3px 8px',
+                  borderRadius: '4px',
+                  fontWeight: 700,
+                  letterSpacing: '0.4px',
+                  backgroundColor: enrollmentResult.paymentStatus === 'PAID' ? '#dcfce7' : enrollmentResult.paymentStatus === 'FAILED' ? '#fee2e2' : '#fef3c7',
+                  color: enrollmentResult.paymentStatus === 'PAID' ? '#15803d' : enrollmentResult.paymentStatus === 'FAILED' ? '#b91c1c' : '#b45309',
+                  border: `1px solid ${enrollmentResult.paymentStatus === 'PAID' ? '#bbf7d0' : enrollmentResult.paymentStatus === 'FAILED' ? '#fecaca' : '#fde68a'}`,
+                }}
+              >
+                PAYMENT: {enrollmentResult.paymentStatus}
               </span>
             </div>
 
             <div className="credential-row">
               <span className="cred-label">Official Status:</span>
-              <span className="status-badge-active">{enrollmentResult.status}</span>
+              <span
+                style={{
+                  fontSize: '11px',
+                  padding: '3px 8px',
+                  borderRadius: '4px',
+                  fontWeight: 700,
+                  letterSpacing: '0.4px',
+                  backgroundColor: enrollmentResult.status?.includes('Active') ? '#dcfce7' : '#fef3c7',
+                  color: enrollmentResult.status?.includes('Active') ? '#15803d' : '#b45309',
+                  border: `1px solid ${enrollmentResult.status?.includes('Active') ? '#bbf7d0' : '#fde68a'}`,
+                }}
+              >
+                {enrollmentResult.status}
+              </span>
             </div>
 
             <div className="credential-row">
@@ -1417,17 +1625,29 @@ function EnrollmentView({ user, onNavigate }) {
                   </button>
 
                   <div className="test-sandbox-divider">
-                    <span>OR DIRECT DEMO / SANDBOX APPROVAL</span>
+                    <span>OR TEST & DEFERRED ACTIVATION</span>
                   </div>
 
                   <button
                     type="button"
                     className="btn-pay-demo-simulation"
-                    onClick={() => executeCompleteEnrollment(`pay_test_rzp_${Date.now()}`)}
+                    onClick={handleTestVerifiedPayment}
                     disabled={paymentProcessing}
+                    style={{ marginBottom: '8px' }}
                   >
                     <Sparkles size={16} />
-                    <span>Instant Test Payment (Mock Razorpay Success)</span>
+                    <span>Verify Test Payment (Simulate Gateway Verification)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    className="btn-pay-demo-simulation"
+                    onClick={handleRegisterPendingPayment}
+                    disabled={paymentProcessing}
+                    style={{ background: '#f1f5f9', color: '#334155', border: '1px solid #cbd5e1' }}
+                  >
+                    <Clock size={16} />
+                    <span>Register & Complete Payment Later (Pending Status)</span>
                   </button>
                 </div>
               </div>

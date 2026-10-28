@@ -25,6 +25,8 @@ import {
   Network,
   Landmark,
   Wallet,
+  AlertTriangle,
+  CreditCard,
 } from 'lucide-react';
 import './DistributorDashboard.css';
 
@@ -148,6 +150,7 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
 
   // Live Member Performance Card State (PROMPT: Unique KV ID, Payment Badges, Volume & Rank)
   const [performance, setPerformance] = useState(null);
+  const [isPaymentInitiating, setIsPaymentInitiating] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -367,8 +370,8 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
     'NA';
   const memberId = typeof rawMemberId === 'object' ? (rawMemberId?.code || rawMemberId?.id || 'NA') : rawMemberId;
 
-  const userStatus = (effectiveUser?.status || effectiveUser?.distributorProfile?.status || 'ACTIVE').toUpperCase();
-  const rawPayment = effectiveUser?.paymentStatus || (userStatus === 'ACTIVE' ? 'PAID' : 'PENDING');
+  const userStatus = (effectiveUser?.status || effectiveUser?.distributorProfile?.status || 'PENDING').toUpperCase();
+  const rawPayment = effectiveUser?.paymentStatus || effectiveUser?.distributorProfile?.paymentStatus || 'PENDING';
   const paymentStatus = rawPayment.toUpperCase();
   const isPaid = paymentStatus === 'PAID';
   const isFailed = paymentStatus === 'FAILED' || paymentStatus === 'CANCELLED';
@@ -395,18 +398,100 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
   const rankProgressPercent = cumulativeRank?.rankProgressPercent ?? 0;
 
   // Authoritative Member Performance Display Values (PROMPT: Performance Card)
-  const displayMemberName = performance?.name || (memberName !== 'NA' ? memberName : 'Rahul Kaushal');
-  const displayMemberId = performance?.memberId || performance?.distributorCode || (memberId !== 'NA' ? memberId : 'KV-1001');
-  const displayPaymentStatus = (performance?.paymentStatus || paymentStatus || 'PAID').toUpperCase();
-  const displayUserStatus = (performance?.accountStatus || userStatus || 'ACTIVE').toUpperCase();
-  const displayMemberSince = performance?.brandPartnerSince || (memberSince !== 'NA' ? memberSince : '28 Oct 2026');
+  const displayMemberName = performance?.name || (memberName !== 'NA' ? memberName : (effectiveUser?.name || 'Distributor'));
+  const displayMemberId = performance?.memberId || performance?.distributorCode || (memberId !== 'NA' ? memberId : (effectiveUser?.distributorProfile?.distributorCode || effectiveUser?.memberId || ''));
+  const displayPaymentStatus = (performance?.paymentStatus || paymentStatus || effectiveUser?.paymentStatus || 'PENDING').toUpperCase();
+  const displayUserStatus = (performance?.accountStatus || userStatus || effectiveUser?.accountStatus || (displayPaymentStatus === 'PAID' ? 'ACTIVE' : 'PENDING_PAYMENT')).toUpperCase();
+  const displayMemberSince = performance?.brandPartnerSince || (memberSince !== 'NA' ? memberSince : 'Today');
   const displayRankName = performance?.currentRank || currentRankName || 'Base';
   const displayNextRankName = performance?.nextRank || nextRankName || (performance?.isHighestRank ? 'Highest Rank Achieved' : 'Silver');
   const displayRankProgress = performance?.rankProgressPercent ?? rankProgressPercent ?? 0;
-  const displayPersonalBV = performance?.personalBV ?? cumulativeRank?.qualifyingBV ?? 250;
-  const displayLeftBV = performance?.leftBV ?? cumulativeRank?.leftMatching ?? 2000;
-  const displayRightBV = performance?.rightBV ?? cumulativeRank?.rightMatching ?? 2000;
-  const displayMatchingVolume = performance?.matchingVolume ?? cumulativeRank?.matchedVolume ?? 2000;
+  const displayPersonalBV = performance?.personalBV ?? cumulativeRank?.qualifyingBV ?? 0;
+  const displayLeftBV = performance?.leftBV ?? cumulativeRank?.leftMatching ?? 0;
+  const displayRightBV = performance?.rightBV ?? cumulativeRank?.rightMatching ?? 0;
+  const displayMatchingVolume = performance?.matchingVolume ?? cumulativeRank?.matchedVolume ?? 0;
+
+  const handleInitiatePayment = async () => {
+    setIsPaymentInitiating(true);
+    try {
+      const orderRes = await api.createEnrollmentOrder({
+        memberId: displayMemberId,
+        starterKitId: 'kit_pro',
+      });
+
+      const rzpKey = import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_live_ToerZRsvekgL2z';
+      const orderData = orderRes?.data || orderRes;
+      const orderId = orderData?.razorpayOrderId || orderData?.id || `order_kmlm_${Date.now()}`;
+      const amountPaise = orderData?.amount || 299900;
+
+      const launchRazorpayModal = () => {
+        if (!window.Razorpay) {
+          throw new Error('Razorpay SDK not loaded');
+        }
+        const options = {
+          key: rzpKey,
+          amount: amountPaise,
+          currency: 'INR',
+          name: 'KASHVIMLM Platform',
+          description: 'Enrollment Starter Pack Activation',
+          order_id: orderData?.razorpayOrderId,
+          prefill: {
+            name: displayMemberName,
+            email: effectiveUser?.email || '',
+            contact: effectiveUser?.phone || '',
+          },
+          handler: async (resp) => {
+            try {
+              const verifyRes = await api.verifyEnrollmentPayment({
+                memberId: displayMemberId,
+                razorpayOrderId: resp.razorpay_order_id || orderId,
+                razorpayPaymentId: resp.razorpay_payment_id,
+                razorpaySignature: resp.razorpay_signature,
+              });
+
+              if (verifyRes?.success || verifyRes?.paymentStatus === 'PAID') {
+                setToastMessage('Payment verified successfully! Your account is now ACTIVE.');
+                setTimeout(() => setToastMessage(''), 4000);
+                if (api.getMemberPerformance) {
+                  const updatedPerf = await api.getMemberPerformance(displayMemberId);
+                  if (updatedPerf) setPerformance(updatedPerf);
+                }
+              } else {
+                alert(`Payment Verification: ${verifyRes?.message || 'Payment verification could not be confirmed.'}`);
+              }
+            } catch (err) {
+              alert(`Payment Verification Error: ${err.message}`);
+            }
+          },
+          modal: {
+            ondismiss: () => {
+              setIsPaymentInitiating(false);
+            },
+          },
+        };
+        const rzp = new window.Razorpay(options);
+        rzp.open();
+      };
+
+      if (window.Razorpay) {
+        launchRazorpayModal();
+      } else {
+        const script = document.createElement('script');
+        script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+        script.async = true;
+        script.onload = () => launchRazorpayModal();
+        script.onerror = () => {
+          setIsPaymentInitiating(false);
+          alert('Could not reach Razorpay network. Please try again.');
+        };
+        document.body.appendChild(script);
+      }
+    } catch (err) {
+      alert(`Could not initiate payment: ${err.message}`);
+    } finally {
+      setIsPaymentInitiating(false);
+    }
+  };
 
   // Format today's date dynamically
   const todayDateStr = new Intl.DateTimeFormat('en-US', {
@@ -802,7 +887,7 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
                     </span>
                   </h2>
                   <p className="member-id-text" style={{ margin: '4px 0 6px', fontWeight: 600, color: '#1e293b' }}>
-                    KASHVI MLM ID: <span className="node-distributor-id id-active-paid" style={{ fontSize: '13px', letterSpacing: '0.5px' }}>{displayMemberId}</span>
+                    KASHVI MLM ID: <span className={`node-distributor-id ${displayPaymentStatus === 'PAID' ? 'id-active-paid' : displayPaymentStatus === 'FAILED' ? 'id-failed' : 'id-pending'}`} style={{ fontSize: '13px', letterSpacing: '0.5px' }}>{displayMemberId}</span>
                   </p>
                   {treeId && (
                     <p className="member-meta-text" style={{ fontSize: '11px', fontFamily: 'monospace', color: '#475569' }}>
@@ -836,9 +921,65 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
                         border: `1px solid ${displayUserStatus === 'ACTIVE' ? '#bbf7d0' : '#fde68a'}`,
                       }}
                     >
-                      {displayUserStatus}
+                      ACCOUNT: {displayUserStatus}
                     </span>
                   </div>
+
+                  {displayPaymentStatus !== 'PAID' && (
+                    <div
+                      style={{
+                        margin: '10px 0',
+                        padding: '10px 12px',
+                        backgroundColor: displayPaymentStatus === 'FAILED' ? '#fef2f2' : '#fffbeb',
+                        border: `1px solid ${displayPaymentStatus === 'FAILED' ? '#fca5a5' : '#fcd34d'}`,
+                        borderRadius: '6px',
+                        fontSize: '12px',
+                        color: displayPaymentStatus === 'FAILED' ? '#991b1b' : '#92400e',
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600, marginBottom: '4px' }}>
+                        <AlertTriangle size={15} />
+                        <span>
+                          {displayPaymentStatus === 'FAILED'
+                            ? 'Enrollment Payment Failed'
+                            : 'Payment Pending – Complete Activation'}
+                        </span>
+                      </div>
+                      <p style={{ margin: '0 0 8px 0', lineHeight: 1.4, fontSize: '11.5px' }}>
+                        {displayPaymentStatus === 'FAILED'
+                          ? 'Your enrollment payment could not be verified. Please retry your payment to activate your KASHVIMLM account.'
+                          : 'Your enrollment has been submitted successfully. Please complete your enrollment payment to activate your KASHVIMLM account.'}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={handleInitiatePayment}
+                        disabled={isPaymentInitiating}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          backgroundColor: '#005086',
+                          color: '#ffffff',
+                          border: 'none',
+                          borderRadius: '4px',
+                          padding: '6px 12px',
+                          fontSize: '12px',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        <CreditCard size={14} />
+                        <span>
+                          {isPaymentInitiating
+                            ? 'Processing...'
+                            : displayPaymentStatus === 'FAILED'
+                            ? 'Retry Enrollment Payment'
+                            : 'Complete Enrollment Payment'}
+                        </span>
+                      </button>
+                    </div>
+                  )}
+
                   <p className="member-meta-text" style={{ color: '#64748b', fontSize: '12px', margin: '2px 0 8px' }}>
                     Brand Partner Since: <strong>{displayMemberSince}</strong>
                   </p>

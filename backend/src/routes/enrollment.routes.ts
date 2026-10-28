@@ -23,6 +23,16 @@ router.post(
   EnrollmentController.complete
 );
 
+// POST /api/v1/enrollments/create-order - Create enrollment payment order
+router.post(
+  '/create-order',
+  PaymentController.createEnrollmentOrder
+);
+router.post(
+  '/:id/payment/order',
+  PaymentController.createEnrollmentOrder
+);
+
 // POST /api/v1/enrollments/verify-payment - Cryptographically verify enrollment payment
 router.post(
   '/verify-payment',

@@ -220,7 +220,11 @@ export class DistributorController {
     try {
       const depth = req.query.depth ? parseInt(req.query.depth as string, 10) : 3;
       const u = req.user as any;
-      const targetId = u?.distributorId || u?.distributorCode || u?.memberId || u?.id || 'KV-1002';
+      const resolvedCode = u?.id ? await NetworkTreeService.resolveDistributorCode(u.id) : null;
+      const targetId = u?.distributorId || u?.distributorCode || u?.memberId || resolvedCode || u?.id;
+      if (!targetId) {
+        throw new Error('Authenticated distributor identity could not be resolved');
+      }
       const treeRes = await NetworkTreeService.getNetworkTree(targetId, depth);
       sendSuccess(res, {
         message: 'Network tree retrieved successfully.',
@@ -238,7 +242,11 @@ export class DistributorController {
   public static async getMeDownline(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const depth = req.query.depth ? parseInt(req.query.depth as string, 10) : 3;
-      const downline = await DistributorService.getDownline(req.user?.id || 'KV-1002', depth);
+      const userId = req.user?.id;
+      if (!userId) {
+        throw new Error('User not authenticated');
+      }
+      const downline = await DistributorService.getDownline(userId, depth);
       sendSuccess(res, {
         message: 'Downline retrieved successfully.',
         data: downline,

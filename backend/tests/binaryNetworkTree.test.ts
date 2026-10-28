@@ -356,7 +356,7 @@ describe('AUTOMATIC BINARY NETWORK TREE SYSTEM TEST SUITE (SCENARIOS A - J)', ()
 
       // Verify every ID begins with KV
       for (const id of generatedIds) {
-        expect(id).toMatch(/^KV\d+$/);
+        expect(id).toMatch(/^KV-?\d+$/);
       }
 
       // Verify strict uniqueness

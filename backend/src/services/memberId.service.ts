@@ -21,12 +21,11 @@ export class MemberIdService {
   private static inMemoryCounter: number | null = null;
   private static isDbOffline: boolean = false;
   private static readonly COUNTER_ID = 'KV_MEMBER_ID';
-  private static readonly PREFIX = 'KV';
-  private static readonly PAD_LENGTH = 6;
+  private static readonly PREFIX = 'KV-';
 
   /**
    * Generates the next unique, permanent Kashvi MLM ID in a concurrency-safe atomic transaction.
-   * Format: KV000001, KV000002, ...
+   * Format: KV-1001, KV-1002, KV-1003, ...
    */
   public static async generateNextMemberId(tx?: Prisma.TransactionClient): Promise<string> {
     return new Promise<string>((resolve, reject) => {
@@ -60,19 +59,21 @@ export class MemberIdService {
           while (!isUnique && attempts < 50) {
             attempts++;
 
+            const maxNumeric = await this.findCurrentMaxNumericId(db);
+            const initialVal = Math.max(1000, maxNumeric);
+
             const counter = await (db as any).memberIdCounter.upsert({
               where: { id: this.COUNTER_ID },
               create: {
                 id: this.COUNTER_ID,
-                currentValue: await this.findCurrentMaxNumericId(db),
+                currentValue: initialVal + 1,
               },
               update: {
                 currentValue: { increment: 1 },
               },
             });
 
-            const formattedNumber = String(counter.currentValue).padStart(this.PAD_LENGTH, '0');
-            candidateId = `${this.PREFIX}${formattedNumber}`;
+            candidateId = `${this.PREFIX}${counter.currentValue}`;
 
             const collision = await db.distributorProfile.findFirst({
               where: {
@@ -102,12 +103,12 @@ export class MemberIdService {
 
     // 2. Resilient In-Memory Atomic Counter Fallback (guaranteed safe by sequential lockQueue)
     if (this.inMemoryCounter === null) {
-      this.inMemoryCounter = this.isDbOffline ? 0 : await this.findCurrentMaxNumericId(db);
+      const currentMax = this.isDbOffline ? 1000 : await this.findCurrentMaxNumericId(db);
+      this.inMemoryCounter = Math.max(1000, currentMax);
     }
 
     this.inMemoryCounter++;
-    const formattedNumber = String(this.inMemoryCounter).padStart(this.PAD_LENGTH, '0');
-    const candidateId = `${this.PREFIX}${formattedNumber}`;
+    const candidateId = `${this.PREFIX}${this.inMemoryCounter}`;
 
     logger.info({ memberId: candidateId }, 'Generated unique KV member ID via in-memory synchronized counter');
     return candidateId;
@@ -116,10 +117,11 @@ export class MemberIdService {
   /**
    * Scans existing member records to find highest existing numeric suffix
    * so new sequential KV numbers never conflict with existing members.
+   * Default starting floor is 1000 so the first member begins at KV-1001.
    */
   public static async findCurrentMaxNumericId(db: Prisma.TransactionClient | typeof prisma): Promise<number> {
-    if (this.isDbOffline) return 0;
-    let maxNum = 0;
+    if (this.isDbOffline) return 1000;
+    let maxNum = 1000;
 
     try {
       const existingProfiles = await db.distributorProfile.findMany({
@@ -141,70 +143,200 @@ export class MemberIdService {
       }
     } catch {
       this.isDbOffline = true;
-      maxNum = 0;
+      maxNum = 1000;
     }
 
-    return maxNum;
+    return Math.max(1000, maxNum);
   }
 
   /**
-   * Safe migration/backfill: Assigns unique KV IDs to any legacy members lacking a valid KV ID,
-   * while strictly preserving existing sponsor relationships and tree placement.
+   * Safe migration & repair:
+   * 1. Detects duplicate member IDs (e.g. two members with KV-1002).
+   * 2. Preserves legitimate record (oldest/first).
+   * 3. Assigns fresh, permanent unique KV-XXXX IDs to conflicting secondary records.
+   * 4. Updates related user referral codes and business centers.
+   * 5. Strictly preserves name, email, payments, BV, sponsor relationships, and binary tree placement.
+   * 6. Records audit history.
    */
-  public static async backfillExistingMembers(tx?: Prisma.TransactionClient): Promise<{ updated: number; skipped: number }> {
+  public static async repairDuplicateAndMissingMemberIds(tx?: Prisma.TransactionClient): Promise<{
+    totalScanned: number;
+    duplicateGroupsResolved: number;
+    recordsRepaired: number;
+    details: Array<{
+      profileId: string;
+      userId: string;
+      name: string;
+      oldId: string;
+      newId: string;
+      reason: string;
+    }>;
+  }> {
     const db = tx || prisma;
-    let updated = 0;
-    let skipped = 0;
+    const details: Array<{
+      profileId: string;
+      userId: string;
+      name: string;
+      oldId: string;
+      newId: string;
+      reason: string;
+    }> = [];
+
+    let totalScanned = 0;
+    let duplicateGroupsResolved = 0;
+    let recordsRepaired = 0;
 
     try {
       const profiles = await db.distributorProfile.findMany({
+        orderBy: { joinedAt: 'asc' },
         include: { user: true },
       });
 
-      for (const profile of profiles) {
-        const hasValidKvCode = profile.distributorCode && profile.distributorCode.toUpperCase().startsWith('KV');
-        const hasValidKvId = profile.distributorId && profile.distributorId.toUpperCase().startsWith('KV');
+      totalScanned = profiles.length;
 
-        if (hasValidKvCode && hasValidKvId) {
-          skipped++;
-          continue;
+      // Group by normalized distributor code
+      const codeMap = new Map<string, typeof profiles>();
+      for (const p of profiles) {
+        const rawCode = (p.distributorCode || p.distributorId || '').toUpperCase().trim();
+        const norm = rawCode.replace(/[^A-Z0-9]/g, '');
+        if (!norm) continue;
+
+        if (!codeMap.has(norm)) {
+          codeMap.set(norm, []);
         }
+        codeMap.get(norm)!.push(p);
+      }
 
-        // Generate permanent KV ID
-        const newKvId = await this.generateNextMemberId(db);
+      // 1. Resolve Duplicate Groups
+      for (const [code, group] of codeMap.entries()) {
+        if (group.length > 1) {
+          duplicateGroupsResolved++;
+          // Index 0 is the primary legitimate record (earliest joinedAt), retain its ID.
+          // Conflicting members at index 1..n get assigned new unique IDs.
+          for (let i = 1; i < group.length; i++) {
+            const conflictProfile = group[i];
+            const newKvId = await this.generateNextMemberId(db);
+            const oldId = conflictProfile.distributorCode || conflictProfile.distributorId || code;
 
-        await db.distributorProfile.update({
-          where: { id: profile.id },
-          data: {
-            distributorCode: hasValidKvCode ? profile.distributorCode : newKvId,
-            distributorId: hasValidKvId ? profile.distributorId : newKvId,
-          },
-        });
+            await db.distributorProfile.update({
+              where: { id: conflictProfile.id },
+              data: {
+                distributorCode: newKvId,
+                distributorId: newKvId,
+              },
+            });
 
-        if (profile.userId && (!profile.user?.referralCode || !profile.user.referralCode.startsWith('KV'))) {
-          await db.user.update({
-            where: { id: profile.userId },
-            data: { referralCode: newKvId },
+            if (conflictProfile.userId) {
+              await db.user.update({
+                where: { id: conflictProfile.userId },
+                data: { referralCode: newKvId },
+              });
+            }
+
+            recordsRepaired++;
+            const entry = {
+              profileId: conflictProfile.id,
+              userId: conflictProfile.userId,
+              name: conflictProfile.displayName || `${conflictProfile.firstName} ${conflictProfile.lastName}`.trim(),
+              oldId,
+              newId: newKvId,
+              reason: `Resolved duplicate ID collision on ${oldId}`,
+            };
+            details.push(entry);
+
+            logger.warn(
+              entry,
+              'Repaired duplicate member ID collision'
+            );
+          }
+        }
+      }
+
+      // 2. Resolve missing or non-KV formatted codes
+      for (const p of profiles) {
+        const rawCode = (p.distributorCode || '').toUpperCase().trim();
+        const hasValidFormat = /^KV[-_]?\d+$/i.test(rawCode);
+
+        if (!hasValidFormat) {
+          const newKvId = await this.generateNextMemberId(db);
+          const oldId = p.distributorCode || p.distributorId || 'MISSING';
+
+          await db.distributorProfile.update({
+            where: { id: p.id },
+            data: {
+              distributorCode: newKvId,
+              distributorId: p.distributorId && /^KV[-_]?\d+$/i.test(p.distributorId) ? p.distributorId : newKvId,
+            },
           });
-        }
 
-        updated++;
-        logger.info(
-          { profileId: profile.id, oldCode: profile.distributorCode, newKvId },
-          'Backfilled legacy member with permanent KV ID'
-        );
+          if (p.userId) {
+            await db.user.update({
+              where: { id: p.userId },
+              data: { referralCode: newKvId },
+            });
+          }
+
+          recordsRepaired++;
+          const entry = {
+            profileId: p.id,
+            userId: p.userId,
+            name: p.displayName || `${p.firstName} ${p.lastName}`.trim(),
+            oldId,
+            newId: newKvId,
+            reason: `Assigned permanent KV ID to legacy member lacking standard code (${oldId})`,
+          };
+          details.push(entry);
+
+          logger.info(entry, 'Assigned permanent KV ID to member');
+        }
       }
     } catch (err: any) {
-      logger.error({ error: err.message }, 'Error during member ID backfill');
+      logger.error({ error: err.message }, 'Error during repairDuplicateAndMissingMemberIds');
     }
 
-    return { updated, skipped };
+    return {
+      totalScanned,
+      duplicateGroupsResolved,
+      recordsRepaired,
+      details,
+    };
+  }
+
+  /**
+   * Safe migration/backfill alias.
+   */
+  public static async backfillExistingMembers(tx?: Prisma.TransactionClient): Promise<{ updated: number; skipped: number }> {
+    const res = await this.repairDuplicateAndMissingMemberIds(tx);
+    return {
+      updated: res.recordsRepaired,
+      skipped: res.totalScanned - res.recordsRepaired,
+    };
+  }
+
+  /**
+   * Validates whether an ID string conforms to the KASHVI MLM distributor ID format.
+   */
+  public static isValidMemberId(id: string): boolean {
+    if (!id || typeof id !== 'string') return false;
+    return /^KV[-_]?\d{3,}$/i.test(id.trim());
+  }
+
+  /**
+   * Normalizes any valid KV format into standard "KV-XXXX" format.
+   */
+  public static normalizeMemberId(id: string): string {
+    if (!id || typeof id !== 'string') return '';
+    const trimmed = id.trim().toUpperCase();
+    const match = trimmed.match(/^KV[-_]?(\d+)$/i);
+    if (match) {
+      return `KV-${match[1]}`;
+    }
+    return trimmed;
   }
 
   /**
    * Resets the in-memory counter (useful for test fixtures)
    */
-  public static resetCounter(initialValue: number = 0) {
+  public static resetCounter(initialValue: number = 1000) {
     this.inMemoryCounter = initialValue;
   }
 }

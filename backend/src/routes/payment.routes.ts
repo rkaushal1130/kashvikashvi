@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { PaymentController } from '../controllers/payment.controller';
 import { authenticate } from '../middleware/auth';
+import { authorizeRoles } from '../middleware/role';
 import { validate } from '../middleware/validate';
 import {
   createRazorpayOrderSchema,
@@ -14,9 +15,14 @@ const router = Router();
 router.post('/razorpay/webhook', PaymentController.handleWebhook);
 router.post('/webhook', PaymentController.handleWebhook);
 
-// Enrollment Payment Verification (with server-side cryptographic HMAC signature check)
+// Enrollment Payment Order & Verification
+router.post('/enrollment/order', PaymentController.createEnrollmentOrder);
 router.post('/verify-enrollment', PaymentController.verifyEnrollmentPayment);
 router.post('/enrollment/verify', PaymentController.verifyEnrollmentPayment);
+
+// Admin Payment Management & Manual Verification
+router.get('/admin/enrollments', authenticate, authorizeRoles('SUPER_ADMIN', 'ADMIN'), PaymentController.getAdminEnrollments);
+router.post('/admin/verify-manual', authenticate, authorizeRoles('SUPER_ADMIN', 'ADMIN'), PaymentController.adminVerifyPayment);
 
 // Protected Payment Endpoints
 router.post(
