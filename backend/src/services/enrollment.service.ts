@@ -1693,7 +1693,7 @@ export class EnrollmentService {
         const newDistributorId = uniqueMemberId;
         const distributorCode = uniqueMemberId;
 
-        const isPaymentPaid = input.paymentStatus === 'PAID' || Boolean(input.paymentId);
+        const isPaymentPaid = (input as any).paymentStatus === 'PAID' || Boolean((input as any).paymentId);
         const distributor = await tx.distributorProfile.create({
           data: {
             userId: user.id,

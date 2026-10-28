@@ -192,16 +192,20 @@ export class MlmTreeController {
         return;
       }
 
-      // Lateral IDOR check: KV-1003 viewing lateral non-downline KV-1002
+      // Security: Non-admins can only view their own tree or downline members
       const user = req.user as any;
       if (user && user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN') {
-        const myId = user.distributorId || user.memberId || '';
-        if ((myId === 'KV-1003' || user.email === 'rohit@example.com') && distributorId === 'KV-1002') {
-          res.status(403).json({
-            success: false,
-            message: 'Forbidden: You do not have permission to access or view this distributor network.',
-          });
-          return;
+        const callerId = user.distributorId || user.distributorCode || user.memberId || user.id || '';
+        const isSelf = await NetworkTreeService.isSelf(callerId, distributorId);
+        if (!isSelf) {
+          const isDownline = await NetworkTreeService.isDownline(callerId, distributorId);
+          if (!isDownline) {
+            res.status(403).json({
+              success: false,
+              message: 'Forbidden: You do not have permission to access or view this distributor network.',
+            });
+            return;
+          }
         }
       }
 

@@ -1471,8 +1471,8 @@ export const api = {
   async getNetworkTree(depth = 3, targetId = null) {
     const effectiveId = targetId || this.getCurrentDistributorId();
     try {
-      const url = effectiveId && effectiveId !== 'KV-1001'
-        ? `${API_BASE_URL}/network-tree/member/${encodeURIComponent(effectiveId)}?depth=${depth}`
+      const url = targetId
+        ? `${API_BASE_URL}/network-tree/member/${encodeURIComponent(targetId)}?depth=${depth}`
         : `${API_BASE_URL}/network-tree?depth=${depth}`;
       const res = await fetch(url, {
         headers: getAuthHeaders(),

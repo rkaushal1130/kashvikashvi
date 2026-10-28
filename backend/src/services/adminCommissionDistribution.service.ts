@@ -843,7 +843,6 @@ export class AdminCommissionDistributionService {
             where: { id: itemId },
             data: {
               accountHolderName: input.accountHolderName || item.accountHolderName,
-              accountNumber: input.accountNumber || (item as any).accountNumber,
               encryptedAccountNumber: input.accountNumber || (item as any).encryptedAccountNumber,
               maskedAccountNumber: input.accountNumber
                 ? maskAccountNumber(input.accountNumber)

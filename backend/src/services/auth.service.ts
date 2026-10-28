@@ -45,6 +45,7 @@ function isDbConnectionError(error: any): boolean {
 export class AuthService {
   private static inMemoryUsers: Map<string, any> = new Map();
   private static initializedSeed = false;
+  private static isDbOffline = false;
 
   public static async initSeedUsers(): Promise<void> {
     if (this.initializedSeed) return;
@@ -1831,8 +1832,9 @@ export class AuthService {
     const cleanId = (distributorIdentifier || '').trim();
 
     // 1. Check in DB first if database is available
-    try {
-      const profile = await prisma.distributorProfile.findFirst({
+    if (!this.isDbOffline) {
+      try {
+        const profile = await prisma.distributorProfile.findFirst({
         where: {
           OR: [
             { id: cleanId },
@@ -1908,8 +1910,10 @@ export class AuthService {
         };
       }
     } catch {
+      this.isDbOffline = true;
       // Offline fallback
     }
+  }
 
     // 2. In-memory & Dynamic Enrollees Fallback
     let inMem = this.inMemoryUsers.get(cleanId) || this.inMemoryUsers.get(cleanId.toLowerCase());

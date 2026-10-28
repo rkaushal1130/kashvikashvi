@@ -13,7 +13,13 @@ export class NetworkTreeController {
     try {
       const depth = req.query.depth ? parseInt(req.query.depth as string, 10) : 3;
       const isAdmin = req.user?.role === 'ADMIN' || req.user?.role === 'SUPER_ADMIN';
-      const targetId = isAdmin ? 'KV-1001' : (req.user?.id || 'KV-1001');
+      const callerId =
+        (req.user as any)?.distributorId ||
+        (req.user as any)?.distributorCode ||
+        (req.user as any)?.memberId ||
+        req.user?.id ||
+        'KV-1001';
+      const targetId = isAdmin ? 'KV-1001' : await NetworkTreeService.resolveDistributorCode(callerId);
 
       const tree = await NetworkTreeService.getNetworkTree(targetId, depth);
 
@@ -172,7 +178,14 @@ export class NetworkTreeController {
    */
   public static async getMySummary(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const targetId = req.user?.id || 'KV-1001';
+      const isAdmin = req.user?.role === 'ADMIN' || req.user?.role === 'SUPER_ADMIN';
+      const callerId =
+        (req.user as any)?.distributorId ||
+        (req.user as any)?.distributorCode ||
+        (req.user as any)?.memberId ||
+        req.user?.id ||
+        'KV-1001';
+      const targetId = isAdmin ? 'KV-1001' : await NetworkTreeService.resolveDistributorCode(callerId);
 
       const summary = await NetworkTreeService.getNetworkSummary(targetId);
 

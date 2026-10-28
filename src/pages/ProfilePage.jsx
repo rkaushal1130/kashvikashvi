@@ -17,6 +17,9 @@ import {
   Layers,
   KeyRound,
   LogOut,
+  Share2,
+  Copy,
+  Check,
 } from 'lucide-react';
 import './ProfilePage.css';
 
@@ -181,6 +184,35 @@ export function ProfilePage() {
   const status = profileData?.status || currentUser?.status || 'ACTIVE';
   const role = currentUser?.role || profileData?.role || 'DISTRIBUTOR';
 
+  const [copiedLink, setCopiedLink] = useState(false);
+  const referralLink = `${window.location.origin}/register?ref=${distributorId}`;
+
+  const handleCopyReferral = () => {
+    navigator.clipboard.writeText(referralLink).then(() => {
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 3000);
+    });
+  };
+
+  const handleShareReferral = async () => {
+    if (typeof navigator !== 'undefined' && navigator.share) {
+      try {
+        await navigator.share({
+          title: 'Join My Kashvi MLM Network',
+          text: `Join my Kashvi MLM binary network team! Register with sponsor ID: ${distributorId}`,
+          url: referralLink,
+        });
+        return;
+      } catch (err) {
+        if (err && err.name !== 'AbortError') {
+          handleCopyReferral();
+        }
+        return;
+      }
+    }
+    handleCopyReferral();
+  };
+
   return (
     <div className="profile-page">
       {/* 1. Profile Top Card */}
@@ -207,7 +239,81 @@ export function ProfilePage() {
         </div>
       )}
 
-      {/* 2. Grid of Sections */}
+      {/* 2. Personal Referral Link Card */}
+      <div className="section-card referral-link-card" style={{ marginBottom: '24px' }}>
+        <h2 className="section-title">
+          <Sparkles size={18} className="text-blue-600" />
+          <span>Personal Referral Link</span>
+        </h2>
+        <p className="section-subtitle">
+          Share your unique referral link to sponsor new members into your binary network tree.
+        </p>
+
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap', marginTop: '12px' }}>
+          <div
+            style={{
+              flex: '1',
+              minWidth: '260px',
+              padding: '10px 14px',
+              background: '#f8fafc',
+              border: '1px solid #cbd5e1',
+              borderRadius: '8px',
+              fontFamily: 'monospace',
+              fontSize: '13px',
+              color: '#1e293b',
+              wordBreak: 'break-all',
+            }}
+          >
+            {referralLink}
+          </div>
+
+          <button
+            type="button"
+            onClick={handleCopyReferral}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '10px 16px',
+              background: copiedLink ? '#16a34a' : '#0f172a',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '8px',
+              fontWeight: 600,
+              fontSize: '13px',
+              cursor: 'pointer',
+              transition: 'background-color 0.2s',
+            }}
+          >
+            {copiedLink ? <Check size={16} /> : <Copy size={16} />}
+            <span>{copiedLink ? 'Link Copied!' : 'Copy Referral Link'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleShareReferral}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '10px 16px',
+              background: '#2563eb',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '8px',
+              fontWeight: 600,
+              fontSize: '13px',
+              cursor: 'pointer',
+              transition: 'background-color 0.2s',
+            }}
+          >
+            <Share2 size={16} />
+            <span>Share Referral Link</span>
+          </button>
+        </div>
+      </div>
+
+      {/* 3. Grid of Sections */}
       <div className="profile-sections-grid">
         {/* Left Column: Immutable Network Identity */}
         <div className="section-card">

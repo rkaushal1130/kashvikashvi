@@ -311,6 +311,27 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
     );
   };
 
+  // Native share helper with clipboard fallback
+  const handleShareLink = async (url, title = 'Join My Kashvi MLM Network') => {
+    if (typeof navigator !== 'undefined' && navigator.share) {
+      try {
+        await navigator.share({
+          title,
+          text: `Join my Kashvi MLM binary network team! Register with sponsor ID: ${memberId}`,
+          url,
+        });
+        showToast('Referral link shared successfully!');
+        return;
+      } catch (err) {
+        if (err && err.name !== 'AbortError') {
+          handleCopyLink(url, 'Referral');
+        }
+        return;
+      }
+    }
+    handleCopyLink(url, 'Referral');
+  };
+
 
 
   const canManageProducts = Boolean(
@@ -1085,18 +1106,31 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
                     <ChevronDown size={15} className="select-arrow-icon" />
                   </div>
 
-                  <div className="action-button-row">
+                  <div className="action-button-row" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                     <button
                       type="button"
                       className="action-pill-btn"
                       onClick={() =>
                         handleCopyLink(
-                          `${window.location.origin}/join?ref=${memberId}`,
-                          'Distributor Referral'
+                          `${window.location.origin}/register?ref=${memberId}`,
+                          'Referral'
                         )
                       }
                     >
                       Copy Referral Link
+                    </button>
+                    <button
+                      type="button"
+                      className="action-pill-btn"
+                      style={{ background: '#2563eb', color: '#fff' }}
+                      onClick={() =>
+                        handleShareLink(
+                          `${window.location.origin}/register?ref=${memberId}`,
+                          'Join Kashvi MLM'
+                        )
+                      }
+                    >
+                      Share Referral Link
                     </button>
                     <button
                       type="button"
@@ -2416,18 +2450,30 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
                 </div>
                 <div className="link-item-row">
                   <div>
-                    <strong>Associate Business Enrollment</strong>
-                    <p className="link-sub">{`${window.location.origin}/join?ref=${memberId}`}</p>
+                    <strong>Associate Business Enrollment & Registration</strong>
+                    <p className="link-sub">{`${window.location.origin}/register?ref=${memberId}`}</p>
                   </div>
-                  <button
-                    type="button"
-                    className="btn-copy-small"
-                    onClick={() =>
-                      handleCopyLink(`${window.location.origin}/join?ref=${memberId}`, 'Distributor Referral')
-                    }
-                  >
-                    Copy Referral Link
-                  </button>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <button
+                      type="button"
+                      className="btn-copy-small"
+                      onClick={() =>
+                        handleCopyLink(`${window.location.origin}/register?ref=${memberId}`, 'Distributor Referral')
+                      }
+                    >
+                      Copy Link
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-copy-small"
+                      style={{ background: '#2563eb', color: '#fff', borderColor: '#2563eb' }}
+                      onClick={() =>
+                        handleShareLink(`${window.location.origin}/register?ref=${memberId}`, 'Join Kashvi MLM')
+                      }
+                    >
+                      Share
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

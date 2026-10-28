@@ -24,7 +24,7 @@ export function Register() {
   const [searchParams] = useSearchParams();
   const { register, isAuthenticated } = useAuth();
 
-  // Read ?ref= or ?referral= or ?sponsor= from query string
+  // Read ?ref= or ?referral= or ?sponsor= from query string or storage cache
   const refFromUrl = (
     searchParams.get('ref') ||
     searchParams.get('referral') ||
@@ -32,16 +32,30 @@ export function Register() {
     ''
   ).trim();
 
+  const storedRef = (() => {
+    try {
+      return (
+        sessionStorage.getItem('kashvi_referral_sponsor') ||
+        localStorage.getItem('kashvi_referral_sponsor') ||
+        ''
+      ).trim();
+    } catch {
+      return '';
+    }
+  })();
+
+  const initialRef = refFromUrl || storedRef || 'KV-1001';
+
   const [formData, setFormData] = useState({
     fullName: '',
     email: '',
     phone: '',
     password: '',
     confirmPassword: '',
-    referralCode: refFromUrl || 'KV-1001',
+    referralCode: initialRef,
   });
 
-  const [hasUrlRef, setHasUrlRef] = useState(Boolean(refFromUrl));
+  const [hasUrlRef, setHasUrlRef] = useState(Boolean(refFromUrl || storedRef));
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -113,14 +127,22 @@ export function Register() {
     return () => clearTimeout(timer);
   }, [formData.referralCode, verifySponsor]);
 
-  // Sync referral code if URL query parameter changes or arrives
+  // Sync and cache referral code if URL query parameter changes or arrives
   useEffect(() => {
     if (refFromUrl) {
+      try {
+        sessionStorage.setItem('kashvi_referral_sponsor', refFromUrl);
+        localStorage.setItem('kashvi_referral_sponsor', refFromUrl);
+      } catch {}
       setFormData((prev) => ({ ...prev, referralCode: refFromUrl }));
       setHasUrlRef(true);
       verifySponsor(refFromUrl);
+    } else if (storedRef) {
+      setFormData((prev) => ({ ...prev, referralCode: storedRef }));
+      setHasUrlRef(true);
+      verifySponsor(storedRef);
     }
-  }, [refFromUrl, verifySponsor]);
+  }, [refFromUrl, storedRef, verifySponsor]);
 
   // If already authenticated and not in middle of showing success, navigate straight to dashboard
   useEffect(() => {
@@ -452,7 +474,7 @@ export function Register() {
                     fontWeight: 600,
                   }}
                 >
-                  <Sparkles size={12} /> Applied from referral link
+                  <Lock size={11} /> Locked by referral link
                 </span>
               )}
             </div>
@@ -463,11 +485,15 @@ export function Register() {
                 name="referralCode"
                 type="text"
                 required
+                readOnly={hasUrlRef}
                 placeholder="KV-1001 (Root Sponsor) or Sponsor Code"
                 value={formData.referralCode}
                 onChange={handleChange}
                 disabled={loading || Boolean(successData)}
-                style={fieldErrors.referralCode ? { borderColor: '#ef4444' } : {}}
+                style={{
+                  ...(fieldErrors.referralCode ? { borderColor: '#ef4444' } : {}),
+                  ...(hasUrlRef ? { backgroundColor: '#f8fafc', cursor: 'not-allowed' } : {}),
+                }}
               />
             </div>
             {fieldErrors.referralCode && (
