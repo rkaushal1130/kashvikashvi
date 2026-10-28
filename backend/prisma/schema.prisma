@@ -394,6 +394,7 @@ model DistributorProfile {
   dateOfBirth     DateTime?
   gender          Gender            @default(NOT_SPECIFIED)
   status          DistributorStatus @default(PENDING)
+  paymentStatus   String            @default("UNPAID")
   rankId          String?
   currentRankId   String?
   highestRankId   String?
@@ -2209,5 +2210,14 @@ model BankBatchFile {
   @@index([checksumSha256])
   @@index([createdAt])
   @@map("bank_batch_files")
+}
+
+// 70. MemberIdCounter (Atomic concurrency-safe sequence generator for unique KV member IDs)
+model MemberIdCounter {
+  id           String   @id @default("KV_MEMBER_ID")
+  currentValue Int      @default(0)
+  updatedAt    DateTime @updatedAt
+
+  @@map("member_id_counters")
 }
 

@@ -5,6 +5,7 @@ import { logger } from '../config/logger';
 import { AppError } from '../utils/appError';
 import { maskAccountNumber, sanitizeEnrollmentResponse } from '../utils/masking';
 import { hashPassword } from '../utils/password';
+import { MemberIdService } from './memberId.service';
 import {
   CompleteEnrollmentInput,
   CreateEnrollmentInput,
@@ -1214,10 +1215,10 @@ export class EnrollmentService {
       let order: any = null;
 
       if (enrollment.enrollmentType === 'DISTRIBUTOR') {
-        const uniqueSuffix = Math.floor(10000 + Math.random() * 90000);
-        const distributorCode = `DST-${uniqueSuffix}`;
+        const uniqueMemberId = await MemberIdService.generateNextMemberId(tx);
+        const distributorCode = uniqueMemberId;
 
-        // 8. Create distributor
+        // 8. Create distributor with unique permanent KV ID
         distributorProfile = await tx.distributorProfile.create({
           data: {
             userId: user.id,
@@ -1227,6 +1228,7 @@ export class EnrollmentService {
             lastName,
             displayName: legalName,
             status: 'ACTIVE',
+            paymentStatus: 'PAID',
             sponsorId: sponsor.id,
             activatedAt: new Date(),
           },
@@ -1686,29 +1688,12 @@ export class EnrollmentService {
           },
         });
 
-        // 8. Create distributor
-        const distributorCount = await tx.distributorProfile.count();
-        let nextNum = 1004 + distributorCount;
-        let newDistributorId = `KV-${nextNum}`;
-        let conflict = await tx.distributorProfile.findFirst({
-          where: {
-            OR: [{ distributorId: newDistributorId }, { distributorCode: newDistributorId }],
-          },
-        });
-        let attempts = 0;
-        while (conflict && attempts < 10) {
-          attempts++;
-          nextNum = Math.floor(1000 + Math.random() * 9000);
-          newDistributorId = `KV-${nextNum}`;
-          conflict = await tx.distributorProfile.findFirst({
-            where: {
-              OR: [{ distributorId: newDistributorId }, { distributorCode: newDistributorId }],
-            },
-          });
-        }
+        // 8. Create distributor with concurrency-safe permanent KV ID
+        const uniqueMemberId = await MemberIdService.generateNextMemberId(tx);
+        const newDistributorId = uniqueMemberId;
+        const distributorCode = uniqueMemberId;
 
-        const distributorCode = newDistributorId;
-
+        const isPaymentPaid = input.paymentStatus === 'PAID' || Boolean(input.paymentId);
         const distributor = await tx.distributorProfile.create({
           data: {
             userId: user.id,
@@ -1717,10 +1702,11 @@ export class EnrollmentService {
             firstName,
             lastName,
             displayName: legalName,
-            status: 'ACTIVE',
+            status: isPaymentPaid ? 'ACTIVE' : 'PENDING',
+            paymentStatus: isPaymentPaid ? 'PAID' : 'PENDING',
             sponsorId: sponsor.id,
             dateOfBirth: input.dob ? new Date(input.dob) : undefined,
-            activatedAt: new Date(),
+            activatedAt: isPaymentPaid ? new Date() : null,
           },
         });
 
@@ -1835,7 +1821,7 @@ export class EnrollmentService {
         NetworkTreeService.addEnrolledMember({
           distributorId: result.distributor.distributorId || undefined,
           name: result.distributor.displayName || undefined,
-          position: 'RIGHT',
+          position: result.placement.position || position || 'RIGHT',
           sponsor: result.sponsor.distributorId || undefined,
           placementParent: result.placement.placementParentDistributorId || undefined,
           email,
@@ -1863,13 +1849,13 @@ export class EnrollmentService {
 
       try {
         const { NetworkTreeService } = await import('./networkTree.service');
-        const distId = `KV-${1002 + NetworkTreeService.getEnrolledMembers().length}`;
+        const distId = await MemberIdService.generateNextMemberId();
         const newMember = NetworkTreeService.addEnrolledMember({
           distributorId: distId,
           name: legalName,
           status: 'ACTIVE',
           rank: 'Associate',
-          position: 'RIGHT',
+          position: (input.placementPosition as any) || 'RIGHT',
           sponsor: input.sponsorId || 'KV-1001',
           placementParent: input.placementParentId || input.sponsorId || 'KV-1001',
           email,

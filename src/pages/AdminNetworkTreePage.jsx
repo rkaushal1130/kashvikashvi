@@ -271,6 +271,21 @@ export default function AdminNetworkTreePage() {
     }
   }, [isAdmin, currentRootId, depth, fetchAdminTree]);
 
+  // Live auto-refresh when new member is registered or enrolled
+  useEffect(() => {
+    const handleTreeUpdated = () => {
+      if (isAdmin) {
+        fetchAdminTree(currentRootId, depth);
+      }
+    };
+    window.addEventListener('kashvi_tree_updated', handleTreeUpdated);
+    window.addEventListener('storage', handleTreeUpdated);
+    return () => {
+      window.removeEventListener('kashvi_tree_updated', handleTreeUpdated);
+      window.removeEventListener('storage', handleTreeUpdated);
+    };
+  }, [isAdmin, currentRootId, depth, fetchAdminTree]);
+
   // Synchronize state when browser URL parameter changes
   useEffect(() => {
     const memberParam = distributorId || searchParams.get('member') || searchParams.get('rootId');
@@ -386,8 +401,8 @@ export default function AdminNetworkTreePage() {
   const focalName = focalMember?.name || 'Distributor';
   const focalId = focalMember?.distributorId || 'KV-1001';
   const focalRank = focalMember?.rank || 'Business Center';
-  const focalStatus = (focalMember?.status || 'ACTIVE').toUpperCase();
-  const focalPosition = (focalMember?.position || (focalId === 'KV-1001' ? 'ROOT' : 'LEFT')).toUpperCase();
+  const focalStatus = String(focalMember?.status || 'ACTIVE').toUpperCase();
+  const focalPosition = String(focalMember?.position || (focalId === 'KV-1001' ? 'ROOT' : 'LEFT')).toUpperCase();
   const focalSponsor = focalMember?.sponsorName
     ? `${focalMember.sponsor} (${focalMember.sponsorName})`
     : focalMember?.sponsor || (focalId === 'KV-1001' ? 'KV-1000 (Corporate System)' : 'KV-1001 (Rahul Kaushal)');

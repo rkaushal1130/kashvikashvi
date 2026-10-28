@@ -48,11 +48,11 @@ export function BinaryTreeNode({
   const treeId = node.treeId || node.id;
   const nodePosition = node.position || position;
   const nodeLevel = node.level || level;
-  const status = (node.status || node.distributor?.status || 'ACTIVE').toUpperCase();
+  const status = String(node.status || node.distributor?.status || 'ACTIVE').toUpperCase();
   const isActive = status === 'ACTIVE';
 
   const rawPayment = node.paymentStatus || (isActive ? 'PAID' : 'PENDING');
-  const paymentStatus = rawPayment.toUpperCase();
+  const paymentStatus = String(rawPayment || 'PENDING').toUpperCase();
   const isPaid = paymentStatus === 'PAID';
   const isFailed = paymentStatus === 'FAILED' || paymentStatus === 'CANCELLED';
 

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { EnrollmentController } from '../controllers/enrollment.controller';
+import { PaymentController } from '../controllers/payment.controller';
 import { validate } from '../middleware/validate';
 import {
   completeEnrollmentSchema,
@@ -20,6 +21,16 @@ router.post(
   '/complete',
   validate({ body: completeEnrollmentSchema }),
   EnrollmentController.complete
+);
+
+// POST /api/v1/enrollments/verify-payment - Cryptographically verify enrollment payment
+router.post(
+  '/verify-payment',
+  PaymentController.verifyEnrollmentPayment
+);
+router.post(
+  '/:id/payment/verify',
+  PaymentController.verifyEnrollmentPayment
 );
 
 // POST /api/v1/enrollments/submit - Alias for direct complete enrollment

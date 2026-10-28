@@ -12,7 +12,6 @@ import {
   Package,
   Building,
   Lock,
-  Sparkles,
   Printer,
   RefreshCw,
   Eye,
@@ -146,33 +145,6 @@ function EnrollmentView({ user, onNavigate }) {
       handleValidateSponsor(sponsorInput);
     }
   }, [currentStep]);
-
-  // Pre-fill demo data for quick review
-  const handlePrefillDemo = () => {
-    const demoSponsor = 'KV-DEMO-1005';
-    setSponsorInput(demoSponsor);
-    handleValidateSponsor(demoSponsor);
-    setSelectedPlacementPosition('LEFT');
-    setFormData({
-      fullName: 'Vikas Sharma',
-      dob: '1992-06-15',
-      gender: 'Male',
-      email: `vikas.sharma.${Math.floor(1000 + Math.random() * 9000)}@example.com`,
-      phone: '+91 98201 54321',
-      panNumber: 'ABCPS1234F',
-      address: 'Flat 402, Greenfield Heights, Andheri West',
-      city: 'Mumbai',
-      state: 'Maharashtra',
-      pincode: '400053',
-      parentBusinessCenter: 'BC 001',
-      starterKitId: 'kit_pro',
-      bankName: 'HDFC Bank',
-      accountNumber: '50100234981122',
-      ifscCode: 'HDFC0000123',
-      password: 'SecurePass2026!',
-      agreeTerms: true,
-    });
-  };
 
   const handleSubmitEnrollment = (e) => {
     e.preventDefault();
@@ -372,17 +344,19 @@ function EnrollmentView({ user, onNavigate }) {
 
           const storedTree = JSON.parse(localStorage.getItem('kashvi_enrolled_tree_members') || '[]');
           const newMemberId = result.memberId;
+          const assignedPosition = (res?.data?.placementPosition || res?.data?.placement?.position || placementChoice || 'LEFT').toUpperCase();
+          const assignedParent = res?.data?.placementParentId || res?.data?.placement?.placementParentDistributorId || result.placementParent || result.sponsorId;
           const newTreeEntry = {
-            id: `node-${newMemberId.toLowerCase()}-uuid`,
+            id: `node-${String(newMemberId).toLowerCase()}-uuid`,
             distributorId: newMemberId,
             name: result.name,
             status: 'ACTIVE',
             rank: 'Associate',
-            position: 'RIGHT',
+            position: assignedPosition,
             joinedDate: result.enrolledAt,
             sponsor: result.sponsorId,
             sponsorName: result.sponsorName,
-            placementParent: result.placementParent,
+            placementParent: assignedParent,
             placementParentName: result.sponsorName,
             businessCenter: 'BC-001',
             bv: kitBV,
@@ -403,7 +377,7 @@ function EnrollmentView({ user, onNavigate }) {
             storedTree.push(newTreeEntry);
           }
           localStorage.setItem('kashvi_enrolled_tree_members', JSON.stringify(storedTree));
-          window.dispatchEvent(new CustomEvent('kashvi_tree_updated'));
+          window.dispatchEvent(new CustomEvent('kashvi_tree_updated', { detail: newTreeEntry }));
         } catch {
           // ignore
         }
@@ -634,15 +608,6 @@ function EnrollmentView({ user, onNavigate }) {
             <span className="meta-dot">•</span>
             <span>Market: 🇮🇳 India</span>
           </div>
-          <button
-            type="button"
-            className="btn-prefill-demo"
-            onClick={handlePrefillDemo}
-            title="Autofill sample registration data for quick testing"
-          >
-            <Sparkles size={13} />
-            <span>Autofill Sample Applicant</span>
-          </button>
         </div>
       </div>
 

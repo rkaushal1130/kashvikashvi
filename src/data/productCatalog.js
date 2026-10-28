@@ -241,12 +241,23 @@ export function getStoredCatalog() {
 }
 
 /**
- * Save catalog to localStorage and notify all listening components.
+ * Save catalog to localStorage and notify all listening components across all accounts and IDs.
  */
 export function saveStoredCatalog(catalog) {
   try {
     localStorage.setItem('kashvi_catalog_products', JSON.stringify(catalog));
-    window.dispatchEvent(new Event('kashvi_catalog_update'));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('kashvi_catalog_update'));
+      window.dispatchEvent(new CustomEvent('kashvi_catalog_updated', { detail: catalog }));
+      try {
+        window.dispatchEvent(new StorageEvent('storage', {
+          key: 'kashvi_catalog_products',
+          newValue: JSON.stringify(catalog),
+        }));
+      } catch {
+        // Safe cross-tab fallback
+      }
+    }
   } catch (err) {
     console.error('Failed saving catalog to localStorage:', err);
   }

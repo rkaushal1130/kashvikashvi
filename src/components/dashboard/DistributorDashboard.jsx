@@ -69,6 +69,22 @@ import elecPhoneImg from '../../assets/home/elec_phone.png';
 function DistributorDashboard({ user, onSignOut, defaultNav }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const auth = useAuth();
+  const effectiveUser = user || auth.currentUser || {
+    name: 'Rahul Kaushal',
+    memberId: 'KV-1001',
+    role: 'ADMIN',
+    isOwner: true,
+    distributorProfile: {
+      name: 'Rahul Kaushal',
+      displayName: 'Rahul Kaushal',
+      fullName: 'Rahul Kaushal',
+      distributorCode: 'KV-1001',
+      joinDate: '2026',
+      currentRank: 'Company Owner / Emerald Director',
+    },
+  };
+
 
   // ---------------------------------------------------------------------------
   // State Management
@@ -85,7 +101,7 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
   };
   const [toastMessage, setToastMessage] = useState('');
 
-  // Catalog State synced with localStorage
+  // Catalog State synced with localStorage across all user sessions & IDs
   const [catalog, setCatalog] = useState(() => getStoredCatalog());
 
   useEffect(() => {
@@ -93,8 +109,19 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
       setCatalog(getStoredCatalog());
     };
     window.addEventListener('kashvi_catalog_update', handleCatalogUpdate);
-    return () => window.removeEventListener('kashvi_catalog_update', handleCatalogUpdate);
+    window.addEventListener('kashvi_catalog_updated', handleCatalogUpdate);
+    window.addEventListener('storage', handleCatalogUpdate);
+    return () => {
+      window.removeEventListener('kashvi_catalog_update', handleCatalogUpdate);
+      window.removeEventListener('kashvi_catalog_updated', handleCatalogUpdate);
+      window.removeEventListener('storage', handleCatalogUpdate);
+    };
   }, []);
+
+  // Reload latest catalog whenever user / ID switches
+  useEffect(() => {
+    setCatalog(getStoredCatalog());
+  }, [user?.id, user?.distributorId, user?.memberId, effectiveUser?.distributorId]);
 
   // Live Notifications State
   const [notifications, setNotifications] = useState([]);
@@ -118,6 +145,42 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
       mounted = false;
     };
   }, []);
+
+  // Live Member Performance Card State (PROMPT: Unique KV ID, Payment Badges, Volume & Rank)
+  const [performance, setPerformance] = useState(null);
+
+  useEffect(() => {
+    let mounted = true;
+    async function loadPerformanceData() {
+      try {
+        const targetId = effectiveUser?.memberId || effectiveUser?.distributorId || effectiveUser?.id;
+        const perfData = await api.getMemberPerformance(targetId);
+        if (mounted && perfData) {
+          setPerformance(perfData);
+        }
+      } catch (err) {
+        console.warn('Could not load member performance:', err);
+      }
+    }
+    loadPerformanceData();
+
+    const handleRefresh = () => {
+      loadPerformanceData();
+    };
+
+    window.addEventListener('kashvi_performance_updated', handleRefresh);
+    window.addEventListener('kashvi_tree_updated', handleRefresh);
+    window.addEventListener('kashvi_auth_updated', handleRefresh);
+    window.addEventListener('storage', handleRefresh);
+
+    return () => {
+      mounted = false;
+      window.removeEventListener('kashvi_performance_updated', handleRefresh);
+      window.removeEventListener('kashvi_tree_updated', handleRefresh);
+      window.removeEventListener('kashvi_auth_updated', handleRefresh);
+      window.removeEventListener('storage', handleRefresh);
+    };
+  }, [user, effectiveUser?.memberId, effectiveUser?.distributorId]);
 
   // Cumulative Rank & Commission Progress State (Phase 6)
   const [cumulativeRank, setCumulativeRank] = useState(null);
@@ -248,21 +311,7 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
     );
   };
 
-  const auth = useAuth();
-  const effectiveUser = user || auth.currentUser || {
-    name: 'Rahul Kaushal',
-    memberId: 'KV-1001',
-    role: 'ADMIN',
-    isOwner: true,
-    distributorProfile: {
-      name: 'Rahul Kaushal',
-      displayName: 'Rahul Kaushal',
-      fullName: 'Rahul Kaushal',
-      distributorCode: 'KV-1001',
-      joinDate: '2026',
-      currentRank: 'Company Owner / Emerald Director',
-    },
-  };
+
 
   const canManageProducts = Boolean(
     auth?.canManageProducts ||
@@ -323,6 +372,20 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
   const currentRankName = cumulativeRank?.currentRankName || memberRank;
   const nextRankName = cumulativeRank?.nextRankName || null;
   const rankProgressPercent = cumulativeRank?.rankProgressPercent ?? 0;
+
+  // Authoritative Member Performance Display Values (PROMPT: Performance Card)
+  const displayMemberName = performance?.name || (memberName !== 'NA' ? memberName : 'Rahul Kaushal');
+  const displayMemberId = performance?.memberId || performance?.distributorCode || (memberId !== 'NA' ? memberId : 'KV-1001');
+  const displayPaymentStatus = (performance?.paymentStatus || paymentStatus || 'PAID').toUpperCase();
+  const displayUserStatus = (performance?.accountStatus || userStatus || 'ACTIVE').toUpperCase();
+  const displayMemberSince = performance?.brandPartnerSince || (memberSince !== 'NA' ? memberSince : '28 Oct 2026');
+  const displayRankName = performance?.currentRank || currentRankName || 'Base';
+  const displayNextRankName = performance?.nextRank || nextRankName || (performance?.isHighestRank ? 'Highest Rank Achieved' : 'Silver');
+  const displayRankProgress = performance?.rankProgressPercent ?? rankProgressPercent ?? 0;
+  const displayPersonalBV = performance?.personalBV ?? cumulativeRank?.qualifyingBV ?? 250;
+  const displayLeftBV = performance?.leftBV ?? cumulativeRank?.leftMatching ?? 2000;
+  const displayRightBV = performance?.rightBV ?? cumulativeRank?.rightMatching ?? 2000;
+  const displayMatchingVolume = performance?.matchingVolume ?? cumulativeRank?.matchedVolume ?? 2000;
 
   // Format today's date dynamically
   const todayDateStr = new Intl.DateTimeFormat('en-US', {
@@ -600,22 +663,24 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
             <span className="rail-tooltip">Network Tree</span>
           </button>
 
-          {/* 6. Client Funding & Bank Account Portal */}
-          <button
-            type="button"
-            className={`rail-icon-btn ${activeNavIcon === 'funding' ? 'active' : ''}`}
-            onClick={() => {
-              setActiveNavIcon('funding');
-              if (location.pathname !== '/dashboard' && location.pathname !== '/profile') {
-                navigate('/dashboard');
-              }
-            }}
-            title="Funding & Bank Portal"
-            aria-label="Funding & Bank Portal"
-          >
-            <Wallet size={20} />
-            <span className="rail-tooltip">Funding & Bank Portal</span>
-          </button>
+          {/* 6. Client Funding & Bank Account Portal (Only for registered members, removed from Admin) */}
+          {!isAuthorizedAdmin && (
+            <button
+              type="button"
+              className={`rail-icon-btn ${activeNavIcon === 'funding' ? 'active' : ''}`}
+              onClick={() => {
+                setActiveNavIcon('funding');
+                if (location.pathname !== '/dashboard' && location.pathname !== '/profile') {
+                  navigate('/dashboard');
+                }
+              }}
+              title="Funding & Bank Portal"
+              aria-label="Funding & Bank Portal"
+            >
+              <Wallet size={20} />
+              <span className="rail-tooltip">Funding & Bank Portal</span>
+            </button>
+          )}
 
           {/* 7. Admin Corporate Funding Portal */}
           {isAuthorizedAdmin && (
@@ -712,84 +777,110 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
                       }}
                     >
                       <Award size={12} />
-                      {currentRankName}
+                      [{displayRankName.toUpperCase()}]
                     </span>
                   </h2>
-                  <p className="member-id-text">
-                    KASHVIMLM ID: <span className={`node-distributor-id ${idColorClass}`} style={{ fontSize: '13px' }}>{memberId}</span>
+                  <p className="member-id-text" style={{ margin: '4px 0 6px', fontWeight: 600, color: '#1e293b' }}>
+                    KASHVI MLM ID: <span className="node-distributor-id id-active-paid" style={{ fontSize: '13px', letterSpacing: '0.5px' }}>{displayMemberId}</span>
                   </p>
                   {treeId && (
                     <p className="member-meta-text" style={{ fontSize: '11px', fontFamily: 'monospace', color: '#475569' }}>
                       Tree ID: {treeId}
                     </p>
                   )}
-                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center', margin: '4px 0 6px' }}>
-                    <span className={`payment-pill payment-pill-${paymentStatus.toLowerCase()}`}>
-                      Payment: {paymentStatus}
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', margin: '6px 0 8px' }}>
+                    <span
+                      style={{
+                        fontSize: '11px',
+                        padding: '3px 8px',
+                        borderRadius: '4px',
+                        fontWeight: 700,
+                        letterSpacing: '0.4px',
+                        backgroundColor: displayPaymentStatus === 'PAID' ? '#dcfce7' : displayPaymentStatus === 'FAILED' ? '#fee2e2' : displayPaymentStatus === 'PENDING' ? '#fef3c7' : '#f1f5f9',
+                        color: displayPaymentStatus === 'PAID' ? '#15803d' : displayPaymentStatus === 'FAILED' ? '#b91c1c' : displayPaymentStatus === 'PENDING' ? '#b45309' : '#475569',
+                        border: `1px solid ${displayPaymentStatus === 'PAID' ? '#bbf7d0' : displayPaymentStatus === 'FAILED' ? '#fecaca' : displayPaymentStatus === 'PENDING' ? '#fde68a' : '#e2e8f0'}`,
+                      }}
+                    >
+                      PAYMENT: {displayPaymentStatus}
                     </span>
-                    <span style={{ fontSize: '10.5px', padding: '1.5px 6px', borderRadius: '4px', fontWeight: 600, backgroundColor: userStatus === 'ACTIVE' ? '#dcfce7' : '#fef3c7', color: userStatus === 'ACTIVE' ? '#15803d' : '#b45309' }}>
-                      {userStatus}
+                    <span
+                      style={{
+                        fontSize: '11px',
+                        padding: '3px 8px',
+                        borderRadius: '4px',
+                        fontWeight: 700,
+                        letterSpacing: '0.4px',
+                        backgroundColor: displayUserStatus === 'ACTIVE' ? '#dcfce7' : '#fef3c7',
+                        color: displayUserStatus === 'ACTIVE' ? '#15803d' : '#b45309',
+                        border: `1px solid ${displayUserStatus === 'ACTIVE' ? '#bbf7d0' : '#fde68a'}`,
+                      }}
+                    >
+                      {displayUserStatus}
                     </span>
                   </div>
-                  <p className="member-meta-text">Brand Partner Since {memberSince}</p>
+                  <p className="member-meta-text" style={{ color: '#64748b', fontSize: '12px', margin: '2px 0 8px' }}>
+                    Brand Partner Since: <strong>{displayMemberSince}</strong>
+                  </p>
 
-                  {/* Phase 6: Rank Progression Box */}
-                  <div style={{ marginTop: '10px', padding: '10px 12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                  <div style={{ borderTop: '1px solid #e2e8f0', margin: '8px 0 10px' }} />
+
+                  {/* Automatic Member Performance Progression Box (PROMPT: Layout 1:1) */}
+                  <div style={{ padding: '10px 12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', fontSize: '12px' }}>
                       <span style={{ fontWeight: 600, color: '#334155' }}>
-                        Rank: <strong style={{ color: '#0f172a' }}>{currentRankName}</strong>
+                        Rank: <strong style={{ color: '#0f172a' }}>{displayRankName}</strong>
                       </span>
-                      <span style={{ color: '#64748b', fontSize: '11px' }}>
-                        Next: {nextRankName || 'Top Rank'}
+                      <span style={{ color: '#64748b', fontSize: '11.5px', fontWeight: 600 }}>
+                        Next: <strong style={{ color: '#0369a1' }}>{displayNextRankName}</strong>
                       </span>
                     </div>
 
                     {/* Progress Bar */}
-                    <div style={{ width: '100%', height: '6px', backgroundColor: '#e2e8f0', borderRadius: '3px', overflow: 'hidden', margin: '5px 0' }}>
+                    <div style={{ width: '100%', height: '7px', backgroundColor: '#e2e8f0', borderRadius: '4px', overflow: 'hidden', margin: '6px 0' }}>
                       <div
                         style={{
-                          width: `${rankProgressPercent}%`,
+                          width: `${displayRankProgress}%`,
                           height: '100%',
                           backgroundColor: '#16a34a',
-                          transition: 'width 0.3s ease',
+                          transition: 'width 0.4s ease',
                         }}
                       />
                     </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10.5px', color: '#64748b', marginBottom: '6px' }}>
-                      <span>Progress: {rankProgressPercent}%</span>
-                      {cumulativeRank?.isQualified && (
-                        <span style={{ color: '#16a34a', fontWeight: 600 }}>✓ Qualified</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#64748b', marginBottom: '8px' }}>
+                      <span>Progress: <strong style={{ color: '#15803d' }}>{displayRankProgress}%</strong></span>
+                      {(performance?.isQualified || cumulativeRank?.isQualified) && (
+                        <span style={{ color: '#16a34a', fontWeight: 700 }}>✓ Qualified</span>
                       )}
                     </div>
 
-                    {/* Gaps Breakdown */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', fontSize: '11px', color: '#475569', borderTop: '1px solid #f1f5f9', paddingTop: '6px' }}>
+                    {/* BV, Left, Right, Matching Volume Breakdown */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', fontSize: '11.5px', color: '#475569', borderTop: '1px solid #f1f5f9', paddingTop: '8px' }}>
                       <div>
-                        BV: <strong>{cumulativeRank?.qualifyingBV ?? 0}</strong>
-                        {cumulativeRank?.missingRequirements?.bvGap > 0 && (
+                        BV: <strong style={{ color: '#0f172a' }}>{displayPersonalBV}</strong>
+                        {performance?.missingRequirements?.bvGap > 0 && (
                           <span style={{ color: '#b45309', display: 'block', fontSize: '10px' }}>
-                            Need {cumulativeRank.missingRequirements.bvGap} more
+                            Need {performance.missingRequirements.bvGap} more
                           </span>
                         )}
                       </div>
                       <div>
-                        Left: <strong>{cumulativeRank?.leftMatching?.toLocaleString() ?? 0}</strong>
-                        {cumulativeRank?.missingRequirements?.leftMatchingGap > 0 && (
+                        Left: <strong style={{ color: '#0f172a' }}>{displayLeftBV.toLocaleString()}</strong>
+                        {performance?.missingRequirements?.leftGap > 0 && (
                           <span style={{ color: '#b45309', display: 'block', fontSize: '10px' }}>
-                            Need {cumulativeRank.missingRequirements.leftMatchingGap.toLocaleString()} more
+                            Need {performance.missingRequirements.leftGap.toLocaleString()} more
                           </span>
                         )}
                       </div>
                       <div>
-                        Right: <strong>{cumulativeRank?.rightMatching?.toLocaleString() ?? 0}</strong>
-                        {cumulativeRank?.missingRequirements?.rightMatchingGap > 0 && (
+                        Right: <strong style={{ color: '#0f172a' }}>{displayRightBV.toLocaleString()}</strong>
+                        {performance?.missingRequirements?.rightGap > 0 && (
                           <span style={{ color: '#b45309', display: 'block', fontSize: '10px' }}>
-                            Need {cumulativeRank.missingRequirements.rightMatchingGap.toLocaleString()} more
+                            Need {performance.missingRequirements.rightGap.toLocaleString()} more
                           </span>
                         )}
                       </div>
                       <div>
-                        Matching: <strong>{cumulativeRank?.matchedVolume?.toLocaleString() ?? 0}</strong>
+                        Matching: <strong style={{ color: '#0f172a' }}>{displayMatchingVolume.toLocaleString()}</strong>
                       </div>
                     </div>
 
@@ -1902,9 +1993,9 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
           )}
 
           {/* ===================================================================
-              ROLE 6: CLIENT FUNDING & BANK ACCOUNT PORTAL
+              ROLE 6: CLIENT FUNDING & BANK ACCOUNT PORTAL (Hidden from Admin)
               =================================================================== */}
-          {activeNavIcon === 'funding' && (
+          {activeNavIcon === 'funding' && !isAuthorizedAdmin && (
             <ClientFundingView user={effectiveUser} />
           )}
         </main>

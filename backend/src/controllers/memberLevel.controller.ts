@@ -3,7 +3,9 @@ import { LevelService } from '../services/level.service';
 import { BBService } from '../services/bb.service';
 import { MatchingService } from '../services/matching.service';
 import { MemberRankProgressService } from '../services/memberRankProgress.service';
+import { MemberPerformanceService } from '../services/memberPerformance.service';
 import { sendSuccess } from '../utils/apiResponse';
+import { AppError } from '../utils/appError';
 import {
   memberIdParamSchema,
   paginationQuerySchema,
@@ -346,6 +348,149 @@ export class MemberLevelController {
         statusCode: 200,
         message: `Member matching recalculation completed successfully for ${memberId}`,
         data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // =========================================================================
+  // 11. GET /api/members/me - Authenticated Member Complete Profile & Performance
+  // =========================================================================
+  public static async getAuthenticatedMemberProfile(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const user = (req as any).user;
+      if (!user || !user.id) {
+        throw AppError.unauthorized('Authentication required', 'AUTH_REQUIRED');
+      }
+
+      const performance = await MemberPerformanceService.getMemberPerformance(user.id);
+
+      sendSuccess(res, {
+        message: 'Authenticated member profile retrieved successfully',
+        data: performance,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // =========================================================================
+  // 12. GET /api/members/:memberId/performance - Performance Card Metrics
+  // =========================================================================
+  public static async getMemberPerformance(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const memberId = (req.params.memberId || '').trim();
+      const user = (req as any).user;
+
+      const performance = await MemberPerformanceService.getMemberPerformance(memberId);
+
+      // Authorization guard
+      if (user && user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN') {
+        const isSelf =
+          user.id === memberId ||
+          user.distributorCode === memberId ||
+          user.memberId === memberId ||
+          performance.memberId === user.distributorCode ||
+          performance.memberId === user.memberId ||
+          performance.distributorId === user.distributorCode ||
+          performance.distributorCode === user.distributorCode;
+
+        if (!isSelf) {
+          throw AppError.forbidden('You are not authorized to view another member\'s performance records', 'AUTH_FORBIDDEN');
+        }
+      }
+
+      sendSuccess(res, {
+        message: 'Member performance retrieved successfully',
+        data: performance,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // =========================================================================
+  // 13. GET /api/members/:memberId/profile - Member Profile Data
+  // =========================================================================
+  public static async getMemberProfile(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const memberId = (req.params.memberId || '').trim();
+      const user = (req as any).user;
+
+      const performance = await MemberPerformanceService.getMemberPerformance(memberId);
+
+      if (user && user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN') {
+        const isSelf =
+          user.id === memberId ||
+          user.distributorCode === memberId ||
+          user.memberId === memberId ||
+          performance.memberId === user.distributorCode;
+
+        if (!isSelf) {
+          throw AppError.forbidden('You are not authorized to view another member\'s profile', 'AUTH_FORBIDDEN');
+        }
+      }
+
+      sendSuccess(res, {
+        message: 'Member profile retrieved successfully',
+        data: performance,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // =========================================================================
+  // 14. GET /api/members/:memberId/payment-status - Verified Payment & Account Status
+  // =========================================================================
+  public static async getMemberPaymentStatus(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const memberId = (req.params.memberId || '').trim();
+      const user = (req as any).user;
+
+      const performance = await MemberPerformanceService.getMemberPerformance(memberId);
+
+      if (user && user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN') {
+        const isSelf =
+          user.id === memberId ||
+          user.distributorCode === memberId ||
+          user.memberId === memberId ||
+          performance.memberId === user.distributorCode;
+
+        if (!isSelf) {
+          throw AppError.forbidden('You are not authorized to view this payment status', 'AUTH_FORBIDDEN');
+        }
+      }
+
+      sendSuccess(res, {
+        message: 'Member payment status retrieved successfully',
+        data: {
+          memberId: performance.memberId,
+          distributorCode: performance.distributorCode,
+          name: performance.name,
+          paymentStatus: performance.paymentStatus,
+          accountStatus: performance.accountStatus,
+          isPaid: performance.paymentStatus === 'PAID',
+          isActive: performance.accountStatus === 'ACTIVE',
+          brandPartnerSince: performance.brandPartnerSince,
+        },
       });
     } catch (error) {
       next(error);

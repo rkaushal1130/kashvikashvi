@@ -356,6 +356,15 @@ function NetworkTreePage({ embedded = false }) {
     [initialDistributorId]
   );
 
+  // Keep root aligned with authenticated session when not viewing a specific downline param
+  useEffect(() => {
+    if (!urlMemberId && initialDistributorId) {
+      setCurrentRootId(initialDistributorId);
+      const rootName = currentUser?.name || currentUser?.displayName || currentUser?.fullName || initialDistributorId;
+      setBreadcrumbs([{ id: initialDistributorId, name: `${rootName} (My Root)` }]);
+    }
+  }, [initialDistributorId, urlMemberId, currentUser?.name, currentUser?.displayName, currentUser?.fullName]);
+
   useEffect(() => {
     fetchTreeData(currentRootId, depth);
   }, [currentRootId, depth, fetchTreeData]);

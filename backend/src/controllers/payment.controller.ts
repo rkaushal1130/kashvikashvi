@@ -82,4 +82,21 @@ export class PaymentController {
       next(error);
     }
   }
+
+  /**
+   * Verifies enrollment starter pack payment.
+   * POST /api/payments/verify-enrollment or POST /api/enrollments/verify-payment
+   */
+  public static async verifyEnrollmentPayment(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const result = await PaymentService.verifyEnrollmentPayment(req.body);
+      sendSuccess(res, {
+        statusCode: 200,
+        message: result.message || 'Enrollment payment verified successfully.',
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }

@@ -7,6 +7,7 @@ import { AppError } from '../utils/appError';
 import { hashToken, signAccessToken, signRefreshToken, verifyRefreshToken } from '../utils/jwt';
 import { hashPassword, verifyPassword, validatePasswordStrength } from '../utils/password';
 import { LoginInput, RegisterInput, ResetPasswordInput } from '../validators/auth.validators';
+import { MemberIdService } from './memberId.service';
 
 interface RequestMetadata {
   userAgent?: string;
@@ -480,12 +481,13 @@ export class AuthService {
     // 7. Hash password using Argon2id (never stored plaintext)
     const passwordHash = await hashPassword(input.password);
 
-    // 8. Generate unique IDs (backend-controlled, never trust frontend IDs)
+    // 8. Generate unique IDs (backend-controlled, permanent unique KV ID)
     const userId = randomUUID();
     const uniqueSuffix = Math.floor(10000 + Math.random() * 90000);
     const generatedUserId = `USR-${uniqueSuffix}`;
     const role = input.role || 'DISTRIBUTOR';
-    const distributorCode = role === 'CUSTOMER' ? `CUST-${uniqueSuffix}` : `DST-${uniqueSuffix}`;
+    const uniqueMemberId = await MemberIdService.generateNextMemberId();
+    const distributorCode = role === 'CUSTOMER' ? `CUST-${uniqueSuffix}` : uniqueMemberId;
 
     const fullNameStr = (input.fullName || input.name || '').trim();
     const parts = fullNameStr ? fullNameStr.split(/\s+/) : [];
@@ -828,10 +830,11 @@ export class AuthService {
     // 7. Hash password with Argon2id (never stored plaintext)
     const passwordHash = await hashPassword(password);
 
-    // 8. Generate unique IDs (backend controlled)
+    // 8. Generate unique IDs (backend controlled, permanent unique KV ID)
     const uniqueSuffix = Math.floor(10000 + Math.random() * 90000);
     const generatedUserId = `USR-${uniqueSuffix}`;
-    const distributorCode = role === 'CUSTOMER' ? `CUST-${uniqueSuffix}` : `DST-${uniqueSuffix}`;
+    const uniqueMemberId = await MemberIdService.generateNextMemberId();
+    const distributorCode = role === 'CUSTOMER' ? `CUST-${uniqueSuffix}` : uniqueMemberId;
     const displayName = `${firstName} ${lastName}`.trim();
     const sponsorId = resolvedSponsor?.id || undefined;
 
@@ -876,11 +879,13 @@ export class AuthService {
         const profile = await tx.distributorProfile.create({
           data: {
             userId: user.id,
+            distributorId: distributorCode,
             distributorCode,
             firstName,
             lastName,
             displayName,
             status: 'PENDING',
+            paymentStatus: 'UNPAID',
             sponsorId,
             lifetimePV: 0, // backend controlled
             lifetimeGV: 0, // backend controlled
@@ -1863,7 +1868,7 @@ export class AuthService {
         await prisma.$transaction(async (tx) => {
           await tx.distributorProfile.update({
             where: { id: profile.id },
-            data: { status: 'ACTIVE', activatedAt: new Date() },
+            data: { status: 'ACTIVE', paymentStatus: 'PAID', activatedAt: new Date() },
           });
           await tx.user.update({
             where: { id: profile.userId },
@@ -1942,7 +1947,21 @@ export class AuthService {
       };
     }
 
-    if (inMem) {
+    if (!inMem) {
+      inMem = {
+        id: cleanId,
+        distributorCode: effectiveDistId,
+        distributorId: effectiveDistId,
+        name: 'Activated Brand Partner',
+        fullName: 'Activated Brand Partner',
+        displayName: 'Activated Brand Partner',
+        status: 'ACTIVE',
+        paymentStatus: 'PAID',
+        bv: paymentDetails?.bv || 100,
+        createdAt: new Date().toISOString(),
+      };
+      this.saveInMemoryUser(inMem);
+    } else {
       inMem.status = 'ACTIVE';
       inMem.paymentStatus = 'PAID';
       if (inMem.distributorProfile) {

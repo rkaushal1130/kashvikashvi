@@ -50,8 +50,22 @@ const ensureRazorpayLoaded = () => {
 };
 
 export default function ClientFundingView({ user, onWalletUpdated }) {
-  // 1. Data States
-  const [activeTab, setActiveTab] = useState('fund'); // 'fund' | 'withdraw' | 'bank'
+  const isAdmin = Boolean(
+    user?.role === 'ADMIN' ||
+    user?.role === 'SUPER_ADMIN' ||
+    user?.roleName === 'ADMIN' ||
+    user?.isAdmin ||
+    user?.isOwner
+  );
+
+  // 1. Data States (Registered ID starts on withdraw tab, Add Funds hidden)
+  const [activeTab, setActiveTab] = useState(isAdmin ? 'fund' : 'withdraw');
+
+  useEffect(() => {
+    if (!isAdmin && activeTab === 'fund') {
+      setActiveTab('withdraw');
+    }
+  }, [isAdmin, activeTab]);
   const [, setLoading] = useState(true);
   const [, setRefreshing] = useState(false);
   const [walletBalance, setWalletBalance] = useState(0);
@@ -509,14 +523,16 @@ export default function ClientFundingView({ user, onWalletUpdated }) {
                 <ArrowDownLeft className="w-4 h-4" />
                 Withdraw Funds
               </button>
-              <button
-                type="button"
-                className="metric-action-btn fund"
-                onClick={() => setActiveTab('fund')}
-              >
-                <PlusCircle className="w-4 h-4" />
-                Add Funds
-              </button>
+              {isAdmin && (
+                <button
+                  type="button"
+                  className="metric-action-btn fund"
+                  onClick={() => setActiveTab('fund')}
+                >
+                  <PlusCircle className="w-4 h-4" />
+                  Add Funds
+                </button>
+              )}
             </div>
           </div>
           <div className="metric-icon-wrap">
@@ -551,13 +567,15 @@ export default function ClientFundingView({ user, onWalletUpdated }) {
 
       {/* Tabs */}
       <div className="funding-tab-bar">
-        <button
-          className={`funding-tab-btn ${activeTab === 'fund' ? 'active' : ''}`}
-          onClick={() => setActiveTab('fund')}
-        >
-          <CreditCard className="w-4 h-4" />
-          Add Funds to Wallet
-        </button>
+        {isAdmin && (
+          <button
+            className={`funding-tab-btn ${activeTab === 'fund' ? 'active' : ''}`}
+            onClick={() => setActiveTab('fund')}
+          >
+            <CreditCard className="w-4 h-4" />
+            Add Funds to Wallet
+          </button>
+        )}
         <button
           className={`funding-tab-btn ${activeTab === 'withdraw' ? 'active' : ''}`}
           onClick={() => setActiveTab('withdraw')}
@@ -574,8 +592,8 @@ export default function ClientFundingView({ user, onWalletUpdated }) {
         </button>
       </div>
 
-      {/* Tab 1: Add Funds & Payment */}
-      {activeTab === 'fund' && (
+      {/* Tab 1: Add Funds & Payment (Hidden for registered member IDs) */}
+      {isAdmin && activeTab === 'fund' && (
         <>
           <div className="funding-content-grid">
             {/* Left: Input Form */}

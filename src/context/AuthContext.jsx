@@ -444,21 +444,34 @@ export function AuthProvider({ children }) {
 
         // Sync into kashvi_enrolled_tree_members for immediate tree view update
         try {
-          const memberDistId = user.distributorId || user.distributorCode || user.memberId;
-          const treeNodeId = user.treeId || `node-${(memberDistId || 'new').toLowerCase()}`;
+          const rawSponsor = user.sponsorId || registrationData.sponsorId || registrationData.referralCode || 'KV-1001';
+          const chosenPos = user.placementPosition || registrationData.placementPosition || 'AUTO';
+          const dynamicPlacement = api.findBinaryPlacement(rawSponsor, chosenPos);
+
+          const memberDistId = user.distributorId || user.distributorCode || user.memberId || api.getNextDistributorId();
+          const treeNodeId = user.treeId || `node-${String(memberDistId).toLowerCase()}`;
           const rawTree = localStorage.getItem('kashvi_enrolled_tree_members');
           const treeList = rawTree ? JSON.parse(rawTree) : [];
           const existingIdx = treeList.findIndex((m) => m.distributorId === memberDistId);
 
-          const rawSponsor = user.sponsorId || registrationData.sponsorId || registrationData.referralCode || 'KV-1001';
-          const chosenPos = user.placementPosition || registrationData.placementPosition || 'AUTO';
-          const dynamicPlacement = api.findBinaryPlacement(rawSponsor, chosenPos);
+          const finalName = user.name || user.fullName || `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'New Distributor';
+
+          // Enrich user object
+          user.distributorId = memberDistId;
+          user.distributorCode = memberDistId;
+          user.memberId = memberDistId;
+          user.name = finalName;
+          user.fullName = finalName;
+          user.placementParent = user.placementParent || dynamicPlacement.placementParent;
+          user.placementParentName = user.placementParentName || dynamicPlacement.placementParentName;
+          user.placementPosition = user.placementPosition || dynamicPlacement.position;
+          user.sponsorId = user.sponsorId || dynamicPlacement.sponsorId;
 
           const treeEntry = {
             id: treeNodeId,
             treeId: treeNodeId,
             distributorId: memberDistId,
-            name: user.name || user.fullName || `${user.firstName || ''} ${user.lastName || ''}`.trim() || 'New Distributor',
+            name: finalName,
             status: user.status || 'ACTIVE',
             paymentStatus: user.paymentStatus || 'PAID',
             rank: user.currentRank?.name || 'Associate',
@@ -477,7 +490,31 @@ export function AuthProvider({ children }) {
             treeList.push(treeEntry);
           }
           localStorage.setItem('kashvi_enrolled_tree_members', JSON.stringify(treeList));
-          window.dispatchEvent(new CustomEvent('kashvi_tree_updated', { detail: treeEntry }));
+
+          // Also update kashvi_registered_users with enriched memberId/placement info
+          try {
+            const rawReg = localStorage.getItem('kashvi_registered_users');
+            const regList = rawReg ? JSON.parse(rawReg) : [];
+            const rIdx = regList.findIndex((u) => u.email?.toLowerCase() === user.email?.toLowerCase() || u.distributorId === memberDistId);
+            if (rIdx >= 0) {
+              regList[rIdx] = { ...regList[rIdx], ...user };
+              localStorage.setItem('kashvi_registered_users', JSON.stringify(regList));
+            }
+          } catch {
+            // ignore
+          }
+
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('kashvi_tree_updated', { detail: treeEntry }));
+            try {
+              window.dispatchEvent(new StorageEvent('storage', {
+                key: 'kashvi_enrolled_tree_members',
+                newValue: JSON.stringify(treeList),
+              }));
+            } catch {
+              // ignore
+            }
+          }
         } catch {
           // ignore
         }

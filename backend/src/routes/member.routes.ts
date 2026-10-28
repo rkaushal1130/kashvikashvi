@@ -26,6 +26,9 @@ const router = Router();
 // Enforce standard authentication for member data lookups
 router.use(authenticate);
 
+// 1. Authenticated User Profile & Performance Shortcut (PROMPT: GET /api/members/me)
+router.get('/me', MemberLevelController.getAuthenticatedMemberProfile);
+
 // IMMUTABILITY GUARD (PROMPT 9): Promotion history must NEVER be modified or deleted
 router.all('/:memberId/level/history/:historyId?', (req, res, next) => {
   if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) {
@@ -33,6 +36,13 @@ router.all('/:memberId/level/history/:historyId?', (req, res, next) => {
   }
   next();
 });
+
+// AUTHORITATIVE PERFORMANCE & PROFILE (PROMPT: Unique KV ID, Payment Badges, Volume & Rank)
+router.get('/:memberId/performance', MemberLevelController.getMemberPerformance);
+router.get('/:memberId/profile', MemberLevelController.getMemberProfile);
+router.get('/:memberId/payment-status', MemberLevelController.getMemberPaymentStatus);
+router.get('/:memberId/rank-history', MemberLevelController.getMemberLevelHistory);
+router.get('/:memberId/bv-history', MemberLevelController.getMemberBBHistory);
 
 // MEMBER LEVEL & PROGRESS
 router.get('/:memberId/level/progress', MemberLevelController.getMemberLevelProgress);

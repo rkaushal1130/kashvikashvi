@@ -59,13 +59,13 @@ function MemberDetailsPanel({
     member.distributor?.distributorCode ||
     'KV-0000';
   const rank = member.rank || member.distributor?.rankName || 'Business Center';
-  const rawStatus = (member.status || member.distributor?.status || 'Active').toUpperCase();
+  const rawStatus = String(member.status || member.distributor?.status || 'Active').toUpperCase();
   const isActive = rawStatus === 'ACTIVE';
   const status = rawStatus;
 
   const treeId = member.treeId || member.id;
   const rawPayment = member.paymentStatus || (isActive ? 'PAID' : 'PENDING');
-  const paymentStatus = rawPayment.toUpperCase();
+  const paymentStatus = String(rawPayment || 'PENDING').toUpperCase();
   const isPaid = paymentStatus === 'PAID';
   const isFailed = paymentStatus === 'FAILED' || paymentStatus === 'CANCELLED';
   const idColorClass = (isActive && isPaid) ? 'id-active-paid' : isFailed ? 'id-failed' : 'id-pending';
@@ -102,7 +102,7 @@ function MemberDetailsPanel({
         member.placementParentId ||
         (distributorId === 'KV-1001' ? 'ROOT (None)' : (member.parentId || member.sponsor || 'KV-1001'));
 
-  const position = (member.position || (distributorId === 'KV-1001' ? 'ROOT' : 'LEFT')).toUpperCase();
+  const position = String(member.position || (distributorId === 'KV-1001' ? 'ROOT' : 'LEFT')).toUpperCase();
 
   const businessCenter =
     member.businessCenterName

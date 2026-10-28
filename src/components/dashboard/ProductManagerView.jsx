@@ -461,9 +461,9 @@ function ProductManagerView({ user, catalog, onUpdateCatalog, onNavigate }) {
     }));
   };
 
-  const handleSaveInlineUpdate = (productId) => {
-    const changes = inlinePrices[productId];
-    if (!changes) return;
+  const handleSaveInlineUpdate = (productId, overrideChanges = null) => {
+    const changes = overrideChanges || inlinePrices[productId];
+    if (!changes || Object.keys(changes).length === 0) return;
 
     const updatedCatalog = catalog.map((p) => {
       if (p.id === productId) {
@@ -473,6 +473,10 @@ function ProductManagerView({ user, catalog, onUpdateCatalog, onNavigate }) {
             changes.distributorPrice !== undefined
               ? parseFloat(changes.distributorPrice)
               : p.distributorPrice,
+          wholesalePrice:
+            changes.distributorPrice !== undefined
+              ? parseFloat(changes.distributorPrice)
+              : (p.wholesalePrice || p.distributorPrice),
           mrp: changes.mrp !== undefined ? parseFloat(changes.mrp) : p.mrp,
           volumeBV: changes.volumeBV !== undefined ? parseFloat(changes.volumeBV) : p.volumeBV,
           stock: changes.stock !== undefined ? parseInt(changes.stock, 10) : p.stock,
@@ -491,6 +495,7 @@ function ProductManagerView({ user, catalog, onUpdateCatalog, onNavigate }) {
         wholesalePrice: changes.distributorPrice !== undefined ? parseFloat(changes.distributorPrice) : undefined,
         mrp: changes.mrp !== undefined ? parseFloat(changes.mrp) : undefined,
         bv: changes.volumeBV !== undefined ? parseFloat(changes.volumeBV) : undefined,
+        volumeBV: changes.volumeBV !== undefined ? parseFloat(changes.volumeBV) : undefined,
         stock: changes.stock !== undefined ? parseInt(changes.stock, 10) : undefined,
         status: changes.status !== undefined ? changes.status : undefined,
       });
@@ -505,7 +510,7 @@ function ProductManagerView({ user, catalog, onUpdateCatalog, onNavigate }) {
       return copy;
     });
 
-    showToast(`Price & details updated successfully for product ${productId}!`);
+    showToast(`Updated product everywhere across all IDs!`);
   };
 
   // Delete product
@@ -1266,6 +1271,8 @@ function ProductManagerView({ user, catalog, onUpdateCatalog, onNavigate }) {
                               onChange={(e) =>
                                 handleInlineChange(product.id, 'distributorPrice', e.target.value)
                               }
+                              onBlur={() => handleSaveInlineUpdate(product.id)}
+                              onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
                               className="inline-price-input highlight"
                             />
                           </div>
@@ -1281,6 +1288,8 @@ function ProductManagerView({ user, catalog, onUpdateCatalog, onNavigate }) {
                               onChange={(e) =>
                                 handleInlineChange(product.id, 'mrp', e.target.value)
                               }
+                              onBlur={() => handleSaveInlineUpdate(product.id)}
+                              onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
                               className="inline-price-input"
                             />
                           </div>
@@ -1297,6 +1306,8 @@ function ProductManagerView({ user, catalog, onUpdateCatalog, onNavigate }) {
                               onChange={(e) =>
                                 handleInlineChange(product.id, 'volumeBV', e.target.value)
                               }
+                              onBlur={() => handleSaveInlineUpdate(product.id)}
+                              onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
                               className="inline-price-input bv-input"
                             />
                             <span className="inline-bv-label">BV</span>
@@ -1311,6 +1322,8 @@ function ProductManagerView({ user, catalog, onUpdateCatalog, onNavigate }) {
                             onChange={(e) =>
                               handleInlineChange(product.id, 'stock', e.target.value)
                             }
+                            onBlur={() => handleSaveInlineUpdate(product.id)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
                             className="inline-stock-input"
                           />
                         </td>
@@ -1319,9 +1332,11 @@ function ProductManagerView({ user, catalog, onUpdateCatalog, onNavigate }) {
                         <td>
                           <select
                             value={inline.status !== undefined ? inline.status : product.status || 'Pending Pricing'}
-                            onChange={(e) =>
-                              handleInlineChange(product.id, 'status', e.target.value)
-                            }
+                            onChange={(e) => {
+                              const newStatus = e.target.value;
+                              handleInlineChange(product.id, 'status', newStatus);
+                              handleSaveInlineUpdate(product.id, { ...inline, status: newStatus });
+                            }}
                             className="inline-status-select"
                           >
                             <option value="Pending Pricing">Pending Pricing</option>

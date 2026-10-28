@@ -14,6 +14,10 @@ const router = Router();
 router.post('/razorpay/webhook', PaymentController.handleWebhook);
 router.post('/webhook', PaymentController.handleWebhook);
 
+// Enrollment Payment Verification (with server-side cryptographic HMAC signature check)
+router.post('/verify-enrollment', PaymentController.verifyEnrollmentPayment);
+router.post('/enrollment/verify', PaymentController.verifyEnrollmentPayment);
+
 // Protected Payment Endpoints
 router.post(
   '/razorpay/order',
