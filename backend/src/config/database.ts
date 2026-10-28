@@ -31,6 +31,9 @@ function createPrismaClient(): PrismaClient {
         if (prop === '$connect' || prop === '$disconnect') {
           return async () => {};
         }
+        if (prop === '$on') {
+          return () => {};
+        }
         return () => {
           throw new Error('Database is not initialized. Please ensure DATABASE_URL is configured in environment variables.');
         };

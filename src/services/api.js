@@ -21,7 +21,7 @@ const getApiBaseUrl = () => {
     return '/api/v1';
   }
 
-  return 'http://localhost:5000/api/v1';
+  return 'http://localhost:5001/api/v1';
 };
 
 const API_BASE_URL = getApiBaseUrl();
@@ -54,13 +54,26 @@ export const matchesSponsor = (childSponsor, targetSponsor) => {
 
 function getAuthHeaders() {
   try {
+    const directToken = localStorage.getItem('kashvi_token');
+    if (directToken) {
+      return {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${directToken}`,
+      };
+    }
     const saved = localStorage.getItem('kashvi_auth');
     if (saved) {
       const parsed = JSON.parse(saved);
-      if (parsed.token) {
+      const token =
+        parsed.token ||
+        parsed.accessToken ||
+        parsed.tokens?.accessToken ||
+        parsed.user?.token ||
+        parsed.user?.accessToken;
+      if (token) {
         return {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${parsed.token}`,
+          Authorization: `Bearer ${token}`,
         };
       }
     }
@@ -1097,7 +1110,7 @@ export const api = {
       return {
         success: false,
         code: 'SPONSOR_NOT_FOUND',
-        message: 'Invalid or inactive sponsor.',
+        message: 'No user found with this referral code.',
       };
     }
 
@@ -1106,6 +1119,13 @@ export const api = {
       const data = await res.json();
       if (res.ok && data.success && data.data?.sponsor) {
         return data;
+      }
+      if (!res.ok || data.success === false) {
+        return {
+          success: false,
+          code: data.error?.code || 'SPONSOR_NOT_FOUND',
+          message: data.message || data.error?.message || 'No user found with this referral code.',
+        };
       }
     } catch {
       // offline fallback
@@ -1124,7 +1144,7 @@ export const api = {
     );
     if (foundMem) {
       const children = directory.filter(
-        (m) => m.placementParent && m.placementParent.toUpperCase() === foundMem.distributorId.toUpperCase()
+        (m) => m.placementParent && m.placementParent.toUpperCase() === foundMem.distributorId?.toUpperCase()
       );
       const hasLeft = children.some((m) => m.position === 'LEFT');
       const hasRight = children.some((m) => m.position === 'RIGHT');
@@ -1137,8 +1157,8 @@ export const api = {
         success: true,
         data: {
           sponsor: {
-            id: foundMem.id || `dist-${foundMem.distributorId.toLowerCase()}`,
-            distributorId: foundMem.distributorId,
+            id: foundMem.id || `dist-${foundMem.distributorId?.toLowerCase()}`,
+            distributorId: foundMem.distributorId || foundMem.referralCode,
             name: foundMem.name,
             status: foundMem.status || 'ACTIVE',
           },
@@ -1147,52 +1167,10 @@ export const api = {
       };
     }
 
-    // 2. Check root sponsor Rahul Kaushal
-    if (upper === 'KV-1001' || upper === '88767139' || upper === 'ROOT' || upper.includes('RAHUL')) {
-      const children = directory.filter(
-        (m) => m.placementParent && (m.placementParent.toUpperCase() === 'KV-1001' || m.placementParent.toUpperCase().includes('RAHUL'))
-      );
-      const hasLeft = children.some((m) => m.position === 'LEFT');
-      const hasRight = children.some((m) => m.position === 'RIGHT');
-      const availablePositions = [];
-      if (!hasLeft) availablePositions.push('LEFT');
-      if (!hasRight) availablePositions.push('RIGHT');
-      if (availablePositions.length === 0) availablePositions.push('LEFT', 'RIGHT');
-
-      return {
-        success: true,
-        data: {
-          sponsor: {
-            id: 'rahul-dist-1001',
-            distributorId: 'KV-1001',
-            name: 'Rahul Kaushal',
-            status: 'ACTIVE',
-          },
-          availablePositions,
-        },
-      };
-    }
-
-    // 3. Demo fallback
-    if (upper === 'KV-DEMO-1005') {
-      return {
-        success: true,
-        data: {
-          sponsor: {
-            id: 'demo-dist-1005',
-            distributorId: 'KV-DEMO-1005',
-            name: 'Amit Verma',
-            status: 'ACTIVE',
-          },
-          availablePositions: ['LEFT', 'RIGHT'],
-        },
-      };
-    }
-
     return {
       success: false,
       code: 'SPONSOR_NOT_FOUND',
-      message: 'Invalid or inactive sponsor.',
+      message: 'No user found with this referral code.',
     };
   },
 
@@ -1222,11 +1200,8 @@ export const api = {
                 (u) =>
                   u.role === 'ADMIN' ||
                   u.role === 'SUPER_ADMIN' ||
-                  u.isOwner ||
-                  u.memberId === 'KV-1001' ||
-                  u.distributorId === 'KV-1001' ||
-                  u.email === 'rahulkaushal1109@gmail.com' ||
-                  u.email === 'rahul.kaushal@kashvimlm.com'
+                  u.roleName === 'ADMIN' ||
+                  u.roleName === 'SUPER_ADMIN'
               )
             : [];
           localStorage.setItem('kashvi_registered_users', JSON.stringify(kept));
@@ -2613,22 +2588,23 @@ export const api = {
 
       const memberId = userTarget?.distributorId || userTarget?.memberId || userTarget?.distributorCode || (cleanId.startsWith('KV') ? cleanId : 'KV-1001');
       const name = userTarget?.name || userTarget?.fullName || userTarget?.displayName || 'Distributor Member';
-      const personalBV = Number(userTarget?.bv ?? userTarget?.personalBV ?? 250);
+      const personalBV = Number(
+        userTarget?.bv ??
+        userTarget?.personalBV ??
+        userTarget?.distributorProfile?.currentBB ??
+        userTarget?.distributorProfile?.lifetimePV ??
+        0
+      );
 
       // Sum left and right downline volume
-      let leftBV = 0;
-      let rightBV = 0;
+      let leftBV = Number(userTarget?.leftBV ?? userTarget?.distributorProfile?.businessCenters?.[0]?.leftVolume ?? 0);
+      let rightBV = Number(userTarget?.rightBV ?? userTarget?.distributorProfile?.businessCenters?.[0]?.rightVolume ?? 0);
       for (const m of enrolledTree) {
         if (m.placementParent === memberId || m.sponsor === memberId) {
           const legBv = Number(m.bv ?? 100);
           if (m.position === 'LEFT') leftBV += legBv;
           else rightBV += legBv;
         }
-      }
-
-      if (cleanId === 'KV-1001' || memberId === 'KV-1001') {
-        leftBV = Math.max(leftBV, 2000);
-        rightBV = Math.max(rightBV, 2000);
       }
 
       const matchingVolume = Math.min(leftBV, rightBV);
@@ -2643,12 +2619,32 @@ export const api = {
         { code: 'RUBY', name: 'Ruby', order: 5, minBV: 1000, minLeft: 100000, minRight: 100000 },
       ];
 
-      let achievedRank = ranks[0];
-      for (let i = ranks.length - 1; i >= 0; i--) {
-        const rk = ranks[i];
-        if (personalBV >= rk.minBV && leftBV >= rk.minLeft && rightBV >= rk.minRight) {
-          achievedRank = rk;
-          break;
+      // Check if profile explicitly specifies a rank
+      const profileRank =
+        userTarget?.distributorProfile?.currentRank?.name ||
+        userTarget?.distributorProfile?.currentRank ||
+        userTarget?.currentRank ||
+        userTarget?.rank;
+      const explicitRankName = typeof profileRank === 'object' ? (profileRank?.name || profileRank?.title) : profileRank;
+
+      let achievedRank = ranks[0]; // Base
+      if (explicitRankName) {
+        const matchedRank = ranks.find(
+          (r) =>
+            r.name.toLowerCase() === String(explicitRankName).toLowerCase() ||
+            r.code.toLowerCase() === String(explicitRankName).toLowerCase()
+        );
+        if (matchedRank) {
+          achievedRank = matchedRank;
+        }
+      } else {
+        for (let i = ranks.length - 1; i >= 0; i--) {
+          const rk = ranks[i];
+          if (rk.code === 'BASE') continue;
+          if (personalBV >= rk.minBV && leftBV >= rk.minLeft && rightBV >= rk.minRight) {
+            achievedRank = rk;
+            break;
+          }
         }
       }
 

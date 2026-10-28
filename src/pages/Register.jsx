@@ -44,7 +44,7 @@ export function Register() {
     }
   })();
 
-  const initialRef = refFromUrl || storedRef || 'KV-1001';
+  const initialRef = refFromUrl || '';
 
   const [formData, setFormData] = useState({
     fullName: '',
@@ -55,7 +55,7 @@ export function Register() {
     referralCode: initialRef,
   });
 
-  const [hasUrlRef, setHasUrlRef] = useState(Boolean(refFromUrl || storedRef));
+  const [hasUrlRef, setHasUrlRef] = useState(Boolean(refFromUrl));
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -66,7 +66,7 @@ export function Register() {
 
   // Live Sponsor Verification State
   const [sponsorStatus, setSponsorStatus] = useState({
-    state: 'VALIDATING', // 'IDLE' | 'VALIDATING' | 'VALID' | 'INVALID'
+    state: initialRef ? 'VALIDATING' : 'IDLE', // 'IDLE' | 'VALIDATING' | 'VALID' | 'INVALID'
     sponsor: null,
     error: null,
   });
@@ -75,7 +75,7 @@ export function Register() {
   const verifySponsor = useCallback(async (code) => {
     const clean = (code || '').trim();
     if (!clean) {
-      setSponsorStatus({ state: 'INVALID', sponsor: null, error: 'Sponsor ID is required.' });
+      setSponsorStatus({ state: 'IDLE', sponsor: null, error: null });
       return;
     }
 
@@ -83,7 +83,7 @@ export function Register() {
     try {
       const res = await api.validateSponsor(clean);
       if (res && res.success && res.data?.sponsor) {
-        if (res.data.sponsor.status !== 'ACTIVE') {
+        if (res.data.sponsor.status !== 'ACTIVE' && res.data.sponsor.status !== 'PENDING') {
           setSponsorStatus({
             state: 'INVALID',
             sponsor: null,
@@ -97,7 +97,7 @@ export function Register() {
           });
           // Preserve sponsor ID in storage
           try {
-            localStorage.setItem('kashvi_active_sponsor', res.data.sponsor.distributorId);
+            localStorage.setItem('kashvi_active_sponsor', res.data.sponsor.distributorId || res.data.sponsor.referralCode);
           } catch {
             // Safe storage fallback
           }
@@ -106,11 +106,11 @@ export function Register() {
         setSponsorStatus({
           state: 'INVALID',
           sponsor: null,
-          error: res?.message || 'Invalid sponsor ID. Account not found.',
+          error: res?.message || 'No user found with this referral code.',
         });
       }
     } catch (err) {
-      const errMsg = err?.message || 'Invalid or inactive sponsor ID.';
+      const errMsg = err?.message || 'No user found with this referral code.';
       setSponsorStatus({
         state: 'INVALID',
         sponsor: null,
@@ -121,6 +121,10 @@ export function Register() {
 
   // Live validation on mount or when referralCode changes (debounced)
   useEffect(() => {
+    if (!formData.referralCode || !formData.referralCode.trim()) {
+      setSponsorStatus({ state: 'IDLE', sponsor: null, error: null });
+      return;
+    }
     const timer = setTimeout(() => {
       verifySponsor(formData.referralCode);
     }, 350);
@@ -133,16 +137,12 @@ export function Register() {
       try {
         sessionStorage.setItem('kashvi_referral_sponsor', refFromUrl);
         localStorage.setItem('kashvi_referral_sponsor', refFromUrl);
-      } catch {}
+      } catch { }
       setFormData((prev) => ({ ...prev, referralCode: refFromUrl }));
       setHasUrlRef(true);
       verifySponsor(refFromUrl);
-    } else if (storedRef) {
-      setFormData((prev) => ({ ...prev, referralCode: storedRef }));
-      setHasUrlRef(true);
-      verifySponsor(storedRef);
     }
-  }, [refFromUrl, storedRef, verifySponsor]);
+  }, [refFromUrl, verifySponsor]);
 
   // If already authenticated and not in middle of showing success, navigate straight to dashboard
   useEffect(() => {
@@ -486,7 +486,7 @@ export function Register() {
                 type="text"
                 required
                 readOnly={hasUrlRef}
-                placeholder="KV-1001 (Root Sponsor) or Sponsor Code"
+                placeholder="Enter Sponsor / Referral Code"
                 value={formData.referralCode}
                 onChange={handleChange}
                 disabled={loading || Boolean(successData)}
@@ -681,14 +681,14 @@ export function Register() {
               marginTop: '8px',
               opacity:
                 loading ||
-                sponsorStatus.state === 'INVALID' ||
-                sponsorStatus.state === 'VALIDATING'
+                  sponsorStatus.state === 'INVALID' ||
+                  sponsorStatus.state === 'VALIDATING'
                   ? 0.65
                   : 1,
               cursor:
                 loading ||
-                sponsorStatus.state === 'INVALID' ||
-                sponsorStatus.state === 'VALIDATING'
+                  sponsorStatus.state === 'INVALID' ||
+                  sponsorStatus.state === 'VALIDATING'
                   ? 'not-allowed'
                   : 'pointer',
             }}

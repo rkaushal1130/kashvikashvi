@@ -4,7 +4,7 @@ import { AuthService } from '../services/auth.service';
 import { UserRole } from '../types';
 import { AppError } from '../utils/appError';
 
-export const authorizeRoles = (...allowedRoles: UserRole[]) => {
+export const authorizeRoles = (...allowedRoles: (UserRole | string)[]) => {
   return (req: Request, _res: Response, next: NextFunction): void => {
     if (!req.user) {
       return next(
@@ -12,12 +12,19 @@ export const authorizeRoles = (...allowedRoles: UserRole[]) => {
       );
     }
 
-    // SUPER_ADMIN has global authorization access
-    if (req.user.role === 'SUPER_ADMIN') {
+    // ADMIN has administrative authorization access
+    if (req.user.role === 'ADMIN' || (req.user.role as string) === 'SUPER_ADMIN') {
       return next();
     }
 
-    if (!allowedRoles.includes(req.user.role)) {
+    const effectiveRole = req.user.role;
+    const hasRole = allowedRoles.some((r) => {
+      if (r === effectiveRole) return true;
+      if (r === ('SUPPORT' as any) && effectiveRole === 'CUSTOMER_CARE') return true;
+      return false;
+    });
+
+    if (!hasRole) {
       return next(
         AppError.forbidden(
           'Forbidden: You do not have permission to access this resource',
@@ -52,8 +59,8 @@ export const requireProductManagementAccess = async (
     );
   }
 
-  // 1. SUPER_ADMIN and ADMIN have global product and pricing management rights
-  if (req.user.role === 'SUPER_ADMIN' || req.user.role === 'ADMIN') {
+  // 1. ADMIN has global product and pricing management rights
+  if (req.user.role === 'ADMIN' || (req.user.role as string) === 'SUPER_ADMIN') {
     return next();
   }
 
@@ -77,36 +84,19 @@ export const requireProductManagementAccess = async (
 
       if (user) {
         // Check if role has manage_products permission
+        const roleName = user.role?.name || user.roleName;
         const rolePermissions = user.role?.permissions as any;
         if (
-          user.roleName === 'SUPER_ADMIN' ||
-          user.roleName === 'ADMIN' ||
+          roleName === 'SUPER_ADMIN' ||
+          roleName === 'ADMIN' ||
           (Array.isArray(rolePermissions) && rolePermissions.includes('manage_products')) ||
           (rolePermissions && typeof rolePermissions === 'object' && rolePermissions.manage_products === true)
         ) {
           isAuthorizedOwner = true;
         }
-
-        // Check if explicitly authorized as business center owner
-        if ((user as any).isOwner === true) {
-          isAuthorizedOwner = true;
-        }
       }
     } catch {
-      // Offline fallback: check in-memory store
-      try {
-        const inMemoryUser = await AuthService.getMe(req.user.id);
-        if (
-          inMemoryUser &&
-          (inMemoryUser.role === 'ADMIN' ||
-            inMemoryUser.role === 'SUPER_ADMIN' ||
-            inMemoryUser.isOwner === true)
-        ) {
-          isAuthorizedOwner = true;
-        }
-      } catch {
-        isAuthorizedOwner = false;
-      }
+      isAuthorizedOwner = false;
     }
 
     if (isAuthorizedOwner) {

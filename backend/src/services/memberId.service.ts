@@ -23,6 +23,146 @@ export class MemberIdService {
   private static readonly COUNTER_ID = 'KV_MEMBER_ID';
   private static readonly PREFIX = 'KV-';
 
+  private static readonly DST_COUNTER_ID = 'DST_DISTRIBUTOR_COUNTER';
+  private static readonly DST_PREFIX = 'DST-';
+  private static dstLockQueue: Promise<void> = Promise.resolve();
+  private static dstInMemoryCounter: number | null = null;
+
+  /**
+   * Generates the next sequential distributor referral code starting from DST-0001.
+   * Auto-increments as distributors register: DST-0001, DST-0002, DST-0003...
+   */
+  public static async generateNextDistributorCode(tx?: Prisma.TransactionClient): Promise<string> {
+    return new Promise<string>((resolve, reject) => {
+      this.dstLockQueue = this.dstLockQueue
+        .then(async () => {
+          try {
+            const code = await this.executeGenerateDistributorCode(tx);
+            resolve(code);
+          } catch (err) {
+            reject(err);
+          }
+        })
+        .catch((err) => {
+          logger.error({ error: err }, 'Lock queue execution error in generateNextDistributorCode');
+          reject(err);
+        });
+    });
+  }
+
+  private static async executeGenerateDistributorCode(tx?: Prisma.TransactionClient): Promise<string> {
+    const db = tx || prisma;
+    let candidateCode = '';
+    let isUnique = false;
+    let attempts = 0;
+
+    while (!isUnique && attempts < 50) {
+      attempts++;
+
+      const maxNumeric = await this.findCurrentMaxDstNumeric(db);
+
+      const existingCounter = await (db as any).memberIdCounter.findUnique({
+        where: { id: this.DST_COUNTER_ID },
+      });
+
+      const nextVal = Math.max(maxNumeric + 1, (existingCounter?.currentValue ?? 0) + 1);
+
+      const counter = await (db as any).memberIdCounter.upsert({
+        where: { id: this.DST_COUNTER_ID },
+        create: {
+          id: this.DST_COUNTER_ID,
+          currentValue: nextVal,
+        },
+        update: {
+          currentValue: nextVal,
+        },
+      });
+
+      const numStr = String(counter.currentValue).padStart(4, '0');
+      candidateCode = `${this.DST_PREFIX}${numStr}`;
+
+      const collisionProfile = await db.distributorProfile.findFirst({
+        where: {
+          OR: [
+            { distributorCode: { equals: candidateCode, mode: 'insensitive' } },
+            { distributorId: { equals: candidateCode, mode: 'insensitive' } },
+          ],
+        },
+        select: { id: true },
+      });
+
+      const collisionUser = await db.user.findFirst({
+        where: { referralCode: { equals: candidateCode, mode: 'insensitive' } },
+        select: { id: true },
+      });
+
+      if (!collisionProfile && !collisionUser) {
+        isUnique = true;
+      }
+    }
+
+    if (isUnique && candidateCode) {
+      logger.info({ distributorCode: candidateCode }, 'Generated sequential DST distributor code');
+      return candidateCode;
+    }
+
+    if (this.dstInMemoryCounter === null) {
+      this.dstInMemoryCounter = await this.findCurrentMaxDstNumeric(db);
+    }
+    this.dstInMemoryCounter++;
+    return `${this.DST_PREFIX}${String(this.dstInMemoryCounter).padStart(4, '0')}`;
+  }
+
+  public static async findCurrentMaxDstNumeric(db: Prisma.TransactionClient | typeof prisma): Promise<number> {
+    let maxNum = 0;
+    try {
+      const existingProfiles = await db.distributorProfile.findMany({
+        where: {
+          OR: [
+            { distributorCode: { startsWith: 'DST-', mode: 'insensitive' } },
+            { distributorId: { startsWith: 'DST-', mode: 'insensitive' } },
+          ],
+        },
+        select: { distributorCode: true, distributorId: true },
+        take: 5000,
+      });
+
+      for (const p of existingProfiles) {
+        const codes = [p.distributorCode, p.distributorId].filter(Boolean) as string[];
+        for (const code of codes) {
+          const match = code.match(/^DST[-_]?(\d+)$/i);
+          if (match && match[1]) {
+            const num = parseInt(match[1], 10);
+            if (!isNaN(num) && num > maxNum) {
+              maxNum = num;
+            }
+          }
+        }
+      }
+
+      const existingUsers = await db.user.findMany({
+        where: { referralCode: { startsWith: 'DST-', mode: 'insensitive' } },
+        select: { referralCode: true },
+        take: 5000,
+      });
+
+      for (const u of existingUsers) {
+        if (u.referralCode) {
+          const match = u.referralCode.match(/^DST[-_]?(\d+)$/i);
+          if (match && match[1]) {
+            const num = parseInt(match[1], 10);
+            if (!isNaN(num) && num > maxNum) {
+              maxNum = num;
+            }
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return maxNum;
+  }
+
   /**
    * Generates the next unique, permanent Kashvi MLM ID in a concurrency-safe atomic transaction.
    * Format: KV-1001, KV-1002, KV-1003, ...

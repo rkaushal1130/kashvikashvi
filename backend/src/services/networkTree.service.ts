@@ -144,35 +144,37 @@ export class NetworkTreeService {
       );
     };
 
-    let currentNodeId = cleanSponsor;
+    const queue: string[] = [cleanSponsor];
     const visited = new Set<string>();
 
-    while (currentNodeId && !visited.has(currentNodeId)) {
+    while (queue.length > 0) {
+      const currentNodeId = queue.shift()!;
+      if (!currentNodeId || visited.has(currentNodeId)) continue;
       visited.add(currentNodeId);
-      const children = getChildren(currentNodeId);
-      const leftChild = children.find((c) => c.position === 'LEFT');
-      const rightChild = children.find((c) => c.position === 'RIGHT');
 
-      if (preferredLeg === 'LEFT') {
-        if (!leftChild) {
-          return { targetParentId: currentNodeId, position: 'LEFT' };
-        } else if (!rightChild) {
-          return { targetParentId: currentNodeId, position: 'RIGHT' };
-        } else {
-          currentNodeId = leftChild.distributorId;
-        }
-      } else {
-        if (!rightChild) {
-          return { targetParentId: currentNodeId, position: 'RIGHT' };
-        } else if (!leftChild) {
-          return { targetParentId: currentNodeId, position: 'LEFT' };
-        } else {
-          currentNodeId = rightChild.distributorId;
-        }
+      const children = getChildren(currentNodeId);
+      const rightChild = children.find((c) => c.position === 'RIGHT');
+      const leftChild = children.find((c) => c.position === 'LEFT');
+
+      // 1. Right leg always checked first
+      if (!rightChild) {
+        return { targetParentId: currentNodeId, position: 'RIGHT' };
+      }
+      // 2. Left leg checked second
+      if (!leftChild) {
+        return { targetParentId: currentNodeId, position: 'LEFT' };
+      }
+
+      // 3. Both filled: enqueue Right child first, then Left child for Level-Order Breadth-First traversal
+      if (rightChild.distributorId) {
+        queue.push(rightChild.distributorId);
+      }
+      if (leftChild.distributorId) {
+        queue.push(leftChild.distributorId);
       }
     }
 
-    return { targetParentId: cleanSponsor, position: preferredLeg };
+    return { targetParentId: cleanSponsor, position: 'RIGHT' };
   }
 
   public static addEnrolledMember(member: Partial<EnrolledTreeMember>): EnrolledTreeMember {

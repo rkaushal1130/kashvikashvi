@@ -36,96 +36,17 @@ export class SponsorService {
       throw AppError.badRequest('Sponsor ID is required', 'SPONSOR_ID_REQUIRED');
     }
 
-    // 1. Find distributor via repository layer
-    let sponsor: SponsorRecord | null = null;
-    try {
-      sponsor = await SponsorRepository.findByIdentifier(identifier);
-    } catch {
-      // Offline fallback
-    }
+    // 1. Find distributor/user via repository layer strictly from database
+    const sponsor: SponsorRecord | null = await SponsorRepository.findByIdentifier(identifier);
 
+    // 2. If no user in database has this referral code, throw 404 SPONSOR_NOT_FOUND
     if (!sponsor) {
-      const inMemUser = AuthService.getInMemoryUser(identifier);
-      if (inMemUser) {
-        sponsor = {
-          id: inMemUser.distributorProfile?.id || inMemUser.id,
-          distributorId: inMemUser.distributorCode || inMemUser.referralCode || inMemUser.memberId,
-          distributorCode: inMemUser.distributorCode || inMemUser.referralCode || inMemUser.memberId,
-          firstName: inMemUser.firstName || inMemUser.distributorProfile?.firstName || 'Distributor',
-          lastName: inMemUser.lastName || inMemUser.distributorProfile?.lastName || 'Member',
-          displayName:
-            inMemUser.displayName ||
-            inMemUser.fullName ||
-            `${inMemUser.firstName || ''} ${inMemUser.lastName || ''}`.trim(),
-          status: inMemUser.status || inMemUser.distributorProfile?.status || 'ACTIVE',
-          mlmNodes: [{ id: `node-${inMemUser.id}`, children: [] }],
-        };
-      }
-    }
-
-    if (!sponsor) {
-      // Offline / in-memory fallback for local mock testing
-      const upper = identifier.toUpperCase();
-      if (upper === 'KV-1001' || upper === '88767139') {
-        sponsor = {
-          id: '11111111-2222-3333-4444-555555555555',
-          distributorId: 'KV-1001',
-          distributorCode: 'KV-1001',
-          firstName: 'Rahul',
-          lastName: 'Kaushal',
-          displayName: 'Rahul Kaushal',
-          status: 'ACTIVE',
-          mlmNodes: [{ id: 'node-rahul-1', children: [] }],
-        };
-      } else if (upper === 'KV-1002') {
-        sponsor = {
-          id: '22222222-2222-3333-4444-555555555555',
-          distributorId: 'KV-1002',
-          distributorCode: 'KV-1002',
-          firstName: 'Amit',
-          lastName: 'Patel',
-          displayName: 'Amit Patel',
-          status: 'ACTIVE',
-          mlmNodes: [{ id: 'node-amit-1', children: [] }],
-        };
-      }
-    }
-
-    if (!sponsor) {
-      try {
-        const { NetworkTreeService } = await import('./networkTree.service');
-        const enrollees = NetworkTreeService.getEnrolledMembers();
-        const enrollee = enrollees.find(
-          (m) =>
-            m.distributorId.toUpperCase() === identifier.toUpperCase() ||
-            (m.id && m.id.toUpperCase() === identifier.toUpperCase()) ||
-            (m.treeId && m.treeId.toUpperCase() === identifier.toUpperCase())
-        );
-        if (enrollee) {
-          sponsor = {
-            id: enrollee.id,
-            distributorId: enrollee.distributorId,
-            distributorCode: enrollee.distributorId,
-            firstName: enrollee.name.split(' ')[0] || 'Distributor',
-            lastName: enrollee.name.split(' ').slice(1).join(' ') || 'Member',
-            displayName: enrollee.name,
-            status: 'ACTIVE',
-            mlmNodes: [{ id: enrollee.id, children: [] }],
-          };
-        }
-      } catch {
-        // ignore
-      }
-    }
-
-    // 2. Verify that the distributor exists
-    if (!sponsor) {
-      throw new AppError('Sponsor not found', 404, 'SPONSOR_NOT_FOUND');
+      throw new AppError(`No user found with referral code '${identifier}'.`, 404, 'SPONSOR_NOT_FOUND');
     }
 
     // 3. Verify distributor status (allow ACTIVE and PENDING distributors to share their sponsor ID)
     if (sponsor.status !== 'ACTIVE' && sponsor.status !== 'PENDING') {
-      throw new AppError('Sponsor is inactive', 400, 'SPONSOR_INACTIVE');
+      throw new AppError('The sponsor account is currently inactive.', 400, 'SPONSOR_INACTIVE');
     }
 
     // 4. Determine available LEFT / RIGHT binary placement positions under primary node

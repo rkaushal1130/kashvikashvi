@@ -94,7 +94,7 @@ export class LevelCommissionController {
 
       // If distributorId query param provided and caller is admin, allow viewing another distributor
       const targetId =
-        (req.user?.role === 'ADMIN' || req.user?.role === 'SUPER_ADMIN') && req.query.distributorId
+        (req.user?.role === 'ADMIN' || (req.user?.role as string) === 'SUPER_ADMIN') && req.query.distributorId
           ? String(req.query.distributorId)
           : userId;
 

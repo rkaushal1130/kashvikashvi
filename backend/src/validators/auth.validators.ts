@@ -7,7 +7,7 @@ export const registerSchema = z
       z.string().email('Please enter a valid email address')
     ) as z.ZodType<string>,
     password: z.string().min(8, 'Password must be at least 8 characters'),
-    role: z.enum(['DISTRIBUTOR', 'CUSTOMER']).default('DISTRIBUTOR').optional(),
+    role: z.enum(['DISTRIBUTOR', 'CUSTOMER_CARE', 'ADMIN']).default('DISTRIBUTOR').optional(),
     firstName: z.string().trim().optional(),
     lastName: z.string().trim().optional(),
     fullName: z.string().trim().optional(),

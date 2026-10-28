@@ -20,11 +20,9 @@ generator rootClient {
 // ==========================================
 
 enum UserRole {
-  SUPER_ADMIN
   ADMIN
   DISTRIBUTOR
-  CUSTOMER
-  SUPPORT
+  CUSTOMER_CARE
 }
 
 enum AccountStatus {

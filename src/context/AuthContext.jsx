@@ -145,24 +145,6 @@ export function AuthProvider({ children }) {
 
     // Listen to 401 unauthorized notifications
     const unsub401 = apiClient.onUnauthorized(() => {
-      const saved = localStorage.getItem('kashvi_auth');
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          if (
-            parsed.isLoggedIn &&
-            parsed.user &&
-            (parsed.user.isOwner ||
-              parsed.user.email === 'rahulkaushal1109@gmail.com' ||
-              parsed.user.memberId === 'KV-1001' ||
-              (parsed.token && (parsed.token.startsWith('kashvi_reg_token_') || parsed.token.startsWith('kashvi_mock_'))))
-          ) {
-            return;
-          }
-        } catch {
-          // ignore
-        }
-      }
       setCurrentUser(null);
       setIsAuthenticated(false);
     });
@@ -192,87 +174,7 @@ export function AuthProvider({ children }) {
   const login = async (credentials) => {
     setLoading(true);
     try {
-      let res;
-      try {
-        res = await authApi.login(credentials);
-      } catch (apiErr) {
-        const cleanEmail = (credentials?.email || credentials?.username || credentials?.identifier || '').trim().toLowerCase();
-        if (
-          (cleanEmail === 'rahulkaushal1109@gmail.com' || cleanEmail === 'rahul.kaushal@kashvimlm.com' || cleanEmail === 'rahul') &&
-          (credentials?.password === 'R@hul1130' || credentials?.password === 'password123')
-        ) {
-          const ownerUser = {
-            id: 'owner-rahul-id',
-            userId: 'usr-owner-rahul',
-            email: 'rahulkaushal1109@gmail.com',
-            role: 'ADMIN',
-            roleName: 'ADMIN',
-            isOwner: true,
-            isAdmin: true,
-            status: 'ACTIVE',
-            firstName: 'Rahul',
-            lastName: 'Kaushal',
-            name: 'Rahul Kaushal',
-            fullName: 'Rahul Kaushal',
-            displayName: 'Rahul Kaushal',
-            memberId: 'KV-1001',
-            distributorId: 'KV-1001',
-            referralCode: 'KV-1001',
-            distributorCode: 'KV-1001',
-            phone: '+91 98765 43210',
-            distributorProfile: {
-              id: 'prof-rahul-owner',
-              distributorCode: 'KV-1001',
-              firstName: 'Rahul',
-              lastName: 'Kaushal',
-              displayName: 'Rahul Kaushal',
-              status: 'ACTIVE',
-              currentRank: { name: 'Owner / Crown Ambassador' },
-              lifetimePV: 50000,
-              lifetimeGV: 250000,
-            },
-            wallet: { balance: 250000, pendingBalance: 0, currency: 'USD' },
-          };
-          const mockToken = 'kashvi_mock_owner_jwt_token_2026';
-          res = {
-            success: true,
-            user: ownerUser,
-            token: mockToken,
-            accessToken: mockToken,
-          };
-        } else {
-          // Check locally registered resilient accounts
-          let matchedUser = null;
-          try {
-            const raw = localStorage.getItem('kashvi_registered_users');
-            if (raw) {
-              const list = JSON.parse(raw);
-              matchedUser = list.find(
-                (u) =>
-                  (u.email?.toLowerCase() === cleanEmail ||
-                    u.referralCode?.toLowerCase() === cleanEmail ||
-                    u.distributorCode?.toLowerCase() === cleanEmail ||
-                    u.memberId?.toLowerCase() === cleanEmail) &&
-                  (!u.password || u.password === credentials?.password)
-              );
-            }
-          } catch {
-            // ignore
-          }
-
-          if (matchedUser) {
-            const mockToken = `kashvi_reg_token_${Date.now()}`;
-            res = {
-              success: true,
-              user: matchedUser,
-              token: mockToken,
-              accessToken: mockToken,
-            };
-          } else {
-            throw apiErr;
-          }
-        }
-      }
+      const res = await authApi.login(credentials);
 
       const user = res?.user || res?.data?.user;
       const validToken =
@@ -548,15 +450,20 @@ export function AuthProvider({ children }) {
     }
   };
 
-  // Strict Role & Permission evaluation based on server-verified identity
+  // Strict Role & Permission evaluation based on server-verified identity from Roles table
   const userRole = (currentUser?.role || currentUser?.roleName || '').toString().toUpperCase();
   const isAdmin = userRole === 'ADMIN' || userRole === 'SUPER_ADMIN';
+  const rolePermissions = currentUser?.rolePermissions || currentUser?.role?.permissions;
   const isOwner = Boolean(
-    currentUser?.isOwner === true ||
-    currentUser?.isBusinessCenterOwner === true ||
-    (currentUser?.role && typeof currentUser.role === 'object' && currentUser.role?.permissions?.manage_products)
+    userRole === 'SUPER_ADMIN' ||
+    rolePermissions?.all === true ||
+    rolePermissions?.root === true
   );
-  const canManageProducts = Boolean(isAdmin || isOwner);
+  const canManageProducts = Boolean(
+    isAdmin ||
+    isOwner ||
+    rolePermissions?.manage_products === true
+  );
 
   const value = {
     currentUser,

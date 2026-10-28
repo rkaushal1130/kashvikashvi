@@ -1652,13 +1652,15 @@ export class EnrollmentService {
           );
         }
 
-        // 7. Create user
+        // 7. Create user linked to DISTRIBUTOR role from roles table
+        const distRole = await tx.role.findUnique({ where: { name: 'DISTRIBUTOR' } });
         const passwordHash = await hashPassword(input.password);
         const user = await tx.user.create({
           data: {
             email,
             passwordHash,
-            roleName: input.enrollmentType as UserRole,
+            roleId: distRole?.id,
+            roleName: 'DISTRIBUTOR',
             status: 'INACTIVE',
             isActive: false,
             phone,

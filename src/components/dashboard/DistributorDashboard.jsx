@@ -73,17 +73,20 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
   const location = useLocation();
   const auth = useAuth();
   const effectiveUser = user || auth.currentUser || {
-    name: 'Rahul Kaushal',
+    name: 'Admin',
     memberId: 'KV-1001',
+    distributorId: 'KV-1001',
+    distributorCode: 'KV-1001',
+    referralCode: 'KV-1001',
     role: 'ADMIN',
     isOwner: true,
     distributorProfile: {
-      name: 'Rahul Kaushal',
-      displayName: 'Rahul Kaushal',
-      fullName: 'Rahul Kaushal',
+      name: 'Admin',
+      displayName: 'Admin',
+      fullName: 'Admin',
       distributorCode: 'KV-1001',
       joinDate: '2026',
-      currentRank: 'Company Owner / Emerald Director',
+      currentRank: 'Base',
     },
   };
 
@@ -156,7 +159,13 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
     let mounted = true;
     async function loadPerformanceData() {
       try {
-        const targetId = effectiveUser?.memberId || effectiveUser?.distributorId || effectiveUser?.id;
+        const targetId =
+          effectiveUser?.referralCode ||
+          effectiveUser?.distributorCode ||
+          effectiveUser?.memberId ||
+          effectiveUser?.distributorId ||
+          effectiveUser?.id ||
+          'KV-1001';
         const perfData = await api.getMemberPerformance(targetId);
         if (mounted && perfData) {
           setPerformance(perfData);
@@ -183,7 +192,7 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
       window.removeEventListener('kashvi_auth_updated', handleRefresh);
       window.removeEventListener('storage', handleRefresh);
     };
-  }, [user, effectiveUser?.memberId, effectiveUser?.distributorId]);
+  }, [user, effectiveUser?.memberId, effectiveUser?.distributorId, effectiveUser?.referralCode, effectiveUser?.distributorCode, effectiveUser?.id]);
 
   // Cumulative Rank & Commission Progress State (Phase 6)
   const [cumulativeRank, setCumulativeRank] = useState(null);
@@ -392,7 +401,6 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
     effectiveUser?.rank ||
     'Base';
   const memberRank = typeof rawMemberRank === 'object' ? (rawMemberRank?.name || rawMemberRank?.title || 'Base') : rawMemberRank;
-  const currentRankCode = cumulativeRank?.currentRank || 'BASE';
   const currentRankName = cumulativeRank?.currentRankName || memberRank;
   const nextRankName = cumulativeRank?.nextRankName || null;
   const rankProgressPercent = cumulativeRank?.rankProgressPercent ?? 0;
@@ -404,6 +412,7 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
   const displayUserStatus = (performance?.accountStatus || userStatus || effectiveUser?.accountStatus || (displayPaymentStatus === 'PAID' ? 'ACTIVE' : 'PENDING_PAYMENT')).toUpperCase();
   const displayMemberSince = performance?.brandPartnerSince || (memberSince !== 'NA' ? memberSince : 'Today');
   const displayRankName = performance?.currentRank || currentRankName || 'Base';
+  const currentRankCode = performance?.currentRankCode || cumulativeRank?.currentRank || (displayRankName ? displayRankName.toUpperCase() : 'BASE');
   const displayNextRankName = performance?.nextRank || nextRankName || (performance?.isHighestRank ? 'Highest Rank Achieved' : 'Silver');
   const displayRankProgress = performance?.rankProgressPercent ?? rankProgressPercent ?? 0;
   const displayPersonalBV = performance?.personalBV ?? cumulativeRank?.qualifyingBV ?? 0;
@@ -883,7 +892,7 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
                       }}
                     >
                       <Award size={12} />
-                      [{displayRankName.toUpperCase()}]
+                      {displayRankName.toUpperCase()}
                     </span>
                   </h2>
                   <p className="member-id-text" style={{ margin: '4px 0 6px', fontWeight: 600, color: '#1e293b' }}>

@@ -42,6 +42,8 @@
     "test:backend": "npm test --prefix backend",
     "db:init": "npm run prisma:db:push --prefix backend && npm run prisma:seed --prefix backend",
     "db:seed": "npm run prisma:seed --prefix backend",
+    "db:studio": "npm run prisma:studio --prefix backend",
+    "db:roles": "npm run roles:migrate --prefix backend",
     "db:migrate": "npm run prisma:migrate:deploy --prefix backend",
     "db:status": "npm run prisma:migrate --prefix backend"
   },

@@ -18,53 +18,51 @@ export async function seedDatabase(): Promise<void> {
   // ==========================================
   // 1. Roles
   // ==========================================
-  const superAdminRole = await prisma.role.upsert({
-    where: { name: 'SUPER_ADMIN' },
-    update: {},
-    create: {
-      name: 'SUPER_ADMIN',
-      description: 'Super Administrator with root authority',
-      permissions: { all: true, root: true },
-    },
-  });
-
+  // 1. Roles (Strictly 3 Canonical Roles)
+  // ==========================================
   const adminRole = await prisma.role.upsert({
     where: { name: 'ADMIN' },
-    update: {},
+    update: {
+      description: 'Admin',
+      permissions: { all: true, root: true, manage_products: true, manage_users: true },
+    },
     create: {
       name: 'ADMIN',
-      description: 'System Administrator with operational access',
-      permissions: { all: true },
+      description: 'Admin',
+      permissions: { all: true, root: true, manage_products: true, manage_users: true },
     },
   });
 
   const distributorRole = await prisma.role.upsert({
     where: { name: 'DISTRIBUTOR' },
-    update: {},
+    update: {
+      description: 'Distributor',
+      permissions: { portal: true, businessCenter: true, wallet: true },
+    },
     create: {
       name: 'DISTRIBUTOR',
-      description: 'Independent Business Owner / Distributor',
+      description: 'Distributor',
       permissions: { portal: true, businessCenter: true, wallet: true },
     },
   });
 
-  const customerRole = await prisma.role.upsert({
-    where: { name: 'CUSTOMER' },
-    update: {},
+  const customerCareRole = await prisma.role.upsert({
+    where: { name: 'CUSTOMER_CARE' },
+    update: {
+      description: 'Customer Care',
+      permissions: { tickets: true, viewMembers: true, support: true },
+    },
     create: {
-      name: 'CUSTOMER',
-      description: 'Retail or Preferred Customer',
-      permissions: { shop: true, orderHistory: true },
+      name: 'CUSTOMER_CARE',
+      description: 'Customer Care',
+      permissions: { tickets: true, viewMembers: true, support: true },
     },
   });
 
-  const supportRole = await prisma.role.upsert({
-    where: { name: 'SUPPORT' },
-    update: {},
-    create: {
-      name: 'SUPPORT',
-      description: 'Customer Support and Ticket Agent',
-      permissions: { tickets: true, viewMembers: true },
+  // Automatically delete any other roles from the table
+  await prisma.role.deleteMany({
+    where: {
+      name: { notIn: ['ADMIN', 'DISTRIBUTOR', 'CUSTOMER_CARE'] },
     },
   });
 
@@ -286,25 +284,35 @@ export async function seedDatabase(): Promise<void> {
   });
 
   // ==========================================
-  // 4. ADMIN: admin@example.com
+  // 4. ADMIN: admin@kashvimlm.com
   // ==========================================
-  const adminPassword = await hashPassword('AdminPassword@2026');
+  const adminPassword = await hashPassword('Admin@Kashvimlm#1001');
   const adminUser = await prisma.user.upsert({
-    where: { email: 'admin@example.com' },
+    where: { email: 'admin@kashvimlm.com' },
     update: {
+      fullName: 'Admin',
+      phone: '9876543210',
       passwordHash: adminPassword,
       roleId: adminRole.id,
       roleName: 'ADMIN',
+      status: 'ACTIVE',
       isActive: true,
+      emailVerified: true,
+      emailVerifiedAt: new Date(),
+      phoneVerifiedAt: new Date(),
     },
     create: {
-      email: 'admin@example.com',
+      fullName: 'Admin',
+      email: 'admin@kashvimlm.com',
+      phone: '9876543210',
       passwordHash: adminPassword,
       roleId: adminRole.id,
       roleName: 'ADMIN',
-      phone: '+1-555-0100',
+      status: 'ACTIVE',
       isActive: true,
+      emailVerified: true,
       emailVerifiedAt: new Date(),
+      phoneVerifiedAt: new Date(),
       securityProfile: {
         create: {
           twoFactorEnabled: false,
@@ -313,15 +321,18 @@ export async function seedDatabase(): Promise<void> {
     },
   });
 
-  // Also support agent user if present
+  // Customer Care specialist user
   await prisma.user.upsert({
     where: { email: 'support@example.com' },
-    update: {},
+    update: {
+      roleId: customerCareRole.id,
+      roleName: 'CUSTOMER_CARE',
+    },
     create: {
       email: 'support@example.com',
       passwordHash: adminPassword,
-      roleId: supportRole.id,
-      roleName: 'SUPPORT',
+      roleId: customerCareRole.id,
+      roleName: 'CUSTOMER_CARE',
       phone: '+1-555-0109',
       isActive: true,
       emailVerifiedAt: new Date(),
@@ -337,15 +348,15 @@ export async function seedDatabase(): Promise<void> {
     where: { email: 'rahulkaushal1109@gmail.com' },
     update: {
       passwordHash: ownerPassword,
-      roleId: superAdminRole.id,
-      roleName: 'SUPER_ADMIN',
+      roleId: adminRole.id,
+      roleName: 'ADMIN',
       isActive: true,
     },
     create: {
       email: 'rahulkaushal1109@gmail.com',
       passwordHash: ownerPassword,
-      roleId: superAdminRole.id,
-      roleName: 'SUPER_ADMIN',
+      roleId: adminRole.id,
+      roleName: 'ADMIN',
       phone: '+91-98765-43210',
       isActive: true,
       emailVerifiedAt: new Date(),
@@ -522,15 +533,15 @@ export async function seedDatabase(): Promise<void> {
     where: { email: 'customer@example.com' },
     update: {
       passwordHash: custPassword,
-      roleId: customerRole.id,
-      roleName: 'CUSTOMER',
+      roleId: distributorRole.id,
+      roleName: 'DISTRIBUTOR',
       isActive: true,
     },
     create: {
       email: 'customer@example.com',
       passwordHash: custPassword,
-      roleId: customerRole.id,
-      roleName: 'CUSTOMER',
+      roleId: distributorRole.id,
+      roleName: 'DISTRIBUTOR',
       phone: '+1-555-0104',
       isActive: true,
       emailVerifiedAt: new Date(),

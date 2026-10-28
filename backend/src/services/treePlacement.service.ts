@@ -953,5 +953,135 @@ export class TreePlacementService {
       throwOnError: false,
     });
   }
+
+  /**
+   * Finds the next open slot in the binary tree under a sponsor using Right-First Level-Order (BFS) traversal:
+   * 1. Starts from Right leg, then Left leg.
+   * 2. If no one is there, adds to Right leg.
+   * 3. If one user is already in Right leg, goes to Left leg.
+   * 4. If two users are there in Right and Left leg, 3rd goes to Right leg's Right leg.
+   * 5. and so on (Right child prioritized, then Left child, level-by-level).
+   */
+  public static async findNextRightFirstPlacement(
+    sponsorProfileId: string,
+    tx?: Prisma.TransactionClient
+  ): Promise<{
+    placementParentNodeId: string;
+    placementPosition: 'RIGHT' | 'LEFT';
+    depth: number;
+    binaryPath: string;
+  }> {
+    const db = tx || prisma;
+
+    // Find the sponsor's root MLM node
+    let sponsorNode = await db.mLMNode.findFirst({
+      where: {
+        distributorId: sponsorProfileId,
+        placementParentId: null,
+      },
+    });
+
+    if (!sponsorNode) {
+      sponsorNode = await db.mLMNode.findFirst({
+        where: {
+          distributorId: sponsorProfileId,
+        },
+        orderBy: {
+          depth: 'asc',
+        },
+      });
+    }
+
+    if (!sponsorNode) {
+      // If sponsor has no MLM node yet, check if sponsor has a businessCenter
+      let bc = await db.businessCenter.findFirst({
+        where: { distributorId: sponsorProfileId },
+      });
+      if (!bc) {
+        bc = await db.businessCenter.create({
+          data: {
+            distributorId: sponsorProfileId,
+            centerNumber: 1,
+            centerCode: `BC-${sponsorProfileId.substring(0, 8)}`,
+            status: 'ACTIVE',
+            leftVolume: 0,
+            rightVolume: 0,
+          },
+        });
+      }
+      sponsorNode = await db.mLMNode.create({
+        data: {
+          distributorId: sponsorProfileId,
+          businessCenterId: bc.id,
+          depth: 0,
+          binaryPath: 'ROOT',
+        },
+      });
+    }
+
+    // BFS Queue starting with sponsorNode
+    const queue: { id: string; depth: number; binaryPath: string | null }[] = [
+      {
+        id: sponsorNode.id,
+        depth: sponsorNode.depth,
+        binaryPath: sponsorNode.binaryPath || 'ROOT',
+      },
+    ];
+
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+
+      // Fetch children of current node
+      const children = await db.mLMNode.findMany({
+        where: { placementParentId: current.id },
+        select: {
+          id: true,
+          placementPosition: true,
+          depth: true,
+          binaryPath: true,
+        },
+        orderBy: {
+          createdAt: 'asc',
+        },
+      });
+
+      const rightChild = children.find((c) => c.placementPosition === 'RIGHT');
+      const leftChild = children.find((c) => c.placementPosition === 'LEFT');
+
+      // 1. Always check Right leg first
+      if (!rightChild) {
+        return {
+          placementParentNodeId: current.id,
+          placementPosition: 'RIGHT',
+          depth: (current.depth ?? 0) + 1,
+          binaryPath: `${current.binaryPath || 'ROOT'}/R`,
+        };
+      }
+
+      // 2. Then check Left leg
+      if (!leftChild) {
+        return {
+          placementParentNodeId: current.id,
+          placementPosition: 'LEFT',
+          depth: (current.depth ?? 0) + 1,
+          binaryPath: `${current.binaryPath || 'ROOT'}/L`,
+        };
+      }
+
+      // 3. Both occupied: enqueue Right child first, then Left child
+      queue.push({
+        id: rightChild.id,
+        depth: rightChild.depth,
+        binaryPath: rightChild.binaryPath || `${current.binaryPath || 'ROOT'}/R`,
+      });
+      queue.push({
+        id: leftChild.id,
+        depth: leftChild.depth,
+        binaryPath: leftChild.binaryPath || `${current.binaryPath || 'ROOT'}/L`,
+      });
+    }
+
+    throw new AppError('Unable to find available binary placement slot.', 500, 'TREE_PLACEMENT_ERROR');
+  }
 }
 

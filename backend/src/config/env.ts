@@ -7,6 +7,9 @@ const nodeEnv = process.env.NODE_ENV || 'development';
 
 if (nodeEnv === 'test') {
   dotenv.config({ path: path.resolve(process.cwd(), '.env.test') });
+} else {
+  // Explicitly load backend .env first so it works regardless of process.cwd()
+  dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 }
 dotenv.config();
 

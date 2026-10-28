@@ -1,4 +1,4 @@
-export type UserRole = 'SUPER_ADMIN' | 'ADMIN' | 'DISTRIBUTOR' | 'CUSTOMER' | 'SUPPORT';
+export type UserRole = 'ADMIN' | 'DISTRIBUTOR' | 'CUSTOMER_CARE';
 
 export type AccountStatus = 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | 'PENDING_KYC' | 'BLOCKED';
 

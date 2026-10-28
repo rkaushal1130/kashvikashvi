@@ -12,7 +12,7 @@ export class NetworkTreeController {
   public static async getMyTree(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const depth = req.query.depth ? parseInt(req.query.depth as string, 10) : 3;
-      const isAdmin = req.user?.role === 'ADMIN' || req.user?.role === 'SUPER_ADMIN';
+      const isAdmin = req.user?.role === 'ADMIN' || (req.user?.role as string) === 'SUPER_ADMIN';
       const callerId =
         (req.user as any)?.distributorId ||
         (req.user as any)?.distributorCode ||
@@ -59,7 +59,7 @@ export class NetworkTreeController {
       const requestingUser = req.user!;
 
       // 4. Admin can view all networks
-      const isAdmin = requestingUser.role === 'ADMIN' || requestingUser.role === 'SUPER_ADMIN';
+      const isAdmin = requestingUser.role === 'ADMIN' || (requestingUser.role as string) === 'SUPER_ADMIN';
 
       if (!isAdmin) {
         // 2. User can view their own network
@@ -124,7 +124,7 @@ export class NetworkTreeController {
       const { distributorId } = req.params;
       const requestingUser = req.user!;
 
-      const isAdmin = requestingUser.role === 'ADMIN' || requestingUser.role === 'SUPER_ADMIN';
+      const isAdmin = requestingUser.role === 'ADMIN' || (requestingUser.role as string) === 'SUPER_ADMIN';
 
       if (!isAdmin) {
         const isSelf = await NetworkTreeService.isSelf(requestingUser.id, distributorId);
@@ -178,7 +178,7 @@ export class NetworkTreeController {
    */
   public static async getMySummary(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const isAdmin = req.user?.role === 'ADMIN' || req.user?.role === 'SUPER_ADMIN';
+      const isAdmin = req.user?.role === 'ADMIN' || (req.user?.role as string) === 'SUPER_ADMIN';
       const callerId =
         (req.user as any)?.distributorId ||
         (req.user as any)?.distributorCode ||
@@ -213,7 +213,7 @@ export class NetworkTreeController {
   public static async searchDistributors(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const q = ((req.query.q as string) || '').trim();
-      const isAdmin = req.user?.role === 'ADMIN' || req.user?.role === 'SUPER_ADMIN';
+      const isAdmin = req.user?.role === 'ADMIN' || (req.user?.role as string) === 'SUPER_ADMIN';
 
       const results = await NetworkTreeService.searchDistributors(q, req.user?.id, isAdmin);
 

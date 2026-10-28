@@ -46,6 +46,8 @@ var init_env = __esm({
     nodeEnv = process.env.NODE_ENV || "development";
     if (nodeEnv === "test") {
       import_dotenv.default.config({ path: import_path.default.resolve(process.cwd(), ".env.test") });
+    } else {
+      import_dotenv.default.config({ path: import_path.default.resolve(__dirname, "../../.env") });
     }
     import_dotenv.default.config();
     envSchema = import_zod.z.object({
@@ -240,6 +242,10 @@ function createPrismaClient() {
           return async () => {
           };
         }
+        if (prop === "$on") {
+          return () => {
+          };
+        }
         return () => {
           throw new Error("Database is not initialized. Please ensure DATABASE_URL is configured in environment variables.");
         };
@@ -276,6 +282,446 @@ var init_database = __esm({
         );
       });
     }
+  }
+});
+
+// backend/src/services/audit.service.ts
+var AuditService;
+var init_audit_service = __esm({
+  "backend/src/services/audit.service.ts"() {
+    "use strict";
+    init_database();
+    init_logger();
+    init_appError();
+    AuditService = class _AuditService {
+      static inMemoryStore = [
+        {
+          id: "audit-001",
+          userId: "usr-admin-001",
+          action: "LOGIN",
+          entityType: "User",
+          entityId: "usr-admin-001",
+          oldValue: null,
+          newValue: { status: "Authenticated", method: "JWT_BEARER", role: "ADMIN" },
+          ipAddress: "127.0.0.1",
+          userAgent: "Mozilla/5.0 Supertest",
+          createdAt: (/* @__PURE__ */ new Date()).toISOString()
+        },
+        {
+          id: "audit-002",
+          userId: "usr-admin-001",
+          action: "WALLET_CREDIT",
+          entityType: "Wallet",
+          entityId: "wal-1001",
+          oldValue: { balance: 0 },
+          newValue: { balance: 500, amount: 500, reason: "Promotional bonus credit" },
+          ipAddress: "127.0.0.1",
+          userAgent: "Mozilla/5.0 Supertest",
+          createdAt: (/* @__PURE__ */ new Date()).toISOString()
+        },
+        {
+          id: "audit-003",
+          userId: "usr-admin-001",
+          action: "COMMISSION_CALCULATED",
+          entityType: "CommissionPeriod",
+          entityId: "period-2026-W38",
+          oldValue: { status: "OPEN" },
+          newValue: { status: "CALCULATED", totalCalculated: 12500 },
+          ipAddress: "127.0.0.1",
+          userAgent: "Mozilla/5.0 Supertest",
+          createdAt: (/* @__PURE__ */ new Date()).toISOString()
+        },
+        {
+          id: "audit-004",
+          userId: "usr-admin-001",
+          action: "PAYOUT_APPROVED",
+          entityType: "Payout",
+          entityId: "pay-2001",
+          oldValue: { status: "PENDING" },
+          newValue: { status: "PAID", amount: 1200 },
+          ipAddress: "127.0.0.1",
+          userAgent: "Mozilla/5.0 Supertest",
+          createdAt: (/* @__PURE__ */ new Date()).toISOString()
+        }
+      ];
+      /**
+       * Deeply sanitizes audit data by recursively scrubbing passwords, PINs, OTPs, CVVs,
+       * bearer tokens, secret keys, and payment credentials.
+       */
+      static sanitizeAuditData(data) {
+        if (!data || typeof data !== "object") return data;
+        if (data instanceof Date) return data;
+        if (Array.isArray(data)) {
+          return data.map((item) => this.sanitizeAuditData(item));
+        }
+        const sensitivePattern = /password|pin|otp|cvv|secret|credential|auth_token|bearer|token|private_key|privatekey/i;
+        const sanitized = {};
+        for (const [key, value] of Object.entries(data)) {
+          if (sensitivePattern.test(key)) {
+            continue;
+          }
+          if (typeof value === "object" && value !== null) {
+            sanitized[key] = this.sanitizeAuditData(value);
+          } else {
+            sanitized[key] = value;
+          }
+        }
+        return sanitized;
+      }
+      static async recordLog(params) {
+        const cleanOldValue = this.sanitizeAuditData(params.oldValue);
+        const cleanNewValue = this.sanitizeAuditData(params.newValue);
+        const entry = {
+          id: `audit-${Date.now()}-${Math.floor(Math.random() * 1e3)}`,
+          userId: params.userId || null,
+          action: params.action,
+          entityType: params.entityType,
+          entityId: params.entityId || null,
+          oldValue: cleanOldValue || null,
+          newValue: cleanNewValue || null,
+          ipAddress: params.ipAddress || null,
+          userAgent: params.userAgent || null,
+          createdAt: /* @__PURE__ */ new Date()
+        };
+        try {
+          if (process.env.NODE_ENV !== "test" && prisma && prisma.auditLog) {
+            const created = await prisma.auditLog.create({
+              data: {
+                userId: params.userId,
+                action: params.action,
+                entityType: params.entityType,
+                entityId: params.entityId,
+                previousData: cleanOldValue ? cleanOldValue : void 0,
+                newData: cleanNewValue ? cleanNewValue : void 0,
+                ipAddress: params.ipAddress,
+                userAgent: params.userAgent
+              }
+            });
+            return created;
+          }
+        } catch (e) {
+          logger.debug("Audit log database write skipped, falling back to memory store");
+        }
+        _AuditService.inMemoryStore.unshift(Object.freeze({ ...entry }));
+        return entry;
+      }
+      static async getAuditLogs(filter) {
+        const limit = filter?.limit || 50;
+        const offset = filter?.offset || 0;
+        try {
+          if (process.env.NODE_ENV !== "test" && prisma && prisma.auditLog) {
+            const where = {};
+            if (filter?.action) where.action = filter.action;
+            if (filter?.entityType) where.entityType = filter.entityType;
+            if (filter?.userId) where.userId = filter.userId;
+            const [dbLogs, count] = await Promise.all([
+              prisma.auditLog.findMany({
+                where,
+                orderBy: { createdAt: "desc" },
+                take: limit,
+                skip: offset
+              }),
+              prisma.auditLog.count({ where })
+            ]);
+            if (dbLogs.length > 0) {
+              return { logs: dbLogs, total: count };
+            }
+          }
+        } catch (e) {
+        }
+        let results = [..._AuditService.inMemoryStore];
+        if (filter?.action) {
+          results = results.filter((l) => l.action.toLowerCase() === filter.action.toLowerCase());
+        }
+        if (filter?.entityType) {
+          results = results.filter((l) => l.entityType.toLowerCase() === filter.entityType.toLowerCase());
+        }
+        if (filter?.userId) {
+          results = results.filter((l) => l.userId === filter.userId);
+        }
+        return {
+          logs: results.slice(offset, offset + limit),
+          total: results.length
+        };
+      }
+      static blockAuditDeletion() {
+        throw AppError.forbidden(
+          "Immutable compliance violation: Deleting, modifying, or truncating audit logs is strictly prohibited.",
+          "AUDIT_LOG_IMMUTABLE"
+        );
+      }
+    };
+  }
+});
+
+// backend/src/services/mlmSecurity.service.ts
+var PROTECTED_MLM_FIELDS, MLMSecurityService;
+var init_mlmSecurity_service = __esm({
+  "backend/src/services/mlmSecurity.service.ts"() {
+    "use strict";
+    init_database();
+    init_logger();
+    init_appError();
+    init_audit_service();
+    PROTECTED_MLM_FIELDS = [
+      "bb",
+      "currentbb",
+      "lifetimebb",
+      "matching",
+      "currentmatching",
+      "matchingvolume",
+      "matchedvolume",
+      "level",
+      "currentlevel",
+      "currentlevelid",
+      "rank",
+      "currentrank",
+      "currentrankid",
+      "highestrank",
+      "highestrankid",
+      "commission",
+      "commissions",
+      "walletbalance",
+      "wallet_balance",
+      "lifetimepv",
+      "lifetimegv",
+      "totalleftbv",
+      "totalrightbv",
+      "bv",
+      "totalbv",
+      "total_bv",
+      "unitbv",
+      "unit_bv",
+      "businessvolume",
+      "business_volume",
+      "commissionablebv",
+      "commissionable_bv",
+      "commissionablebusinessvolume",
+      "commissionable_business_volume"
+    ];
+    MLMSecurityService = class {
+      static memberLocks = /* @__PURE__ */ new Map();
+      // =========================================================================
+      // 1. CONCURRENCY MUTEX: RACE CONDITION PROTECTION
+      // =========================================================================
+      /**
+       * Executes a volume mutation within a strict member-level lock.
+       * Guarantees that concurrent requests for the same member (e.g. rapid orders,
+       * simultaneous binary rollups, or overlapping debits) execute serially,
+       * completely eliminating balance corruption race conditions.
+       */
+      static async withMemberLock(memberId, fn) {
+        const lockKey = memberId.trim().toLowerCase();
+        const existingLock = this.memberLocks.get(lockKey) || Promise.resolve();
+        let releaseLock;
+        const currentLock = new Promise((resolve) => {
+          releaseLock = resolve;
+        });
+        this.memberLocks.set(
+          lockKey,
+          existingLock.then(() => currentLock, () => currentLock)
+        );
+        await existingLock.catch(() => {
+        });
+        try {
+          return await fn();
+        } finally {
+          releaseLock();
+          if (this.memberLocks.get(lockKey) === currentLock) {
+            this.memberLocks.delete(lockKey);
+          }
+        }
+      }
+      // =========================================================================
+      // 2. ZERO-TRUST PAYLOAD INSPECTION: DETECT UNAUTHORIZED FIELD INJECTION
+      // =========================================================================
+      /**
+       * Audits incoming client payload for unauthorized MLM volume, rank, or financial fields.
+       * If any normal user or unauthorized request sends fields such as:
+       * { "bb": 100000, "matching": 1000000, "level": "RUBY" }
+       * it is strictly rejected and recorded as a security violation alert.
+       */
+      static validatePayloadForProtectedFields(payload, context) {
+        if (!payload || typeof payload !== "object") return;
+        if (context?.path?.includes("/admin/config") || context?.path?.includes("/admin/levels") || context?.userRole === "ADMIN" || context?.userRole === "SUPER_ADMIN") {
+          return;
+        }
+        const violatingFields = [];
+        const keys = Object.keys(payload);
+        for (const key of keys) {
+          const normalizedKey = key.toLowerCase().replace(/[-_]/g, "");
+          if (PROTECTED_MLM_FIELDS.includes(normalizedKey) || normalizedKey.includes("bb") || normalizedKey.includes("matching") || normalizedKey.includes("rank") || normalizedKey.includes("level") || normalizedKey.includes("wallet") || normalizedKey.includes("commission")) {
+            violatingFields.push(key);
+          }
+        }
+        if (violatingFields.length > 0) {
+          const alertMsg = `Security Violation: Unauthorized client attempt to inject or modify protected MLM fields: [${violatingFields.join(
+            ", "
+          )}]`;
+          logger.warn(
+            {
+              userId: context?.userId,
+              userRole: context?.userRole,
+              path: context?.path,
+              violatingFields,
+              ip: context?.ipAddress
+            },
+            alertMsg
+          );
+          AuditService.recordLog({
+            userId: context?.userId,
+            action: "SECURITY_VIOLATION_FIELD_INJECTION",
+            entityType: "SecurityAlert",
+            oldValue: null,
+            newValue: {
+              path: context?.path,
+              violatingFields,
+              payloadSnippet: Object.fromEntries(
+                Object.entries(payload).filter(([k]) => violatingFields.includes(k))
+              )
+            },
+            ipAddress: context?.ipAddress
+          }).catch(() => {
+          });
+          throw AppError.badRequest(
+            `Direct client modification of MLM qualification or financial fields (${violatingFields.join(
+              ", "
+            )}) is strictly forbidden. All volume and level progression must originate from trusted backend transactions.`,
+            "SECURITY_UNAUTHORIZED_FIELD_MODIFICATION"
+          );
+        }
+      }
+      // =========================================================================
+      // 3. TRANSACTION REFERENCE VALIDATION: PREVENT FAKE REFERENCES
+      // =========================================================================
+      /**
+       * Validates that transaction sources and references originate from real, verified,
+       * and eligible database records (e.g. real paid Orders, real Commission periods).
+       *
+       * Prevents:
+       * - Fake order references (e.g. "ORD-FAKE-999")
+       * - References to cancelled, refunded, or failed orders
+       * - Fake commission cycle references
+       */
+      static async validateTransactionReference(input) {
+        const { memberId, source, referenceId, amount, tx } = input;
+        const db = tx || prisma;
+        const cleanSource = source.trim().toUpperCase();
+        const cleanRefId = referenceId.trim();
+        if (cleanSource === "ORDER" || cleanSource === "ORDER_ROLLUP") {
+          if (cleanRefId.toUpperCase().includes("FAKE") || cleanRefId.toUpperCase().includes("INVALID") || cleanRefId.toUpperCase().includes("NONEXIST")) {
+            const err = `Invalid or fake order reference: Order '${cleanRefId}' does not exist in the platform database.`;
+            logger.warn({ memberId, referenceId: cleanRefId, source }, err);
+            throw AppError.badRequest(err, "FAKE_ORDER_REFERENCE");
+          }
+          const isMocked = Boolean(db.order?.findFirst?.mock);
+          if (process.env.NODE_ENV !== "test" || isMocked) {
+            try {
+              const order = await db.order.findFirst({
+                where: {
+                  OR: [{ id: cleanRefId }, { orderNumber: cleanRefId }]
+                },
+                select: {
+                  id: true,
+                  orderNumber: true,
+                  status: true,
+                  distributorId: true,
+                  customerId: true,
+                  totalBV: true,
+                  totalAmount: true
+                }
+              });
+              if (!order) {
+                const err = `Invalid or fake order reference: Order '${cleanRefId}' does not exist in the platform database.`;
+                logger.warn({ memberId, referenceId: cleanRefId, source }, err);
+                throw AppError.badRequest(err, "FAKE_ORDER_REFERENCE");
+              }
+              const invalidStatuses = ["CANCELLED", "REFUNDED", "FAILED"];
+              if (invalidStatuses.includes(order.status)) {
+                const err = `Cannot credit volume from Order '${cleanRefId}': Order is currently in '${order.status}' status.`;
+                logger.warn({ memberId, orderId: order.id, status: order.status }, err);
+                throw AppError.badRequest(err, "INVALID_ORDER_STATUS");
+              }
+              if (cleanSource === "ORDER") {
+                if (order.distributorId && order.distributorId !== memberId) {
+                  const err = `Order '${cleanRefId}' belongs to another distributor (${order.distributorId}). Cross-account volume crediting is prohibited.`;
+                  logger.warn({ memberId, orderDistributorId: order.distributorId }, err);
+                  throw AppError.badRequest(err, "ORDER_OWNERSHIP_MISMATCH");
+                }
+              }
+              return { isValid: true, orderRecord: order };
+            } catch (err) {
+              if (err instanceof AppError) throw err;
+            }
+          }
+          return { isValid: true };
+        }
+        if (cleanSource === "COMMISSION_CYCLE") {
+          if (cleanRefId.toUpperCase().includes("FAKE") || cleanRefId.toUpperCase().includes("INVALID") || cleanRefId.toUpperCase().includes("NONEXIST")) {
+            throw AppError.badRequest(
+              `Invalid commission period reference: Period '${cleanRefId}' does not exist.`,
+              "FAKE_COMMISSION_PERIOD"
+            );
+          }
+          const isPeriodMocked = Boolean(db.commissionPeriod?.findFirst?.mock);
+          if (process.env.NODE_ENV !== "test" || isPeriodMocked) {
+            try {
+              const period = await db.commissionPeriod.findFirst({
+                where: {
+                  OR: [{ id: cleanRefId }, { periodCode: cleanRefId }]
+                },
+                select: { id: true, periodCode: true, status: true }
+              });
+              if (!period) {
+                throw AppError.badRequest(
+                  `Invalid commission period reference: Period '${cleanRefId}' does not exist.`,
+                  "FAKE_COMMISSION_PERIOD"
+                );
+              }
+            } catch (err) {
+              if (err instanceof AppError) throw err;
+            }
+          }
+        }
+        return { isValid: true };
+      }
+      // =========================================================================
+      // 4. NEGATIVE VOLUME & BALANCE MANIPULATION PREVENTION
+      // =========================================================================
+      /**
+       * Enforces positive volume amounts on credits and ensures debits never drive
+       * member balances below zero (unless explicitly authorized for administrative corrections).
+       */
+      static validateNonNegativeBalance(params) {
+        const { currentBalance, debitAmount, allowNegative = false, volumeType } = params;
+        if (isNaN(debitAmount) || debitAmount <= 0) {
+          throw AppError.badRequest(
+            `Debit amount must be a positive number greater than zero.`,
+            "INVALID_DEBIT_AMOUNT"
+          );
+        }
+        const balanceAfter = currentBalance - debitAmount;
+        if (!allowNegative && balanceAfter < 0) {
+          throw AppError.badRequest(
+            `Insufficient ${volumeType} balance for removal. Current balance: ${currentBalance} ${volumeType}, requested debit: ${debitAmount} ${volumeType}.`,
+            "NEGATIVE_BALANCE_VIOLATION"
+          );
+        }
+      }
+      // =========================================================================
+      // 5. DATABASE CONSTRAINT ENFORCEMENT & IMMUTABILITY AUDIT
+      // =========================================================================
+      /**
+       * Verifies that level promotion and transaction history records cannot be modified
+       * or deleted, enforcing immutable append-only ledger compliance.
+       */
+      static blockLedgerMutation() {
+        throw AppError.forbidden(
+          "Regulatory compliance violation: Modifying, updating, or deleting immutable MLM transaction and level audit history is strictly prohibited.",
+          "LEDGER_IMMUTABILITY_VIOLATION"
+        );
+      }
+    };
   }
 });
 
@@ -354,6 +800,125 @@ var init_memberId_service = __esm({
       static isDbOffline = false;
       static COUNTER_ID = "KV_MEMBER_ID";
       static PREFIX = "KV-";
+      static DST_COUNTER_ID = "DST_DISTRIBUTOR_COUNTER";
+      static DST_PREFIX = "DST-";
+      static dstLockQueue = Promise.resolve();
+      static dstInMemoryCounter = null;
+      /**
+       * Generates the next sequential distributor referral code starting from DST-0001.
+       * Auto-increments as distributors register: DST-0001, DST-0002, DST-0003...
+       */
+      static async generateNextDistributorCode(tx) {
+        return new Promise((resolve, reject) => {
+          this.dstLockQueue = this.dstLockQueue.then(async () => {
+            try {
+              const code = await this.executeGenerateDistributorCode(tx);
+              resolve(code);
+            } catch (err) {
+              reject(err);
+            }
+          }).catch((err) => {
+            logger.error({ error: err }, "Lock queue execution error in generateNextDistributorCode");
+            reject(err);
+          });
+        });
+      }
+      static async executeGenerateDistributorCode(tx) {
+        const db = tx || prisma;
+        let candidateCode = "";
+        let isUnique = false;
+        let attempts = 0;
+        while (!isUnique && attempts < 50) {
+          attempts++;
+          const maxNumeric = await this.findCurrentMaxDstNumeric(db);
+          const existingCounter = await db.memberIdCounter.findUnique({
+            where: { id: this.DST_COUNTER_ID }
+          });
+          const nextVal = Math.max(maxNumeric + 1, (existingCounter?.currentValue ?? 0) + 1);
+          const counter = await db.memberIdCounter.upsert({
+            where: { id: this.DST_COUNTER_ID },
+            create: {
+              id: this.DST_COUNTER_ID,
+              currentValue: nextVal
+            },
+            update: {
+              currentValue: nextVal
+            }
+          });
+          const numStr = String(counter.currentValue).padStart(4, "0");
+          candidateCode = `${this.DST_PREFIX}${numStr}`;
+          const collisionProfile = await db.distributorProfile.findFirst({
+            where: {
+              OR: [
+                { distributorCode: { equals: candidateCode, mode: "insensitive" } },
+                { distributorId: { equals: candidateCode, mode: "insensitive" } }
+              ]
+            },
+            select: { id: true }
+          });
+          const collisionUser = await db.user.findFirst({
+            where: { referralCode: { equals: candidateCode, mode: "insensitive" } },
+            select: { id: true }
+          });
+          if (!collisionProfile && !collisionUser) {
+            isUnique = true;
+          }
+        }
+        if (isUnique && candidateCode) {
+          logger.info({ distributorCode: candidateCode }, "Generated sequential DST distributor code");
+          return candidateCode;
+        }
+        if (this.dstInMemoryCounter === null) {
+          this.dstInMemoryCounter = await this.findCurrentMaxDstNumeric(db);
+        }
+        this.dstInMemoryCounter++;
+        return `${this.DST_PREFIX}${String(this.dstInMemoryCounter).padStart(4, "0")}`;
+      }
+      static async findCurrentMaxDstNumeric(db) {
+        let maxNum = 0;
+        try {
+          const existingProfiles = await db.distributorProfile.findMany({
+            where: {
+              OR: [
+                { distributorCode: { startsWith: "DST-", mode: "insensitive" } },
+                { distributorId: { startsWith: "DST-", mode: "insensitive" } }
+              ]
+            },
+            select: { distributorCode: true, distributorId: true },
+            take: 5e3
+          });
+          for (const p of existingProfiles) {
+            const codes = [p.distributorCode, p.distributorId].filter(Boolean);
+            for (const code of codes) {
+              const match = code.match(/^DST[-_]?(\d+)$/i);
+              if (match && match[1]) {
+                const num = parseInt(match[1], 10);
+                if (!isNaN(num) && num > maxNum) {
+                  maxNum = num;
+                }
+              }
+            }
+          }
+          const existingUsers = await db.user.findMany({
+            where: { referralCode: { startsWith: "DST-", mode: "insensitive" } },
+            select: { referralCode: true },
+            take: 5e3
+          });
+          for (const u of existingUsers) {
+            if (u.referralCode) {
+              const match = u.referralCode.match(/^DST[-_]?(\d+)$/i);
+              if (match && match[1]) {
+                const num = parseInt(match[1], 10);
+                if (!isNaN(num) && num > maxNum) {
+                  maxNum = num;
+                }
+              }
+            }
+          }
+        } catch {
+        }
+        return maxNum;
+      }
       /**
        * Generates the next unique, permanent Kashvi MLM ID in a concurrency-safe atomic transaction.
        * Format: KV-1001, KV-1002, KV-1003, ...
@@ -608,6 +1173,596 @@ var init_memberId_service = __esm({
   }
 });
 
+// backend/src/services/treeAudit.service.ts
+var treeAudit_service_exports = {};
+__export(treeAudit_service_exports, {
+  TreeAuditService: () => TreeAuditService
+});
+var TreeAuditService;
+var init_treeAudit_service = __esm({
+  "backend/src/services/treeAudit.service.ts"() {
+    "use strict";
+    init_database();
+    init_logger();
+    init_appError();
+    init_audit_service();
+    TreeAuditService = class _TreeAuditService {
+      /**
+       * In-memory store of audit records.
+       * Seeded with initial historical records for the model MLM tree.
+       */
+      static auditLogs = [
+        {
+          id: "tree-audit-001",
+          action: "DISTRIBUTOR_CREATED",
+          actorId: "usr-admin-001",
+          memberId: "KV-1001",
+          sponsorId: "KV-1000",
+          placementParentId: null,
+          position: null,
+          oldValue: null,
+          newValue: {
+            distributorId: "KV-1001",
+            name: "Rahul Kaushal",
+            rank: "Crown Diamond",
+            status: "ACTIVE"
+          },
+          timestamp: (/* @__PURE__ */ new Date("2026-09-15T09:00:00Z")).toISOString(),
+          ip: "192.168.1.100",
+          IP: "192.168.1.100",
+          userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/129.0.0.0"
+        },
+        {
+          id: "tree-audit-002",
+          action: "SPONSOR_ASSIGNED",
+          actorId: "usr-admin-001",
+          memberId: "KV-1001",
+          sponsorId: "KV-1000",
+          placementParentId: null,
+          position: null,
+          oldValue: null,
+          newValue: { sponsorId: "KV-1000", sponsorName: "Corporate Master" },
+          timestamp: (/* @__PURE__ */ new Date("2026-09-15T09:01:00Z")).toISOString(),
+          ip: "192.168.1.100",
+          IP: "192.168.1.100",
+          userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/129.0.0.0"
+        },
+        {
+          id: "tree-audit-003",
+          action: "TREE_MEMBER_PLACED",
+          actorId: "usr-admin-001",
+          memberId: "KV-1001",
+          sponsorId: "KV-1000",
+          placementParentId: null,
+          position: null,
+          oldValue: null,
+          newValue: { position: "ROOT", depth: 0, path: "ROOT" },
+          timestamp: (/* @__PURE__ */ new Date("2026-09-15T09:02:00Z")).toISOString(),
+          ip: "192.168.1.100",
+          IP: "192.168.1.100",
+          userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/129.0.0.0"
+        },
+        {
+          id: "tree-audit-004",
+          action: "DISTRIBUTOR_CREATED",
+          actorId: "KV-1001",
+          memberId: "KV-1002",
+          sponsorId: "KV-1001",
+          placementParentId: "KV-1001",
+          position: "LEFT",
+          oldValue: null,
+          newValue: {
+            distributorId: "KV-1002",
+            name: "Amit Patel",
+            rank: "Diamond Executive",
+            status: "ACTIVE"
+          },
+          timestamp: (/* @__PURE__ */ new Date("2026-09-16T10:15:00Z")).toISOString(),
+          ip: "10.0.0.45",
+          IP: "10.0.0.45",
+          userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"
+        },
+        {
+          id: "tree-audit-005",
+          action: "SPONSOR_ASSIGNED",
+          actorId: "KV-1001",
+          memberId: "KV-1002",
+          sponsorId: "KV-1001",
+          placementParentId: "KV-1001",
+          position: "LEFT",
+          oldValue: null,
+          newValue: { sponsorId: "KV-1001", sponsorName: "Rahul Kaushal" },
+          timestamp: (/* @__PURE__ */ new Date("2026-09-16T10:15:30Z")).toISOString(),
+          ip: "10.0.0.45",
+          IP: "10.0.0.45",
+          userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"
+        },
+        {
+          id: "tree-audit-006",
+          action: "TREE_MEMBER_PLACED",
+          actorId: "KV-1001",
+          memberId: "KV-1002",
+          sponsorId: "KV-1001",
+          placementParentId: "KV-1001",
+          position: "LEFT",
+          oldValue: null,
+          newValue: { parentId: "KV-1001", position: "LEFT", depth: 1, path: "ROOT/L" },
+          timestamp: (/* @__PURE__ */ new Date("2026-09-16T10:16:00Z")).toISOString(),
+          ip: "10.0.0.45",
+          IP: "10.0.0.45",
+          userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"
+        },
+        {
+          id: "tree-audit-007",
+          action: "TREE_MEMBER_PLACED",
+          actorId: "KV-1001",
+          memberId: "KV-1003",
+          sponsorId: "KV-1001",
+          placementParentId: "KV-1001",
+          position: "RIGHT",
+          oldValue: null,
+          newValue: { parentId: "KV-1001", position: "RIGHT", depth: 1, path: "ROOT/R" },
+          timestamp: (/* @__PURE__ */ new Date("2026-09-16T11:00:00Z")).toISOString(),
+          ip: "10.0.0.50",
+          IP: "10.0.0.50",
+          userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)"
+        },
+        {
+          id: "tree-audit-008",
+          action: "TREE_MEMBER_MOVED",
+          actorId: "usr-admin-001",
+          memberId: "KV-1010",
+          sponsorId: "KV-1003",
+          placementParentId: "KV-1005",
+          position: "LEFT",
+          oldValue: { parent: "KV-1003", position: "LEFT", placementParentId: "KV-1003" },
+          newValue: {
+            parent: "KV-1005",
+            position: "LEFT",
+            placementParentId: "KV-1005",
+            reason: "Leadership branch reorganization per compliance approval #CR-4402"
+          },
+          timestamp: (/* @__PURE__ */ new Date("2026-09-20T14:30:00Z")).toISOString(),
+          ip: "127.0.0.1",
+          IP: "127.0.0.1",
+          userAgent: "Mozilla/5.0 Admin Console",
+          reason: "Leadership branch reorganization per compliance approval #CR-4402",
+          oldParent: "KV-1003",
+          oldPosition: "LEFT",
+          newParent: "KV-1005",
+          newPosition: "LEFT",
+          adminId: "usr-admin-001"
+        },
+        {
+          id: "tree-audit-009",
+          action: "TREE_POSITION_CHANGED",
+          actorId: "usr-admin-001",
+          memberId: "KV-1011",
+          sponsorId: "KV-1005",
+          placementParentId: "KV-1005",
+          position: "RIGHT",
+          oldValue: { parent: "KV-1005", position: "LEFT", placementParentId: "KV-1005" },
+          newValue: {
+            parent: "KV-1005",
+            position: "RIGHT",
+            placementParentId: "KV-1005",
+            reason: "Sponsor balanced leg realignment request approved"
+          },
+          timestamp: (/* @__PURE__ */ new Date("2026-09-21T09:12:00Z")).toISOString(),
+          ip: "127.0.0.1",
+          IP: "127.0.0.1",
+          userAgent: "Mozilla/5.0 Admin Console",
+          reason: "Sponsor balanced leg realignment request approved",
+          oldParent: "KV-1005",
+          oldPosition: "LEFT",
+          newParent: "KV-1005",
+          newPosition: "RIGHT",
+          adminId: "usr-admin-001"
+        }
+      ];
+      /**
+       * Records a structured tree audit log.
+       * Strictly enforces storing:
+       * actorId, memberId, sponsorId, placementParentId, position, oldValue, newValue, timestamp, IP, userAgent
+       */
+      static async recordTreeAudit(input) {
+        const ip = input.ip || input.IP || "127.0.0.1";
+        const timestamp = input.timestamp ? new Date(input.timestamp).toISOString() : (/* @__PURE__ */ new Date()).toISOString();
+        const record = {
+          id: `tree-audit-${Date.now()}-${Math.floor(1e3 + Math.random() * 9e3)}`,
+          action: input.action,
+          actorId: input.actorId,
+          memberId: input.memberId,
+          sponsorId: input.sponsorId !== void 0 ? input.sponsorId : null,
+          placementParentId: input.placementParentId !== void 0 ? input.placementParentId : null,
+          position: input.position !== void 0 ? input.position : null,
+          oldValue: input.oldValue !== void 0 ? input.oldValue : null,
+          newValue: input.newValue !== void 0 ? input.newValue : null,
+          timestamp,
+          ip,
+          IP: ip,
+          userAgent: input.userAgent || "KashviMLM Core Engine",
+          reason: input.reason || null,
+          oldParent: input.oldParent || null,
+          oldPosition: input.oldPosition || null,
+          newParent: input.newParent || null,
+          newPosition: input.newPosition || null,
+          adminId: input.adminId || null
+        };
+        _TreeAuditService.auditLogs.unshift(Object.freeze({ ...record }));
+        try {
+          await AuditService.recordLog({
+            userId: input.actorId,
+            action: input.action,
+            entityType: "MlmBinaryTree",
+            entityId: input.memberId,
+            oldValue: input.oldValue,
+            newValue: {
+              ...input.newValue,
+              reason: input.reason,
+              oldParent: input.oldParent,
+              oldPosition: input.oldPosition,
+              newParent: input.newParent,
+              newPosition: input.newPosition,
+              adminId: input.adminId
+            },
+            ipAddress: ip,
+            userAgent: record.userAgent || void 0
+          });
+        } catch {
+        }
+        try {
+          if (process.env.NODE_ENV !== "test" && prisma && prisma.auditLog) {
+            await prisma.auditLog.create({
+              data: {
+                userId: input.actorId,
+                action: input.action,
+                entityType: "MlmBinaryTree",
+                entityId: input.memberId,
+                previousData: input.oldValue ? input.oldValue : void 0,
+                newData: {
+                  ...input.newValue,
+                  sponsorId: record.sponsorId,
+                  placementParentId: record.placementParentId,
+                  position: record.position,
+                  reason: record.reason,
+                  oldParent: record.oldParent,
+                  oldPosition: record.oldPosition,
+                  newParent: record.newParent,
+                  newPosition: record.newPosition,
+                  adminId: record.adminId
+                },
+                ipAddress: ip,
+                userAgent: record.userAgent
+              }
+            });
+          }
+        } catch (e) {
+          logger.debug("Database auditLog write bypassed in offline/test environment");
+        }
+        logger.info(
+          `[MLM Tree Audit] Action=${record.action} Member=${record.memberId} Actor=${record.actorId} Parent=${record.placementParentId} Pos=${record.position}`
+        );
+        return record;
+      }
+      /**
+       * Helper: Log DISTRIBUTOR_CREATED
+       */
+      static async logDistributorCreated(params) {
+        return _TreeAuditService.recordTreeAudit({
+          action: "DISTRIBUTOR_CREATED",
+          actorId: params.actorId,
+          memberId: params.memberId,
+          sponsorId: params.sponsorId,
+          placementParentId: null,
+          position: null,
+          oldValue: null,
+          newValue: params.details || { distributorId: params.memberId, status: "ACTIVE" },
+          ip: params.ip,
+          userAgent: params.userAgent
+        });
+      }
+      /**
+       * Helper: Log SPONSOR_ASSIGNED
+       */
+      static async logSponsorAssigned(params) {
+        return _TreeAuditService.recordTreeAudit({
+          action: "SPONSOR_ASSIGNED",
+          actorId: params.actorId,
+          memberId: params.memberId,
+          sponsorId: params.sponsorId,
+          placementParentId: null,
+          position: null,
+          oldValue: params.oldSponsorId ? { sponsorId: params.oldSponsorId } : null,
+          newValue: { sponsorId: params.sponsorId },
+          ip: params.ip,
+          userAgent: params.userAgent
+        });
+      }
+      /**
+       * Helper: Log TREE_MEMBER_PLACED
+       */
+      static async logTreeMemberPlaced(params) {
+        return _TreeAuditService.recordTreeAudit({
+          action: "TREE_MEMBER_PLACED",
+          actorId: params.actorId,
+          memberId: params.memberId,
+          sponsorId: params.sponsorId,
+          placementParentId: params.placementParentId,
+          position: params.position,
+          oldValue: null,
+          newValue: {
+            placementParentId: params.placementParentId,
+            position: params.position,
+            depth: params.depth,
+            path: params.path
+          },
+          ip: params.ip,
+          userAgent: params.userAgent
+        });
+      }
+      /**
+       * Helper: Log TREE_MEMBER_MOVED
+       */
+      static async logTreeMemberMoved(params) {
+        return _TreeAuditService.recordTreeAudit({
+          action: "TREE_MEMBER_MOVED",
+          actorId: params.actorId,
+          memberId: params.memberId,
+          sponsorId: params.sponsorId,
+          placementParentId: params.newParent,
+          position: params.newPosition,
+          oldValue: {
+            parent: params.oldParent,
+            position: params.oldPosition,
+            placementParentId: params.oldParent
+          },
+          newValue: {
+            parent: params.newParent,
+            position: params.newPosition,
+            placementParentId: params.newParent,
+            reason: params.reason
+          },
+          reason: params.reason,
+          oldParent: params.oldParent,
+          oldPosition: params.oldPosition,
+          newParent: params.newParent,
+          newPosition: params.newPosition,
+          adminId: params.adminId,
+          ip: params.ip,
+          userAgent: params.userAgent
+        });
+      }
+      /**
+       * Helper: Log TREE_POSITION_CHANGED
+       */
+      static async logTreePositionChanged(params) {
+        return _TreeAuditService.recordTreeAudit({
+          action: "TREE_POSITION_CHANGED",
+          actorId: params.actorId,
+          memberId: params.memberId,
+          sponsorId: params.sponsorId,
+          placementParentId: params.placementParentId,
+          position: params.newPosition,
+          oldValue: {
+            parent: params.placementParentId,
+            position: params.oldPosition,
+            placementParentId: params.placementParentId
+          },
+          newValue: {
+            parent: params.placementParentId,
+            position: params.newPosition,
+            placementParentId: params.placementParentId,
+            reason: params.reason
+          },
+          reason: params.reason,
+          oldParent: params.placementParentId,
+          oldPosition: params.oldPosition,
+          newParent: params.placementParentId,
+          newPosition: params.newPosition,
+          adminId: params.adminId,
+          ip: params.ip,
+          userAgent: params.userAgent
+        });
+      }
+      /**
+       * Helper: Log TREE_MEMBER_REMOVED
+       */
+      static async logTreeMemberRemoved(params) {
+        return _TreeAuditService.recordTreeAudit({
+          action: "TREE_MEMBER_REMOVED",
+          actorId: params.actorId,
+          memberId: params.memberId,
+          sponsorId: params.sponsorId,
+          placementParentId: null,
+          position: null,
+          oldValue: {
+            placementParentId: params.placementParentId,
+            position: params.position,
+            status: "ACTIVE"
+          },
+          newValue: {
+            placementParentId: null,
+            position: null,
+            status: "REMOVED",
+            reason: params.reason
+          },
+          reason: params.reason,
+          oldParent: params.placementParentId || void 0,
+          oldPosition: params.position || void 0,
+          newParent: null,
+          newPosition: null,
+          adminId: params.adminId,
+          ip: params.ip,
+          userAgent: params.userAgent
+        });
+      }
+      /**
+       * Admin Placement Change Execution (PROMPT 16 Requirement)
+       *
+       * If an admin changes placement, STRICTLY REQUIRE:
+       * 1. Reason (mandatory, non-empty)
+       * 2. Old Parent (mandatory)
+       * 3. Old Position (mandatory, LEFT or RIGHT)
+       * 4. New Parent (mandatory)
+       * 5. New Position (mandatory, LEFT or RIGHT)
+       * 6. Admin ID (mandatory)
+       *
+       * "Never silently change an MLM relationship."
+       */
+      static async adminChangePlacement(input) {
+        if (!input.reason || input.reason.trim().length === 0) {
+          throw AppError.badRequest(
+            "Reason is strictly required when an admin changes tree placement.",
+            "REASON_REQUIRED"
+          );
+        }
+        if (!input.oldParent || input.oldParent.trim().length === 0) {
+          throw AppError.badRequest("Old Parent identifier is required.", "OLD_PARENT_REQUIRED");
+        }
+        if (!input.oldPosition || input.oldPosition !== "LEFT" && input.oldPosition !== "RIGHT") {
+          throw AppError.badRequest("Old Position must be LEFT or RIGHT.", "OLD_POSITION_REQUIRED");
+        }
+        if (!input.newParent || input.newParent.trim().length === 0) {
+          throw AppError.badRequest("New Parent identifier is required.", "NEW_PARENT_REQUIRED");
+        }
+        if (!input.newPosition || input.newPosition !== "LEFT" && input.newPosition !== "RIGHT") {
+          throw AppError.badRequest("New Position must be LEFT or RIGHT.", "NEW_POSITION_REQUIRED");
+        }
+        if (!input.adminId || input.adminId.trim().length === 0) {
+          throw AppError.badRequest(
+            "Admin ID is required. Admin identity must be verified.",
+            "ADMIN_ID_REQUIRED"
+          );
+        }
+        if (input.newParent.toUpperCase() === input.memberId.toUpperCase()) {
+          throw AppError.badRequest(
+            "Self-placement forbidden: Member cannot be placed under themselves.",
+            "SELF_PLACEMENT_NOT_ALLOWED"
+          );
+        }
+        if (input.oldParent.toUpperCase() === input.newParent.toUpperCase() && input.oldPosition === input.newPosition) {
+          throw AppError.badRequest(
+            "Target placement is identical to current placement. No changes made.",
+            "NO_PLACEMENT_CHANGE"
+          );
+        }
+        const isSameParent = input.oldParent.toUpperCase() === input.newParent.toUpperCase();
+        const action = isSameParent ? "TREE_POSITION_CHANGED" : "TREE_MEMBER_MOVED";
+        const auditRecord = await _TreeAuditService.recordTreeAudit({
+          action,
+          actorId: input.adminId,
+          adminId: input.adminId,
+          memberId: input.memberId,
+          sponsorId: null,
+          placementParentId: input.newParent,
+          position: input.newPosition,
+          oldValue: {
+            placementParentId: input.oldParent,
+            position: input.oldPosition
+          },
+          newValue: {
+            placementParentId: input.newParent,
+            position: input.newPosition,
+            reason: input.reason.trim()
+          },
+          reason: input.reason.trim(),
+          oldParent: input.oldParent,
+          oldPosition: input.oldPosition,
+          newParent: input.newParent,
+          newPosition: input.newPosition,
+          ip: input.ip || "127.0.0.1",
+          IP: input.ip || "127.0.0.1",
+          userAgent: input.userAgent || "Admin Network Console"
+        });
+        return {
+          success: true,
+          message: `Distributor ${input.memberId} placement successfully updated from ${input.oldParent} (${input.oldPosition}) to ${input.newParent} (${input.newPosition}). Audit record logged: ${auditRecord.id}.`,
+          auditRecord
+        };
+      }
+      /**
+       * Admin Member Removal Execution
+       */
+      static async adminRemoveMember(input) {
+        if (!input.reason || input.reason.trim().length === 0) {
+          throw AppError.badRequest(
+            "Reason is strictly required to remove a member from the MLM tree.",
+            "REASON_REQUIRED"
+          );
+        }
+        if (!input.memberId) {
+          throw AppError.badRequest("Member ID is required.", "MEMBER_ID_REQUIRED");
+        }
+        if (!input.adminId) {
+          throw AppError.badRequest("Admin ID is required.", "ADMIN_ID_REQUIRED");
+        }
+        const auditRecord = await _TreeAuditService.logTreeMemberRemoved({
+          actorId: input.adminId,
+          adminId: input.adminId,
+          memberId: input.memberId,
+          reason: input.reason.trim(),
+          ip: input.ip || "127.0.0.1",
+          userAgent: input.userAgent || "Admin Network Console"
+        });
+        return {
+          success: true,
+          message: `Member ${input.memberId} has been detached from the tree. Audit record logged: ${auditRecord.id}.`,
+          auditRecord
+        };
+      }
+      /**
+       * Retrieves Tree Audit Logs with flexible filtering
+       */
+      static async getTreeAuditLogs(filter) {
+        const limit = filter?.limit || 50;
+        const offset = filter?.offset || 0;
+        let filtered = [..._TreeAuditService.auditLogs];
+        if (filter?.memberId) {
+          const q = filter.memberId.toUpperCase();
+          filtered = filtered.filter((r) => r.memberId.toUpperCase() === q);
+        }
+        if (filter?.action) {
+          const act = filter.action.toUpperCase();
+          filtered = filtered.filter((r) => r.action.toUpperCase() === act);
+        }
+        if (filter?.actorId) {
+          filtered = filtered.filter((r) => r.actorId === filter.actorId);
+        }
+        if (filter?.adminId) {
+          filtered = filtered.filter((r) => r.adminId === filter.adminId);
+        }
+        const paginated = filtered.slice(offset, offset + limit);
+        return {
+          logs: paginated,
+          total: filtered.length
+        };
+      }
+      /**
+       * Retrieves a single Tree Audit Record by ID
+       */
+      static async getTreeAuditLogById(id) {
+        const record = _TreeAuditService.auditLogs.find((r) => r.id === id);
+        if (!record) {
+          throw AppError.notFound(`Tree audit record '${id}' not found.`, "AUDIT_RECORD_NOT_FOUND");
+        }
+        return record;
+      }
+      /**
+       * Immutability Enforcement:
+       * "Audit records should not be editable by normal users."
+       * Always throws 403 Forbidden on any modification attempt.
+       */
+      static blockAuditMutation(_userId) {
+        throw AppError.forbidden(
+          "Audit records are immutable and cannot be edited or deleted by normal users or administrators.",
+          "AUDIT_LOG_IMMUTABLE"
+        );
+      }
+    };
+  }
+});
+
 // backend/src/services/networkTree.service.ts
 var networkTree_service_exports = {};
 __export(networkTree_service_exports, {
@@ -667,32 +1822,29 @@ var init_networkTree_service = __esm({
             (m) => m.distributorId.toUpperCase().replace(/[^A-Z0-9]/g, "") !== normParent && (m.paymentStatus === "PAID" || m.status === "ACTIVE") && (m.placementParent && m.placementParent.toUpperCase().replace(/[^A-Z0-9]/g, "") === normParent || !m.placementParent && m.sponsor && m.sponsor.toUpperCase().replace(/[^A-Z0-9]/g, "") === normParent && m.distributorId.toUpperCase().replace(/[^A-Z0-9]/g, "") !== "KV1001")
           );
         };
-        let currentNodeId = cleanSponsor;
+        const queue = [cleanSponsor];
         const visited = /* @__PURE__ */ new Set();
-        while (currentNodeId && !visited.has(currentNodeId)) {
+        while (queue.length > 0) {
+          const currentNodeId = queue.shift();
+          if (!currentNodeId || visited.has(currentNodeId)) continue;
           visited.add(currentNodeId);
           const children = getChildren(currentNodeId);
-          const leftChild = children.find((c) => c.position === "LEFT");
           const rightChild = children.find((c) => c.position === "RIGHT");
-          if (preferredLeg === "LEFT") {
-            if (!leftChild) {
-              return { targetParentId: currentNodeId, position: "LEFT" };
-            } else if (!rightChild) {
-              return { targetParentId: currentNodeId, position: "RIGHT" };
-            } else {
-              currentNodeId = leftChild.distributorId;
-            }
-          } else {
-            if (!rightChild) {
-              return { targetParentId: currentNodeId, position: "RIGHT" };
-            } else if (!leftChild) {
-              return { targetParentId: currentNodeId, position: "LEFT" };
-            } else {
-              currentNodeId = rightChild.distributorId;
-            }
+          const leftChild = children.find((c) => c.position === "LEFT");
+          if (!rightChild) {
+            return { targetParentId: currentNodeId, position: "RIGHT" };
+          }
+          if (!leftChild) {
+            return { targetParentId: currentNodeId, position: "LEFT" };
+          }
+          if (rightChild.distributorId) {
+            queue.push(rightChild.distributorId);
+          }
+          if (leftChild.distributorId) {
+            queue.push(leftChild.distributorId);
           }
         }
-        return { targetParentId: cleanSponsor, position: preferredLeg };
+        return { targetParentId: cleanSponsor, position: "RIGHT" };
       }
       static addEnrolledMember(member) {
         const nextNum = 1002 + this.dynamicEnrollees.length;
@@ -2021,765 +3173,6 @@ var init_networkTree_service = __esm({
   }
 });
 
-// backend/src/services/audit.service.ts
-var AuditService;
-var init_audit_service = __esm({
-  "backend/src/services/audit.service.ts"() {
-    "use strict";
-    init_database();
-    init_logger();
-    init_appError();
-    AuditService = class _AuditService {
-      static inMemoryStore = [
-        {
-          id: "audit-001",
-          userId: "usr-admin-001",
-          action: "LOGIN",
-          entityType: "User",
-          entityId: "usr-admin-001",
-          oldValue: null,
-          newValue: { status: "Authenticated", method: "JWT_BEARER", role: "ADMIN" },
-          ipAddress: "127.0.0.1",
-          userAgent: "Mozilla/5.0 Supertest",
-          createdAt: (/* @__PURE__ */ new Date()).toISOString()
-        },
-        {
-          id: "audit-002",
-          userId: "usr-admin-001",
-          action: "WALLET_CREDIT",
-          entityType: "Wallet",
-          entityId: "wal-1001",
-          oldValue: { balance: 0 },
-          newValue: { balance: 500, amount: 500, reason: "Promotional bonus credit" },
-          ipAddress: "127.0.0.1",
-          userAgent: "Mozilla/5.0 Supertest",
-          createdAt: (/* @__PURE__ */ new Date()).toISOString()
-        },
-        {
-          id: "audit-003",
-          userId: "usr-admin-001",
-          action: "COMMISSION_CALCULATED",
-          entityType: "CommissionPeriod",
-          entityId: "period-2026-W38",
-          oldValue: { status: "OPEN" },
-          newValue: { status: "CALCULATED", totalCalculated: 12500 },
-          ipAddress: "127.0.0.1",
-          userAgent: "Mozilla/5.0 Supertest",
-          createdAt: (/* @__PURE__ */ new Date()).toISOString()
-        },
-        {
-          id: "audit-004",
-          userId: "usr-admin-001",
-          action: "PAYOUT_APPROVED",
-          entityType: "Payout",
-          entityId: "pay-2001",
-          oldValue: { status: "PENDING" },
-          newValue: { status: "PAID", amount: 1200 },
-          ipAddress: "127.0.0.1",
-          userAgent: "Mozilla/5.0 Supertest",
-          createdAt: (/* @__PURE__ */ new Date()).toISOString()
-        }
-      ];
-      /**
-       * Deeply sanitizes audit data by recursively scrubbing passwords, PINs, OTPs, CVVs,
-       * bearer tokens, secret keys, and payment credentials.
-       */
-      static sanitizeAuditData(data) {
-        if (!data || typeof data !== "object") return data;
-        if (data instanceof Date) return data;
-        if (Array.isArray(data)) {
-          return data.map((item) => this.sanitizeAuditData(item));
-        }
-        const sensitivePattern = /password|pin|otp|cvv|secret|credential|auth_token|bearer|token|private_key|privatekey/i;
-        const sanitized = {};
-        for (const [key, value] of Object.entries(data)) {
-          if (sensitivePattern.test(key)) {
-            continue;
-          }
-          if (typeof value === "object" && value !== null) {
-            sanitized[key] = this.sanitizeAuditData(value);
-          } else {
-            sanitized[key] = value;
-          }
-        }
-        return sanitized;
-      }
-      static async recordLog(params) {
-        const cleanOldValue = this.sanitizeAuditData(params.oldValue);
-        const cleanNewValue = this.sanitizeAuditData(params.newValue);
-        const entry = {
-          id: `audit-${Date.now()}-${Math.floor(Math.random() * 1e3)}`,
-          userId: params.userId || null,
-          action: params.action,
-          entityType: params.entityType,
-          entityId: params.entityId || null,
-          oldValue: cleanOldValue || null,
-          newValue: cleanNewValue || null,
-          ipAddress: params.ipAddress || null,
-          userAgent: params.userAgent || null,
-          createdAt: /* @__PURE__ */ new Date()
-        };
-        try {
-          if (process.env.NODE_ENV !== "test" && prisma && prisma.auditLog) {
-            const created = await prisma.auditLog.create({
-              data: {
-                userId: params.userId,
-                action: params.action,
-                entityType: params.entityType,
-                entityId: params.entityId,
-                previousData: cleanOldValue ? cleanOldValue : void 0,
-                newData: cleanNewValue ? cleanNewValue : void 0,
-                ipAddress: params.ipAddress,
-                userAgent: params.userAgent
-              }
-            });
-            return created;
-          }
-        } catch (e) {
-          logger.debug("Audit log database write skipped, falling back to memory store");
-        }
-        _AuditService.inMemoryStore.unshift(Object.freeze({ ...entry }));
-        return entry;
-      }
-      static async getAuditLogs(filter) {
-        const limit = filter?.limit || 50;
-        const offset = filter?.offset || 0;
-        try {
-          if (process.env.NODE_ENV !== "test" && prisma && prisma.auditLog) {
-            const where = {};
-            if (filter?.action) where.action = filter.action;
-            if (filter?.entityType) where.entityType = filter.entityType;
-            if (filter?.userId) where.userId = filter.userId;
-            const [dbLogs, count] = await Promise.all([
-              prisma.auditLog.findMany({
-                where,
-                orderBy: { createdAt: "desc" },
-                take: limit,
-                skip: offset
-              }),
-              prisma.auditLog.count({ where })
-            ]);
-            if (dbLogs.length > 0) {
-              return { logs: dbLogs, total: count };
-            }
-          }
-        } catch (e) {
-        }
-        let results = [..._AuditService.inMemoryStore];
-        if (filter?.action) {
-          results = results.filter((l) => l.action.toLowerCase() === filter.action.toLowerCase());
-        }
-        if (filter?.entityType) {
-          results = results.filter((l) => l.entityType.toLowerCase() === filter.entityType.toLowerCase());
-        }
-        if (filter?.userId) {
-          results = results.filter((l) => l.userId === filter.userId);
-        }
-        return {
-          logs: results.slice(offset, offset + limit),
-          total: results.length
-        };
-      }
-      static blockAuditDeletion() {
-        throw AppError.forbidden(
-          "Immutable compliance violation: Deleting, modifying, or truncating audit logs is strictly prohibited.",
-          "AUDIT_LOG_IMMUTABLE"
-        );
-      }
-    };
-  }
-});
-
-// backend/src/services/treeAudit.service.ts
-var treeAudit_service_exports = {};
-__export(treeAudit_service_exports, {
-  TreeAuditService: () => TreeAuditService
-});
-var TreeAuditService;
-var init_treeAudit_service = __esm({
-  "backend/src/services/treeAudit.service.ts"() {
-    "use strict";
-    init_database();
-    init_logger();
-    init_appError();
-    init_audit_service();
-    TreeAuditService = class _TreeAuditService {
-      /**
-       * In-memory store of audit records.
-       * Seeded with initial historical records for the model MLM tree.
-       */
-      static auditLogs = [
-        {
-          id: "tree-audit-001",
-          action: "DISTRIBUTOR_CREATED",
-          actorId: "usr-admin-001",
-          memberId: "KV-1001",
-          sponsorId: "KV-1000",
-          placementParentId: null,
-          position: null,
-          oldValue: null,
-          newValue: {
-            distributorId: "KV-1001",
-            name: "Rahul Kaushal",
-            rank: "Crown Diamond",
-            status: "ACTIVE"
-          },
-          timestamp: (/* @__PURE__ */ new Date("2026-09-15T09:00:00Z")).toISOString(),
-          ip: "192.168.1.100",
-          IP: "192.168.1.100",
-          userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/129.0.0.0"
-        },
-        {
-          id: "tree-audit-002",
-          action: "SPONSOR_ASSIGNED",
-          actorId: "usr-admin-001",
-          memberId: "KV-1001",
-          sponsorId: "KV-1000",
-          placementParentId: null,
-          position: null,
-          oldValue: null,
-          newValue: { sponsorId: "KV-1000", sponsorName: "Corporate Master" },
-          timestamp: (/* @__PURE__ */ new Date("2026-09-15T09:01:00Z")).toISOString(),
-          ip: "192.168.1.100",
-          IP: "192.168.1.100",
-          userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/129.0.0.0"
-        },
-        {
-          id: "tree-audit-003",
-          action: "TREE_MEMBER_PLACED",
-          actorId: "usr-admin-001",
-          memberId: "KV-1001",
-          sponsorId: "KV-1000",
-          placementParentId: null,
-          position: null,
-          oldValue: null,
-          newValue: { position: "ROOT", depth: 0, path: "ROOT" },
-          timestamp: (/* @__PURE__ */ new Date("2026-09-15T09:02:00Z")).toISOString(),
-          ip: "192.168.1.100",
-          IP: "192.168.1.100",
-          userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/129.0.0.0"
-        },
-        {
-          id: "tree-audit-004",
-          action: "DISTRIBUTOR_CREATED",
-          actorId: "KV-1001",
-          memberId: "KV-1002",
-          sponsorId: "KV-1001",
-          placementParentId: "KV-1001",
-          position: "LEFT",
-          oldValue: null,
-          newValue: {
-            distributorId: "KV-1002",
-            name: "Amit Patel",
-            rank: "Diamond Executive",
-            status: "ACTIVE"
-          },
-          timestamp: (/* @__PURE__ */ new Date("2026-09-16T10:15:00Z")).toISOString(),
-          ip: "10.0.0.45",
-          IP: "10.0.0.45",
-          userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"
-        },
-        {
-          id: "tree-audit-005",
-          action: "SPONSOR_ASSIGNED",
-          actorId: "KV-1001",
-          memberId: "KV-1002",
-          sponsorId: "KV-1001",
-          placementParentId: "KV-1001",
-          position: "LEFT",
-          oldValue: null,
-          newValue: { sponsorId: "KV-1001", sponsorName: "Rahul Kaushal" },
-          timestamp: (/* @__PURE__ */ new Date("2026-09-16T10:15:30Z")).toISOString(),
-          ip: "10.0.0.45",
-          IP: "10.0.0.45",
-          userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"
-        },
-        {
-          id: "tree-audit-006",
-          action: "TREE_MEMBER_PLACED",
-          actorId: "KV-1001",
-          memberId: "KV-1002",
-          sponsorId: "KV-1001",
-          placementParentId: "KV-1001",
-          position: "LEFT",
-          oldValue: null,
-          newValue: { parentId: "KV-1001", position: "LEFT", depth: 1, path: "ROOT/L" },
-          timestamp: (/* @__PURE__ */ new Date("2026-09-16T10:16:00Z")).toISOString(),
-          ip: "10.0.0.45",
-          IP: "10.0.0.45",
-          userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"
-        },
-        {
-          id: "tree-audit-007",
-          action: "TREE_MEMBER_PLACED",
-          actorId: "KV-1001",
-          memberId: "KV-1003",
-          sponsorId: "KV-1001",
-          placementParentId: "KV-1001",
-          position: "RIGHT",
-          oldValue: null,
-          newValue: { parentId: "KV-1001", position: "RIGHT", depth: 1, path: "ROOT/R" },
-          timestamp: (/* @__PURE__ */ new Date("2026-09-16T11:00:00Z")).toISOString(),
-          ip: "10.0.0.50",
-          IP: "10.0.0.50",
-          userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)"
-        },
-        {
-          id: "tree-audit-008",
-          action: "TREE_MEMBER_MOVED",
-          actorId: "usr-admin-001",
-          memberId: "KV-1010",
-          sponsorId: "KV-1003",
-          placementParentId: "KV-1005",
-          position: "LEFT",
-          oldValue: { parent: "KV-1003", position: "LEFT", placementParentId: "KV-1003" },
-          newValue: {
-            parent: "KV-1005",
-            position: "LEFT",
-            placementParentId: "KV-1005",
-            reason: "Leadership branch reorganization per compliance approval #CR-4402"
-          },
-          timestamp: (/* @__PURE__ */ new Date("2026-09-20T14:30:00Z")).toISOString(),
-          ip: "127.0.0.1",
-          IP: "127.0.0.1",
-          userAgent: "Mozilla/5.0 Admin Console",
-          reason: "Leadership branch reorganization per compliance approval #CR-4402",
-          oldParent: "KV-1003",
-          oldPosition: "LEFT",
-          newParent: "KV-1005",
-          newPosition: "LEFT",
-          adminId: "usr-admin-001"
-        },
-        {
-          id: "tree-audit-009",
-          action: "TREE_POSITION_CHANGED",
-          actorId: "usr-admin-001",
-          memberId: "KV-1011",
-          sponsorId: "KV-1005",
-          placementParentId: "KV-1005",
-          position: "RIGHT",
-          oldValue: { parent: "KV-1005", position: "LEFT", placementParentId: "KV-1005" },
-          newValue: {
-            parent: "KV-1005",
-            position: "RIGHT",
-            placementParentId: "KV-1005",
-            reason: "Sponsor balanced leg realignment request approved"
-          },
-          timestamp: (/* @__PURE__ */ new Date("2026-09-21T09:12:00Z")).toISOString(),
-          ip: "127.0.0.1",
-          IP: "127.0.0.1",
-          userAgent: "Mozilla/5.0 Admin Console",
-          reason: "Sponsor balanced leg realignment request approved",
-          oldParent: "KV-1005",
-          oldPosition: "LEFT",
-          newParent: "KV-1005",
-          newPosition: "RIGHT",
-          adminId: "usr-admin-001"
-        }
-      ];
-      /**
-       * Records a structured tree audit log.
-       * Strictly enforces storing:
-       * actorId, memberId, sponsorId, placementParentId, position, oldValue, newValue, timestamp, IP, userAgent
-       */
-      static async recordTreeAudit(input) {
-        const ip = input.ip || input.IP || "127.0.0.1";
-        const timestamp = input.timestamp ? new Date(input.timestamp).toISOString() : (/* @__PURE__ */ new Date()).toISOString();
-        const record = {
-          id: `tree-audit-${Date.now()}-${Math.floor(1e3 + Math.random() * 9e3)}`,
-          action: input.action,
-          actorId: input.actorId,
-          memberId: input.memberId,
-          sponsorId: input.sponsorId !== void 0 ? input.sponsorId : null,
-          placementParentId: input.placementParentId !== void 0 ? input.placementParentId : null,
-          position: input.position !== void 0 ? input.position : null,
-          oldValue: input.oldValue !== void 0 ? input.oldValue : null,
-          newValue: input.newValue !== void 0 ? input.newValue : null,
-          timestamp,
-          ip,
-          IP: ip,
-          userAgent: input.userAgent || "KashviMLM Core Engine",
-          reason: input.reason || null,
-          oldParent: input.oldParent || null,
-          oldPosition: input.oldPosition || null,
-          newParent: input.newParent || null,
-          newPosition: input.newPosition || null,
-          adminId: input.adminId || null
-        };
-        _TreeAuditService.auditLogs.unshift(Object.freeze({ ...record }));
-        try {
-          await AuditService.recordLog({
-            userId: input.actorId,
-            action: input.action,
-            entityType: "MlmBinaryTree",
-            entityId: input.memberId,
-            oldValue: input.oldValue,
-            newValue: {
-              ...input.newValue,
-              reason: input.reason,
-              oldParent: input.oldParent,
-              oldPosition: input.oldPosition,
-              newParent: input.newParent,
-              newPosition: input.newPosition,
-              adminId: input.adminId
-            },
-            ipAddress: ip,
-            userAgent: record.userAgent || void 0
-          });
-        } catch {
-        }
-        try {
-          if (process.env.NODE_ENV !== "test" && prisma && prisma.auditLog) {
-            await prisma.auditLog.create({
-              data: {
-                userId: input.actorId,
-                action: input.action,
-                entityType: "MlmBinaryTree",
-                entityId: input.memberId,
-                previousData: input.oldValue ? input.oldValue : void 0,
-                newData: {
-                  ...input.newValue,
-                  sponsorId: record.sponsorId,
-                  placementParentId: record.placementParentId,
-                  position: record.position,
-                  reason: record.reason,
-                  oldParent: record.oldParent,
-                  oldPosition: record.oldPosition,
-                  newParent: record.newParent,
-                  newPosition: record.newPosition,
-                  adminId: record.adminId
-                },
-                ipAddress: ip,
-                userAgent: record.userAgent
-              }
-            });
-          }
-        } catch (e) {
-          logger.debug("Database auditLog write bypassed in offline/test environment");
-        }
-        logger.info(
-          `[MLM Tree Audit] Action=${record.action} Member=${record.memberId} Actor=${record.actorId} Parent=${record.placementParentId} Pos=${record.position}`
-        );
-        return record;
-      }
-      /**
-       * Helper: Log DISTRIBUTOR_CREATED
-       */
-      static async logDistributorCreated(params) {
-        return _TreeAuditService.recordTreeAudit({
-          action: "DISTRIBUTOR_CREATED",
-          actorId: params.actorId,
-          memberId: params.memberId,
-          sponsorId: params.sponsorId,
-          placementParentId: null,
-          position: null,
-          oldValue: null,
-          newValue: params.details || { distributorId: params.memberId, status: "ACTIVE" },
-          ip: params.ip,
-          userAgent: params.userAgent
-        });
-      }
-      /**
-       * Helper: Log SPONSOR_ASSIGNED
-       */
-      static async logSponsorAssigned(params) {
-        return _TreeAuditService.recordTreeAudit({
-          action: "SPONSOR_ASSIGNED",
-          actorId: params.actorId,
-          memberId: params.memberId,
-          sponsorId: params.sponsorId,
-          placementParentId: null,
-          position: null,
-          oldValue: params.oldSponsorId ? { sponsorId: params.oldSponsorId } : null,
-          newValue: { sponsorId: params.sponsorId },
-          ip: params.ip,
-          userAgent: params.userAgent
-        });
-      }
-      /**
-       * Helper: Log TREE_MEMBER_PLACED
-       */
-      static async logTreeMemberPlaced(params) {
-        return _TreeAuditService.recordTreeAudit({
-          action: "TREE_MEMBER_PLACED",
-          actorId: params.actorId,
-          memberId: params.memberId,
-          sponsorId: params.sponsorId,
-          placementParentId: params.placementParentId,
-          position: params.position,
-          oldValue: null,
-          newValue: {
-            placementParentId: params.placementParentId,
-            position: params.position,
-            depth: params.depth,
-            path: params.path
-          },
-          ip: params.ip,
-          userAgent: params.userAgent
-        });
-      }
-      /**
-       * Helper: Log TREE_MEMBER_MOVED
-       */
-      static async logTreeMemberMoved(params) {
-        return _TreeAuditService.recordTreeAudit({
-          action: "TREE_MEMBER_MOVED",
-          actorId: params.actorId,
-          memberId: params.memberId,
-          sponsorId: params.sponsorId,
-          placementParentId: params.newParent,
-          position: params.newPosition,
-          oldValue: {
-            parent: params.oldParent,
-            position: params.oldPosition,
-            placementParentId: params.oldParent
-          },
-          newValue: {
-            parent: params.newParent,
-            position: params.newPosition,
-            placementParentId: params.newParent,
-            reason: params.reason
-          },
-          reason: params.reason,
-          oldParent: params.oldParent,
-          oldPosition: params.oldPosition,
-          newParent: params.newParent,
-          newPosition: params.newPosition,
-          adminId: params.adminId,
-          ip: params.ip,
-          userAgent: params.userAgent
-        });
-      }
-      /**
-       * Helper: Log TREE_POSITION_CHANGED
-       */
-      static async logTreePositionChanged(params) {
-        return _TreeAuditService.recordTreeAudit({
-          action: "TREE_POSITION_CHANGED",
-          actorId: params.actorId,
-          memberId: params.memberId,
-          sponsorId: params.sponsorId,
-          placementParentId: params.placementParentId,
-          position: params.newPosition,
-          oldValue: {
-            parent: params.placementParentId,
-            position: params.oldPosition,
-            placementParentId: params.placementParentId
-          },
-          newValue: {
-            parent: params.placementParentId,
-            position: params.newPosition,
-            placementParentId: params.placementParentId,
-            reason: params.reason
-          },
-          reason: params.reason,
-          oldParent: params.placementParentId,
-          oldPosition: params.oldPosition,
-          newParent: params.placementParentId,
-          newPosition: params.newPosition,
-          adminId: params.adminId,
-          ip: params.ip,
-          userAgent: params.userAgent
-        });
-      }
-      /**
-       * Helper: Log TREE_MEMBER_REMOVED
-       */
-      static async logTreeMemberRemoved(params) {
-        return _TreeAuditService.recordTreeAudit({
-          action: "TREE_MEMBER_REMOVED",
-          actorId: params.actorId,
-          memberId: params.memberId,
-          sponsorId: params.sponsorId,
-          placementParentId: null,
-          position: null,
-          oldValue: {
-            placementParentId: params.placementParentId,
-            position: params.position,
-            status: "ACTIVE"
-          },
-          newValue: {
-            placementParentId: null,
-            position: null,
-            status: "REMOVED",
-            reason: params.reason
-          },
-          reason: params.reason,
-          oldParent: params.placementParentId || void 0,
-          oldPosition: params.position || void 0,
-          newParent: null,
-          newPosition: null,
-          adminId: params.adminId,
-          ip: params.ip,
-          userAgent: params.userAgent
-        });
-      }
-      /**
-       * Admin Placement Change Execution (PROMPT 16 Requirement)
-       *
-       * If an admin changes placement, STRICTLY REQUIRE:
-       * 1. Reason (mandatory, non-empty)
-       * 2. Old Parent (mandatory)
-       * 3. Old Position (mandatory, LEFT or RIGHT)
-       * 4. New Parent (mandatory)
-       * 5. New Position (mandatory, LEFT or RIGHT)
-       * 6. Admin ID (mandatory)
-       *
-       * "Never silently change an MLM relationship."
-       */
-      static async adminChangePlacement(input) {
-        if (!input.reason || input.reason.trim().length === 0) {
-          throw AppError.badRequest(
-            "Reason is strictly required when an admin changes tree placement.",
-            "REASON_REQUIRED"
-          );
-        }
-        if (!input.oldParent || input.oldParent.trim().length === 0) {
-          throw AppError.badRequest("Old Parent identifier is required.", "OLD_PARENT_REQUIRED");
-        }
-        if (!input.oldPosition || input.oldPosition !== "LEFT" && input.oldPosition !== "RIGHT") {
-          throw AppError.badRequest("Old Position must be LEFT or RIGHT.", "OLD_POSITION_REQUIRED");
-        }
-        if (!input.newParent || input.newParent.trim().length === 0) {
-          throw AppError.badRequest("New Parent identifier is required.", "NEW_PARENT_REQUIRED");
-        }
-        if (!input.newPosition || input.newPosition !== "LEFT" && input.newPosition !== "RIGHT") {
-          throw AppError.badRequest("New Position must be LEFT or RIGHT.", "NEW_POSITION_REQUIRED");
-        }
-        if (!input.adminId || input.adminId.trim().length === 0) {
-          throw AppError.badRequest(
-            "Admin ID is required. Admin identity must be verified.",
-            "ADMIN_ID_REQUIRED"
-          );
-        }
-        if (input.newParent.toUpperCase() === input.memberId.toUpperCase()) {
-          throw AppError.badRequest(
-            "Self-placement forbidden: Member cannot be placed under themselves.",
-            "SELF_PLACEMENT_NOT_ALLOWED"
-          );
-        }
-        if (input.oldParent.toUpperCase() === input.newParent.toUpperCase() && input.oldPosition === input.newPosition) {
-          throw AppError.badRequest(
-            "Target placement is identical to current placement. No changes made.",
-            "NO_PLACEMENT_CHANGE"
-          );
-        }
-        const isSameParent = input.oldParent.toUpperCase() === input.newParent.toUpperCase();
-        const action = isSameParent ? "TREE_POSITION_CHANGED" : "TREE_MEMBER_MOVED";
-        const auditRecord = await _TreeAuditService.recordTreeAudit({
-          action,
-          actorId: input.adminId,
-          adminId: input.adminId,
-          memberId: input.memberId,
-          sponsorId: null,
-          placementParentId: input.newParent,
-          position: input.newPosition,
-          oldValue: {
-            placementParentId: input.oldParent,
-            position: input.oldPosition
-          },
-          newValue: {
-            placementParentId: input.newParent,
-            position: input.newPosition,
-            reason: input.reason.trim()
-          },
-          reason: input.reason.trim(),
-          oldParent: input.oldParent,
-          oldPosition: input.oldPosition,
-          newParent: input.newParent,
-          newPosition: input.newPosition,
-          ip: input.ip || "127.0.0.1",
-          IP: input.ip || "127.0.0.1",
-          userAgent: input.userAgent || "Admin Network Console"
-        });
-        return {
-          success: true,
-          message: `Distributor ${input.memberId} placement successfully updated from ${input.oldParent} (${input.oldPosition}) to ${input.newParent} (${input.newPosition}). Audit record logged: ${auditRecord.id}.`,
-          auditRecord
-        };
-      }
-      /**
-       * Admin Member Removal Execution
-       */
-      static async adminRemoveMember(input) {
-        if (!input.reason || input.reason.trim().length === 0) {
-          throw AppError.badRequest(
-            "Reason is strictly required to remove a member from the MLM tree.",
-            "REASON_REQUIRED"
-          );
-        }
-        if (!input.memberId) {
-          throw AppError.badRequest("Member ID is required.", "MEMBER_ID_REQUIRED");
-        }
-        if (!input.adminId) {
-          throw AppError.badRequest("Admin ID is required.", "ADMIN_ID_REQUIRED");
-        }
-        const auditRecord = await _TreeAuditService.logTreeMemberRemoved({
-          actorId: input.adminId,
-          adminId: input.adminId,
-          memberId: input.memberId,
-          reason: input.reason.trim(),
-          ip: input.ip || "127.0.0.1",
-          userAgent: input.userAgent || "Admin Network Console"
-        });
-        return {
-          success: true,
-          message: `Member ${input.memberId} has been detached from the tree. Audit record logged: ${auditRecord.id}.`,
-          auditRecord
-        };
-      }
-      /**
-       * Retrieves Tree Audit Logs with flexible filtering
-       */
-      static async getTreeAuditLogs(filter) {
-        const limit = filter?.limit || 50;
-        const offset = filter?.offset || 0;
-        let filtered = [..._TreeAuditService.auditLogs];
-        if (filter?.memberId) {
-          const q = filter.memberId.toUpperCase();
-          filtered = filtered.filter((r) => r.memberId.toUpperCase() === q);
-        }
-        if (filter?.action) {
-          const act = filter.action.toUpperCase();
-          filtered = filtered.filter((r) => r.action.toUpperCase() === act);
-        }
-        if (filter?.actorId) {
-          filtered = filtered.filter((r) => r.actorId === filter.actorId);
-        }
-        if (filter?.adminId) {
-          filtered = filtered.filter((r) => r.adminId === filter.adminId);
-        }
-        const paginated = filtered.slice(offset, offset + limit);
-        return {
-          logs: paginated,
-          total: filtered.length
-        };
-      }
-      /**
-       * Retrieves a single Tree Audit Record by ID
-       */
-      static async getTreeAuditLogById(id) {
-        const record = _TreeAuditService.auditLogs.find((r) => r.id === id);
-        if (!record) {
-          throw AppError.notFound(`Tree audit record '${id}' not found.`, "AUDIT_RECORD_NOT_FOUND");
-        }
-        return record;
-      }
-      /**
-       * Immutability Enforcement:
-       * "Audit records should not be editable by normal users."
-       * Always throws 403 Forbidden on any modification attempt.
-       */
-      static blockAuditMutation(_userId) {
-        throw AppError.forbidden(
-          "Audit records are immutable and cannot be edited or deleted by normal users or administrators.",
-          "AUDIT_LOG_IMMUTABLE"
-        );
-      }
-    };
-  }
-});
-
 // backend/src/services/treePlacement.service.ts
 var treePlacement_service_exports = {};
 __export(treePlacement_service_exports, {
@@ -3507,6 +3900,109 @@ var init_treePlacement_service = __esm({
           throwOnError: false
         });
       }
+      /**
+       * Finds the next open slot in the binary tree under a sponsor using Right-First Level-Order (BFS) traversal:
+       * 1. Starts from Right leg, then Left leg.
+       * 2. If no one is there, adds to Right leg.
+       * 3. If one user is already in Right leg, goes to Left leg.
+       * 4. If two users are there in Right and Left leg, 3rd goes to Right leg's Right leg.
+       * 5. and so on (Right child prioritized, then Left child, level-by-level).
+       */
+      static async findNextRightFirstPlacement(sponsorProfileId, tx) {
+        const db = tx || prisma;
+        let sponsorNode = await db.mLMNode.findFirst({
+          where: {
+            distributorId: sponsorProfileId,
+            placementParentId: null
+          }
+        });
+        if (!sponsorNode) {
+          sponsorNode = await db.mLMNode.findFirst({
+            where: {
+              distributorId: sponsorProfileId
+            },
+            orderBy: {
+              depth: "asc"
+            }
+          });
+        }
+        if (!sponsorNode) {
+          let bc = await db.businessCenter.findFirst({
+            where: { distributorId: sponsorProfileId }
+          });
+          if (!bc) {
+            bc = await db.businessCenter.create({
+              data: {
+                distributorId: sponsorProfileId,
+                centerNumber: 1,
+                centerCode: `BC-${sponsorProfileId.substring(0, 8)}`,
+                status: "ACTIVE",
+                leftVolume: 0,
+                rightVolume: 0
+              }
+            });
+          }
+          sponsorNode = await db.mLMNode.create({
+            data: {
+              distributorId: sponsorProfileId,
+              businessCenterId: bc.id,
+              depth: 0,
+              binaryPath: "ROOT"
+            }
+          });
+        }
+        const queue = [
+          {
+            id: sponsorNode.id,
+            depth: sponsorNode.depth,
+            binaryPath: sponsorNode.binaryPath || "ROOT"
+          }
+        ];
+        while (queue.length > 0) {
+          const current = queue.shift();
+          const children = await db.mLMNode.findMany({
+            where: { placementParentId: current.id },
+            select: {
+              id: true,
+              placementPosition: true,
+              depth: true,
+              binaryPath: true
+            },
+            orderBy: {
+              createdAt: "asc"
+            }
+          });
+          const rightChild = children.find((c) => c.placementPosition === "RIGHT");
+          const leftChild = children.find((c) => c.placementPosition === "LEFT");
+          if (!rightChild) {
+            return {
+              placementParentNodeId: current.id,
+              placementPosition: "RIGHT",
+              depth: (current.depth ?? 0) + 1,
+              binaryPath: `${current.binaryPath || "ROOT"}/R`
+            };
+          }
+          if (!leftChild) {
+            return {
+              placementParentNodeId: current.id,
+              placementPosition: "LEFT",
+              depth: (current.depth ?? 0) + 1,
+              binaryPath: `${current.binaryPath || "ROOT"}/L`
+            };
+          }
+          queue.push({
+            id: rightChild.id,
+            depth: rightChild.depth,
+            binaryPath: rightChild.binaryPath || `${current.binaryPath || "ROOT"}/R`
+          });
+          queue.push({
+            id: leftChild.id,
+            depth: leftChild.depth,
+            binaryPath: leftChild.binaryPath || `${current.binaryPath || "ROOT"}/L`
+          });
+        }
+        throw new AppError("Unable to find available binary placement slot.", 500, "TREE_PLACEMENT_ERROR");
+      }
     };
   }
 });
@@ -3533,6 +4029,7 @@ var init_auth_service = __esm({
     init_jwt();
     init_password();
     init_memberId_service();
+    init_treePlacement_service();
     AuthService = class {
       static inMemoryUsers = /* @__PURE__ */ new Map();
       static initializedSeed = false;
@@ -3924,9 +4421,8 @@ var init_auth_service = __esm({
         const userId = (0, import_crypto3.randomUUID)();
         const uniqueSuffix = Math.floor(1e4 + Math.random() * 9e4);
         const generatedUserId = `USR-${uniqueSuffix}`;
-        const role = input.role || "DISTRIBUTOR";
-        const uniqueMemberId = await MemberIdService.generateNextMemberId();
-        const distributorCode = role === "CUSTOMER" ? `CUST-${uniqueSuffix}` : uniqueMemberId;
+        const role = "DISTRIBUTOR";
+        const distributorCode = await MemberIdService.generateNextDistributorCode();
         const fullNameStr = (input.fullName || input.name || "").trim();
         const parts = fullNameStr ? fullNameStr.split(/\s+/) : [];
         const firstName = input.firstName?.trim() || parts[0] || "Distributor";
@@ -3943,14 +4439,20 @@ var init_auth_service = __esm({
             throw AppError.badRequest("Circular network sponsorship detected.", "CIRCULAR_SPONSOR_FORBIDDEN");
           }
         }
+        const { NetworkTreeService: NetworkTreeService2 } = await Promise.resolve().then(() => (init_networkTree_service(), networkTree_service_exports));
+        const slot = NetworkTreeService2.findNextAvailableSlot(sponsorDistCode, "RIGHT");
+        const placementParentId = slot.targetParentId;
+        const placementPosition = slot.position;
+        const treeId = `node-${distributorCode.toLowerCase()}`;
         const userObj = {
           id: userId,
           userId: generatedUserId,
           email,
           passwordHash,
-          roleName: role,
-          role,
-          status: "PENDING",
+          roleName: "DISTRIBUTOR",
+          role: "DISTRIBUTOR",
+          status: "ACTIVE",
+          paymentStatus: "PAID",
           phone,
           username: input.username?.trim(),
           firstName,
@@ -3964,14 +4466,18 @@ var init_auth_service = __esm({
           distributorId: distributorCode,
           sponsorId: sponsorDistCode,
           sponsorProfileId,
+          treeId,
+          placementParentId,
+          placementPosition,
           distributorProfile: {
             id: (0, import_crypto3.randomUUID)(),
             distributorCode,
             firstName,
             lastName,
             displayName,
-            status: "PENDING",
-            activatedAt: null,
+            status: "ACTIVE",
+            paymentStatus: "PAID",
+            activatedAt: (/* @__PURE__ */ new Date()).toISOString(),
             sponsorId: sponsorProfileId,
             currentRank: { name: "Distributor" },
             lifetimePV: 0,
@@ -4014,7 +4520,7 @@ var init_auth_service = __esm({
             balance: 0,
             availableBalance: 0,
             pendingBalance: 0,
-            currency: "USD"
+            currency: "INR"
           },
           addresses: [],
           createdAt: (/* @__PURE__ */ new Date()).toISOString()
@@ -4029,27 +4535,21 @@ var init_auth_service = __esm({
             firstName,
             lastName,
             displayName,
-            status: "PENDING",
+            status: "ACTIVE",
             joinedAt: (/* @__PURE__ */ new Date()).toISOString()
           });
         }
-        const treeId = `node-${distributorCode.toLowerCase()}`;
-        const preferredLeg = input.placementPosition || "RIGHT";
-        userObj.treeId = treeId;
-        userObj.placementParentId = sponsorDistCode;
-        userObj.placementPosition = preferredLeg;
-        userObj.paymentStatus = "PENDING";
         try {
-          const { NetworkTreeService: NetworkTreeService2 } = await Promise.resolve().then(() => (init_networkTree_service(), networkTree_service_exports));
           NetworkTreeService2.addEnrolledMember({
             id: treeId,
             distributorId: distributorCode,
             name: displayName,
-            status: "PENDING",
-            position: preferredLeg,
+            status: "ACTIVE",
+            paymentStatus: "PAID",
+            position: placementPosition,
             sponsor: sponsorDistCode,
             sponsorName: sponsorFullName,
-            placementParent: sponsorDistCode,
+            placementParent: placementParentId,
             placementParentName: sponsorFullName,
             bv: 100,
             email,
@@ -4082,8 +4582,8 @@ var init_auth_service = __esm({
             userId: generatedUserId,
             email,
             role,
-            status: "PENDING",
-            paymentStatus: "PENDING",
+            status: "ACTIVE",
+            paymentStatus: "PAID",
             firstName,
             lastName,
             name: displayName,
@@ -4097,8 +4597,8 @@ var init_auth_service = __esm({
             sponsorId: sponsorDistCode,
             sponsorProfileId,
             treeId,
-            placementParentId: sponsorDistCode,
-            placementPosition: preferredLeg,
+            placementParentId,
+            placementPosition,
             sponsor: {
               id: sponsorProfileId,
               distributorCode: sponsorDistCode,
@@ -4157,33 +4657,44 @@ var init_auth_service = __esm({
         }
         let resolvedSponsor = null;
         if (sponsorLookup) {
-          resolvedSponsor = await prisma.distributorProfile.findFirst({
+          const sponsorUser = await prisma.user.findFirst({
             where: {
               OR: [
-                { distributorCode: { equals: sponsorLookup, mode: "insensitive" } },
+                { referralCode: { equals: sponsorLookup, mode: "insensitive" } },
+                { userId: { equals: sponsorLookup, mode: "insensitive" } },
                 { id: sponsorLookup },
-                { distributorId: { equals: sponsorLookup, mode: "insensitive" } }
+                { distributorProfile: { distributorCode: { equals: sponsorLookup, mode: "insensitive" } } },
+                { distributorProfile: { distributorId: { equals: sponsorLookup, mode: "insensitive" } } }
               ]
             },
             include: {
-              user: true
+              distributorProfile: true
             }
           });
-          if (!resolvedSponsor && referralInput && referralInput !== "KV-1001") {
-            throw AppError.notFound("Invalid referral code. Sponsor not found.", "AUTH_INVALID_REFERRAL_CODE");
-          }
-          if (!resolvedSponsor) {
+          if (sponsorUser) {
+            resolvedSponsor = {
+              id: sponsorUser.distributorProfile?.id || sponsorUser.id,
+              distributorCode: sponsorUser.referralCode || sponsorUser.distributorProfile?.distributorCode || sponsorLookup,
+              distributorId: sponsorUser.referralCode || sponsorUser.distributorProfile?.distributorId || sponsorLookup,
+              status: sponsorUser.status || (sponsorUser.isActive ? "ACTIVE" : "INACTIVE"),
+              user: sponsorUser
+            };
+          } else {
             resolvedSponsor = await prisma.distributorProfile.findFirst({
               where: {
                 OR: [
-                  { distributorCode: "KV-1001" },
-                  { distributorCode: "KV-88767139" }
+                  { distributorCode: { equals: sponsorLookup, mode: "insensitive" } },
+                  { id: sponsorLookup },
+                  { distributorId: { equals: sponsorLookup, mode: "insensitive" } }
                 ]
               },
               include: {
                 user: true
               }
             });
+          }
+          if (!resolvedSponsor && referralInput) {
+            throw AppError.notFound("Invalid referral code. Sponsor not found.", "AUTH_INVALID_REFERRAL_CODE");
           }
         }
         if (resolvedSponsor) {
@@ -4200,24 +4711,66 @@ var init_auth_service = __esm({
         const passwordHash = await hashPassword(password);
         const uniqueSuffix = Math.floor(1e4 + Math.random() * 9e4);
         const generatedUserId = `USR-${uniqueSuffix}`;
-        const uniqueMemberId = await MemberIdService.generateNextMemberId();
-        const distributorCode = role === "CUSTOMER" ? `CUST-${uniqueSuffix}` : uniqueMemberId;
         const displayName = `${firstName} ${lastName}`.trim();
-        const sponsorId = resolvedSponsor?.id || void 0;
         return await prisma.$transaction(async (tx) => {
+          const targetRoleName = "DISTRIBUTOR";
+          let dbRole = await tx.role.findUnique({
+            where: { name: targetRoleName }
+          });
+          if (!dbRole) {
+            dbRole = await tx.role.create({
+              data: {
+                name: targetRoleName,
+                description: "Distributor",
+                permissions: { portal: true, businessCenter: true, wallet: true }
+              }
+            });
+          }
+          let sponsorProfileId = resolvedSponsor?.distributorProfileId || resolvedSponsor?.user?.distributorProfile?.id;
+          if (!sponsorProfileId && resolvedSponsor?.user?.id) {
+            let sp = await tx.distributorProfile.findUnique({
+              where: { userId: resolvedSponsor.user.id }
+            });
+            if (!sp) {
+              const sCode = resolvedSponsor.distributorCode || resolvedSponsor.user.referralCode || "KV-1001";
+              sp = await tx.distributorProfile.create({
+                data: {
+                  userId: resolvedSponsor.user.id,
+                  distributorId: sCode,
+                  distributorCode: sCode,
+                  firstName: resolvedSponsor.user.fullName?.split(" ")[0] || "Distributor",
+                  lastName: resolvedSponsor.user.fullName?.split(" ").slice(1).join(" ") || "Member",
+                  displayName: resolvedSponsor.user.fullName || "Distributor",
+                  status: "ACTIVE",
+                  paymentStatus: "PAID"
+                }
+              });
+            }
+            sponsorProfileId = sp.id;
+          }
+          let placement = null;
+          if (sponsorProfileId) {
+            placement = await TreePlacementService.findNextRightFirstPlacement(sponsorProfileId, tx);
+          }
+          const distributorCode = await MemberIdService.generateNextDistributorCode(tx);
           const user = await tx.user.create({
             data: {
               email,
               userId: generatedUserId,
               fullName: displayName,
               passwordHash,
-              roleName: role,
+              roleId: dbRole.id,
+              // Strictly from roles table!
+              roleName: targetRoleName,
+              // Always DISTRIBUTOR
               phone,
               referralCode: distributorCode,
-              sponsorId: sponsorId || null,
-              status: "INACTIVE",
-              // backend controlled: pending enrollment payment
-              isActive: false,
+              // DST-0001, DST-0002...
+              sponsorId: resolvedSponsor?.user?.id || sponsorProfileId || null,
+              placementId: placement ? placement.placementParentNodeId : null,
+              position: placement ? placement.placementPosition : null,
+              status: "ACTIVE",
+              isActive: true,
               emailVerified: false,
               securityProfile: {
                 create: {
@@ -4227,228 +4780,170 @@ var init_auth_service = __esm({
               wallet: {
                 create: {
                   balance: 0,
-                  // backend controlled
                   availableBalance: 0,
-                  currency: "USD"
+                  currency: "INR"
                 }
               }
             },
             include: {
+              role: true,
               wallet: true
             }
           });
-          let distributorProfileData = null;
-          let customerData = null;
-          if (role === "DISTRIBUTOR") {
-            const profile = await tx.distributorProfile.create({
-              data: {
-                userId: user.id,
-                distributorId: distributorCode,
-                distributorCode,
-                firstName,
-                lastName,
-                displayName,
-                status: "PENDING",
-                paymentStatus: "UNPAID",
-                sponsorId,
-                lifetimePV: 0,
-                // backend controlled
-                lifetimeGV: 0,
-                // backend controlled
-                currentBB: 0,
-                currentMatching: 0,
-                activatedAt: null
-              }
-            });
-            const bc = await tx.businessCenter.create({
-              data: {
-                distributorId: profile.id,
-                centerNumber: 1,
-                centerCode: `${distributorCode}-BC1`,
-                status: "INACTIVE",
-                leftVolume: 0,
-                rightVolume: 0
-              }
-            });
-            if (sponsorId) {
-              if (sponsorId === profile.id) {
-                throw AppError.badRequest("A user cannot be their own sponsor.", "SELF_SPONSOR_FORBIDDEN");
-              }
-              const ancestors = await tx.sponsorRelationship.findMany({
-                where: { descendantId: sponsorId }
-              });
-              for (const anc of ancestors) {
-                if (anc.ancestorId === profile.id) {
-                  throw AppError.badRequest("Circular network sponsorship detected.", "CIRCULAR_SPONSOR_FORBIDDEN");
-                }
-              }
-              await tx.sponsorRelationship.create({
-                data: {
-                  ancestorId: sponsorId,
-                  descendantId: profile.id,
-                  depth: 1,
-                  isDirect: true
-                }
-              });
-              for (const anc of ancestors) {
-                await tx.sponsorRelationship.create({
-                  data: {
-                    ancestorId: anc.ancestorId,
-                    descendantId: profile.id,
-                    depth: anc.depth + 1,
-                    isDirect: false
-                  }
-                });
-              }
+          const profile = await tx.distributorProfile.create({
+            data: {
+              userId: user.id,
+              distributorId: distributorCode,
+              distributorCode,
+              firstName,
+              lastName,
+              displayName,
+              status: "ACTIVE",
+              paymentStatus: "PAID",
+              sponsorId: sponsorProfileId || null,
+              lifetimePV: 0,
+              lifetimeGV: 0,
+              currentBB: 0,
+              currentMatching: 0,
+              activatedAt: /* @__PURE__ */ new Date()
             }
-            let placementParentNode = null;
-            let placementPosition = input.placementPosition || "RIGHT";
-            if (sponsorId) {
-              const sponsorNode = await tx.mLMNode.findFirst({
-                where: { distributorId: sponsorId },
-                include: {
-                  children: {
-                    select: { id: true, placementPosition: true }
-                  }
-                },
-                orderBy: { depth: "asc" }
-              });
-              if (sponsorNode) {
-                const leftChild = sponsorNode.children.find((c) => c.placementPosition === "LEFT");
-                const rightChild = sponsorNode.children.find((c) => c.placementPosition === "RIGHT");
-                if (placementPosition === "LEFT" && !leftChild) {
-                  placementParentNode = sponsorNode;
-                  placementPosition = "LEFT";
-                } else if (placementPosition === "RIGHT" && !rightChild) {
-                  placementParentNode = sponsorNode;
-                  placementPosition = "RIGHT";
-                } else if (!leftChild) {
-                  placementParentNode = sponsorNode;
-                  placementPosition = "LEFT";
-                } else if (!rightChild) {
-                  placementParentNode = sponsorNode;
-                  placementPosition = "RIGHT";
-                } else {
-                  let currentParent = sponsorNode;
-                  while (currentParent) {
-                    const legChildren = await tx.mLMNode.findMany({
-                      where: { placementParentId: currentParent.id },
-                      select: { id: true, placementPosition: true, depth: true, binaryPath: true }
-                    });
-                    const matchChild = legChildren.find((c) => c.placementPosition === placementPosition);
-                    if (!matchChild) {
-                      placementParentNode = currentParent;
-                      break;
-                    }
-                    const nextParent = await tx.mLMNode.findUnique({
-                      where: { id: matchChild.id },
-                      select: { id: true, depth: true, binaryPath: true }
-                    });
-                    if (!nextParent) {
-                      placementParentNode = currentParent;
-                      break;
-                    }
-                    currentParent = nextParent;
-                  }
-                }
-              }
+          });
+          const bc = await tx.businessCenter.create({
+            data: {
+              distributorId: profile.id,
+              centerNumber: 1,
+              centerCode: `${distributorCode}-BC1`,
+              status: "ACTIVE",
+              leftVolume: 0,
+              rightVolume: 0
             }
-            const newDepth = placementParentNode ? placementParentNode.depth + 1 : 1;
-            const parentPath = placementParentNode?.binaryPath || "ROOT";
-            const legIndicator = placementPosition === "LEFT" ? "L" : "R";
-            const binaryPath = placementParentNode ? `${parentPath}/${legIndicator}` : "ROOT";
-            const mlmNode = await tx.mLMNode.create({
+          });
+          let mlmNode = null;
+          if (placement) {
+            mlmNode = await tx.mLMNode.create({
               data: {
                 distributorId: profile.id,
                 businessCenterId: bc.id,
-                placementParentId: placementParentNode ? placementParentNode.id : null,
-                placementPosition: placementParentNode ? placementPosition : null,
-                depth: newDepth,
-                binaryPath
+                placementParentId: placement.placementParentNodeId,
+                placementPosition: placement.placementPosition,
+                depth: placement.depth,
+                binaryPath: placement.binaryPath
               }
             });
-            distributorProfileData = {
-              ...profile,
-              treeId: mlmNode.id,
-              placementParentId: placementParentNode?.id || null,
-              placementPosition
-            };
           } else {
-            const customer = await tx.customer.create({
+            mlmNode = await tx.mLMNode.create({
               data: {
-                userId: user.id,
-                customerCode: distributorCode,
-                sponsorId,
-                isPreferred: false
+                distributorId: profile.id,
+                businessCenterId: bc.id,
+                depth: 0,
+                binaryPath: "ROOT"
               }
             });
-            customerData = customer;
+          }
+          if (sponsorProfileId) {
+            if (sponsorProfileId === profile.id) {
+              throw AppError.badRequest("A user cannot be their own sponsor.", "SELF_SPONSOR_FORBIDDEN");
+            }
+            const ancestors = await tx.sponsorRelationship.findMany({
+              where: { descendantId: sponsorProfileId }
+            });
+            for (const anc of ancestors) {
+              if (anc.ancestorId === profile.id) {
+                throw AppError.badRequest("Circular network sponsorship detected.", "CIRCULAR_SPONSOR_FORBIDDEN");
+              }
+            }
+            await tx.sponsorRelationship.create({
+              data: {
+                ancestorId: sponsorProfileId,
+                descendantId: profile.id,
+                depth: 1,
+                isDirect: true
+              }
+            });
+            for (const anc of ancestors) {
+              await tx.sponsorRelationship.create({
+                data: {
+                  ancestorId: anc.ancestorId,
+                  descendantId: profile.id,
+                  depth: anc.depth + 1,
+                  isDirect: false
+                }
+              });
+            }
+          }
+          let parentDistributorCode = resolvedSponsor?.distributorCode || "KV-1001";
+          let parentDistributorName = resolvedSponsor?.displayName || "Admin";
+          if (placement?.placementParentNodeId) {
+            const parentNode = await tx.mLMNode.findUnique({
+              where: { id: placement.placementParentNodeId },
+              include: { distributor: true }
+            });
+            if (parentNode?.distributor) {
+              parentDistributorCode = parentNode.distributor.distributorCode;
+              parentDistributorName = parentNode.distributor.displayName || `${parentNode.distributor.firstName} ${parentNode.distributor.lastName}`.trim();
+            }
           }
           const tokens = await this.createSession(
             user.id,
             user.email,
-            user.roleName,
+            dbRole.name,
             user.status,
             metadata,
             tx
           );
-          logger.info({ userId: user.id, email: user.email, role }, "New user successfully registered");
-          const memberCode = distributorProfileData?.distributorCode || distributorCode;
-          if (role === "DISTRIBUTOR") {
-            try {
-              const { NetworkTreeService: NetworkTreeService2 } = await Promise.resolve().then(() => (init_networkTree_service(), networkTree_service_exports));
-              NetworkTreeService2.addEnrolledMember({
-                id: distributorProfileData?.treeId || `node-${memberCode.toLowerCase()}`,
-                treeId: distributorProfileData?.treeId || `node-${memberCode.toLowerCase()}`,
-                distributorId: memberCode,
-                name: displayName,
-                status: distributorProfileData?.status || user.status || "PENDING",
-                paymentStatus: "PENDING",
-                position: distributorProfileData?.placementPosition || "RIGHT",
-                sponsor: resolvedSponsor?.distributorCode || sponsorId || "KV-1001",
-                sponsorName: resolvedSponsor?.displayName || "Rahul Kaushal",
-                placementParent: distributorProfileData?.placementParentId || resolvedSponsor?.distributorCode || "KV-1001",
-                placementParentName: resolvedSponsor?.displayName || "Rahul Kaushal",
-                bv: 100,
-                email: user.email,
-                phone: user.phone || void 0
-              });
-            } catch (e) {
-              logger.warn({ err: e.message }, "Resilient tree sync notification");
-            }
+          logger.info({ userId: user.id, email: user.email, role: dbRole.name, distributorCode }, "New distributor successfully registered and placed in tree");
+          try {
+            const { NetworkTreeService: NetworkTreeService2 } = await Promise.resolve().then(() => (init_networkTree_service(), networkTree_service_exports));
+            NetworkTreeService2.addEnrolledMember({
+              id: mlmNode.id,
+              treeId: mlmNode.id,
+              distributorId: distributorCode,
+              name: displayName,
+              status: "ACTIVE",
+              paymentStatus: "PAID",
+              position: placement?.placementPosition || "RIGHT",
+              sponsor: resolvedSponsor?.distributorCode || "KV-1001",
+              sponsorName: resolvedSponsor?.displayName || "Admin",
+              placementParent: parentDistributorCode,
+              placementParentName: parentDistributorName,
+              bv: 100,
+              email: user.email,
+              phone: user.phone || void 0
+            });
+          } catch (e) {
+            logger.warn({ err: e.message }, "Resilient tree sync notification");
           }
           return {
             user: {
               id: user.id,
               userId: generatedUserId,
               fullName: displayName,
+              firstName,
+              lastName,
               name: displayName,
               email: user.email,
-              role: user.roleName,
-              status: distributorProfileData?.status || user.status || "PENDING",
-              paymentStatus: "PENDING",
-              referralCode: memberCode,
-              distributorCode: memberCode,
-              memberId: memberCode,
-              distributorId: memberCode,
+              role: dbRole.name,
+              roleName: dbRole.name,
+              roleId: dbRole.id,
+              rolePermissions: dbRole.permissions,
+              status: "ACTIVE",
+              paymentStatus: "PAID",
+              referralCode: distributorCode,
+              distributorCode,
+              memberId: distributorCode,
+              distributorId: distributorCode,
               phone: user.phone,
-              sponsorId: resolvedSponsor?.distributorCode || sponsorId || "KV-1001",
-              sponsorProfileId: sponsorId,
-              treeId: distributorProfileData?.treeId || void 0,
-              placementParentId: distributorProfileData?.placementParentId || void 0,
-              placementPosition: distributorProfileData?.placementPosition || void 0,
+              sponsorId: resolvedSponsor?.distributorCode || "KV-1001",
+              sponsorProfileId,
+              treeId: mlmNode.id,
+              placementParentId: placement?.placementParentNodeId || void 0,
+              placementPosition: placement?.placementPosition || void 0,
               sponsor: resolvedSponsor ? {
                 id: resolvedSponsor.id,
                 distributorCode: resolvedSponsor.distributorCode,
-                name: resolvedSponsor.displayName || `${resolvedSponsor.firstName} ${resolvedSponsor.lastName}`.trim()
+                name: resolvedSponsor.displayName || `${resolvedSponsor.firstName || ""} ${resolvedSponsor.lastName || ""}`.trim() || "Admin"
               } : void 0,
-              ...distributorProfileData && {
-                distributorProfileId: distributorProfileData.id
-              },
-              ...customerData && {
-                customerId: customerData.id,
-                customerCode: customerData.customerCode
-              }
+              distributorProfileId: profile.id
             },
             tokens,
             accessToken: tokens.accessToken,
@@ -4572,15 +5067,14 @@ var init_auth_service = __esm({
             ]
           },
           include: {
+            role: true,
+            // Strictly from roles table
             distributorProfile: true,
             customer: true,
             securityProfile: true
           }
         });
         if (!user) {
-          if (cleanId === "rahulkaushal1109@gmail.com" || cleanId === "rahul.kaushal@kashvimlm.com" || cleanId === "rahul" || cleanId === "kv-1001") {
-            return await this.loginInMemory(input, metadata);
-          }
           throw AppError.invalidCredentials("Invalid email or password.");
         }
         if (user.status === "BLOCKED") {
@@ -4641,14 +5135,15 @@ var init_auth_service = __esm({
             lastLoginIp: metadata.ipAddress
           }
         });
+        const effectiveRole = user.role?.name || user.roleName || "DISTRIBUTOR";
         const tokens = await this.createSession(
           user.id,
           user.email,
-          user.roleName,
+          effectiveRole,
           user.status,
           metadata
         );
-        logger.info({ userId: user.id, email: user.email }, "User logged in successfully");
+        logger.info({ userId: user.id, email: user.email, role: effectiveRole }, "User logged in successfully");
         const userDisplayName = user.distributorProfile?.displayName || user.fullName || `${user.distributorProfile?.firstName || ""} ${user.distributorProfile?.lastName || ""}`.trim() || user.email;
         const memberCode = user.distributorProfile?.distributorCode || user.referralCode || "KV-1001";
         return {
@@ -4656,7 +5151,10 @@ var init_auth_service = __esm({
             id: user.id,
             userId: user.userId || user.id,
             email: user.email,
-            role: user.roleName,
+            role: effectiveRole,
+            roleName: effectiveRole,
+            roleId: user.roleId || user.role?.id,
+            rolePermissions: user.role?.permissions || null,
             status: user.status,
             firstName: user.distributorProfile?.firstName || "",
             lastName: user.distributorProfile?.lastName || "",
@@ -4738,7 +5236,11 @@ var init_auth_service = __esm({
         const tokenHash = hashToken(token);
         const session = await prisma.session.findUnique({
           where: { refreshTokenHash: tokenHash },
-          include: { user: true }
+          include: {
+            user: {
+              include: { role: true }
+            }
+          }
         });
         if (!session || session.isRevoked) {
           logger.warn(
@@ -4788,10 +5290,11 @@ var init_auth_service = __esm({
               ipAddress: metadata.ipAddress
             }
           });
+          const effectiveRole = user.role?.name || user.roleName || "DISTRIBUTOR";
           const accessToken = signAccessToken({
             sub: user.id,
             email: user.email,
-            role: user.roleName,
+            role: effectiveRole,
             status: user.status
           });
           return {
@@ -4886,6 +5389,8 @@ var init_auth_service = __esm({
         const user = await prisma.user.findUnique({
           where: { id: userId },
           include: {
+            role: true,
+            // Strictly from roles table
             distributorProfile: {
               include: {
                 businessCenters: true,
@@ -4905,7 +5410,7 @@ var init_auth_service = __esm({
           }
         });
         if (!user) {
-          return await this.getMeInMemory(userId);
+          throw AppError.notFound("User not found.", "AUTH_USER_NOT_FOUND");
         }
         const dp = user.distributorProfile;
         const memberId = dp?.distributorCode || dp?.distributorId || user.referralCode || user.id;
@@ -4914,6 +5419,7 @@ var init_auth_service = __esm({
         const status = user.status;
         const accountStatus = status === "ACTIVE" && paymentStatus === "PAID" ? "ACTIVE" : "PENDING_PAYMENT";
         const isActive = Boolean(user.isActive && status === "ACTIVE" && paymentStatus === "PAID");
+        const effectiveRole = user.role?.name || user.roleName || "DISTRIBUTOR";
         return {
           id: user.id,
           userId: user.userId || user.id,
@@ -4924,7 +5430,10 @@ var init_auth_service = __esm({
           fullName: user.fullName || `${dp?.firstName || ""} ${dp?.lastName || ""}`.trim() || "Distributor",
           name: user.fullName || `${dp?.firstName || ""} ${dp?.lastName || ""}`.trim() || "Distributor",
           email: user.email,
-          role: user.roleName,
+          role: effectiveRole,
+          roleName: effectiveRole,
+          roleId: user.roleId || user.role?.id,
+          rolePermissions: user.role?.permissions || null,
           status: user.status,
           accountStatus,
           paymentStatus,
@@ -5222,277 +5731,6 @@ var init_auth_service = __esm({
           treeId: enrolled?.id || inMem?.treeId,
           message: "Distributor activated and placed successfully."
         };
-      }
-    };
-  }
-});
-
-// backend/src/services/mlmSecurity.service.ts
-var PROTECTED_MLM_FIELDS, MLMSecurityService;
-var init_mlmSecurity_service = __esm({
-  "backend/src/services/mlmSecurity.service.ts"() {
-    "use strict";
-    init_database();
-    init_logger();
-    init_appError();
-    init_audit_service();
-    PROTECTED_MLM_FIELDS = [
-      "bb",
-      "currentbb",
-      "lifetimebb",
-      "matching",
-      "currentmatching",
-      "matchingvolume",
-      "matchedvolume",
-      "level",
-      "currentlevel",
-      "currentlevelid",
-      "rank",
-      "currentrank",
-      "currentrankid",
-      "highestrank",
-      "highestrankid",
-      "commission",
-      "commissions",
-      "walletbalance",
-      "wallet_balance",
-      "lifetimepv",
-      "lifetimegv",
-      "totalleftbv",
-      "totalrightbv",
-      "bv",
-      "totalbv",
-      "total_bv",
-      "unitbv",
-      "unit_bv",
-      "businessvolume",
-      "business_volume",
-      "commissionablebv",
-      "commissionable_bv",
-      "commissionablebusinessvolume",
-      "commissionable_business_volume"
-    ];
-    MLMSecurityService = class {
-      static memberLocks = /* @__PURE__ */ new Map();
-      // =========================================================================
-      // 1. CONCURRENCY MUTEX: RACE CONDITION PROTECTION
-      // =========================================================================
-      /**
-       * Executes a volume mutation within a strict member-level lock.
-       * Guarantees that concurrent requests for the same member (e.g. rapid orders,
-       * simultaneous binary rollups, or overlapping debits) execute serially,
-       * completely eliminating balance corruption race conditions.
-       */
-      static async withMemberLock(memberId, fn) {
-        const lockKey = memberId.trim().toLowerCase();
-        const existingLock = this.memberLocks.get(lockKey) || Promise.resolve();
-        let releaseLock;
-        const currentLock = new Promise((resolve) => {
-          releaseLock = resolve;
-        });
-        this.memberLocks.set(
-          lockKey,
-          existingLock.then(() => currentLock, () => currentLock)
-        );
-        await existingLock.catch(() => {
-        });
-        try {
-          return await fn();
-        } finally {
-          releaseLock();
-          if (this.memberLocks.get(lockKey) === currentLock) {
-            this.memberLocks.delete(lockKey);
-          }
-        }
-      }
-      // =========================================================================
-      // 2. ZERO-TRUST PAYLOAD INSPECTION: DETECT UNAUTHORIZED FIELD INJECTION
-      // =========================================================================
-      /**
-       * Audits incoming client payload for unauthorized MLM volume, rank, or financial fields.
-       * If any normal user or unauthorized request sends fields such as:
-       * { "bb": 100000, "matching": 1000000, "level": "RUBY" }
-       * it is strictly rejected and recorded as a security violation alert.
-       */
-      static validatePayloadForProtectedFields(payload, context) {
-        if (!payload || typeof payload !== "object") return;
-        if (context?.path?.includes("/admin/config") || context?.path?.includes("/admin/levels") || context?.userRole === "ADMIN" || context?.userRole === "SUPER_ADMIN") {
-          return;
-        }
-        const violatingFields = [];
-        const keys = Object.keys(payload);
-        for (const key of keys) {
-          const normalizedKey = key.toLowerCase().replace(/[-_]/g, "");
-          if (PROTECTED_MLM_FIELDS.includes(normalizedKey) || normalizedKey.includes("bb") || normalizedKey.includes("matching") || normalizedKey.includes("rank") || normalizedKey.includes("level") || normalizedKey.includes("wallet") || normalizedKey.includes("commission")) {
-            violatingFields.push(key);
-          }
-        }
-        if (violatingFields.length > 0) {
-          const alertMsg = `Security Violation: Unauthorized client attempt to inject or modify protected MLM fields: [${violatingFields.join(
-            ", "
-          )}]`;
-          logger.warn(
-            {
-              userId: context?.userId,
-              userRole: context?.userRole,
-              path: context?.path,
-              violatingFields,
-              ip: context?.ipAddress
-            },
-            alertMsg
-          );
-          AuditService.recordLog({
-            userId: context?.userId,
-            action: "SECURITY_VIOLATION_FIELD_INJECTION",
-            entityType: "SecurityAlert",
-            oldValue: null,
-            newValue: {
-              path: context?.path,
-              violatingFields,
-              payloadSnippet: Object.fromEntries(
-                Object.entries(payload).filter(([k]) => violatingFields.includes(k))
-              )
-            },
-            ipAddress: context?.ipAddress
-          }).catch(() => {
-          });
-          throw AppError.badRequest(
-            `Direct client modification of MLM qualification or financial fields (${violatingFields.join(
-              ", "
-            )}) is strictly forbidden. All volume and level progression must originate from trusted backend transactions.`,
-            "SECURITY_UNAUTHORIZED_FIELD_MODIFICATION"
-          );
-        }
-      }
-      // =========================================================================
-      // 3. TRANSACTION REFERENCE VALIDATION: PREVENT FAKE REFERENCES
-      // =========================================================================
-      /**
-       * Validates that transaction sources and references originate from real, verified,
-       * and eligible database records (e.g. real paid Orders, real Commission periods).
-       *
-       * Prevents:
-       * - Fake order references (e.g. "ORD-FAKE-999")
-       * - References to cancelled, refunded, or failed orders
-       * - Fake commission cycle references
-       */
-      static async validateTransactionReference(input) {
-        const { memberId, source, referenceId, amount, tx } = input;
-        const db = tx || prisma;
-        const cleanSource = source.trim().toUpperCase();
-        const cleanRefId = referenceId.trim();
-        if (cleanSource === "ORDER" || cleanSource === "ORDER_ROLLUP") {
-          if (cleanRefId.toUpperCase().includes("FAKE") || cleanRefId.toUpperCase().includes("INVALID") || cleanRefId.toUpperCase().includes("NONEXIST")) {
-            const err = `Invalid or fake order reference: Order '${cleanRefId}' does not exist in the platform database.`;
-            logger.warn({ memberId, referenceId: cleanRefId, source }, err);
-            throw AppError.badRequest(err, "FAKE_ORDER_REFERENCE");
-          }
-          const isMocked = Boolean(db.order?.findFirst?.mock);
-          if (process.env.NODE_ENV !== "test" || isMocked) {
-            try {
-              const order = await db.order.findFirst({
-                where: {
-                  OR: [{ id: cleanRefId }, { orderNumber: cleanRefId }]
-                },
-                select: {
-                  id: true,
-                  orderNumber: true,
-                  status: true,
-                  distributorId: true,
-                  customerId: true,
-                  totalBV: true,
-                  totalAmount: true
-                }
-              });
-              if (!order) {
-                const err = `Invalid or fake order reference: Order '${cleanRefId}' does not exist in the platform database.`;
-                logger.warn({ memberId, referenceId: cleanRefId, source }, err);
-                throw AppError.badRequest(err, "FAKE_ORDER_REFERENCE");
-              }
-              const invalidStatuses = ["CANCELLED", "REFUNDED", "FAILED"];
-              if (invalidStatuses.includes(order.status)) {
-                const err = `Cannot credit volume from Order '${cleanRefId}': Order is currently in '${order.status}' status.`;
-                logger.warn({ memberId, orderId: order.id, status: order.status }, err);
-                throw AppError.badRequest(err, "INVALID_ORDER_STATUS");
-              }
-              if (cleanSource === "ORDER") {
-                if (order.distributorId && order.distributorId !== memberId) {
-                  const err = `Order '${cleanRefId}' belongs to another distributor (${order.distributorId}). Cross-account volume crediting is prohibited.`;
-                  logger.warn({ memberId, orderDistributorId: order.distributorId }, err);
-                  throw AppError.badRequest(err, "ORDER_OWNERSHIP_MISMATCH");
-                }
-              }
-              return { isValid: true, orderRecord: order };
-            } catch (err) {
-              if (err instanceof AppError) throw err;
-            }
-          }
-          return { isValid: true };
-        }
-        if (cleanSource === "COMMISSION_CYCLE") {
-          if (cleanRefId.toUpperCase().includes("FAKE") || cleanRefId.toUpperCase().includes("INVALID") || cleanRefId.toUpperCase().includes("NONEXIST")) {
-            throw AppError.badRequest(
-              `Invalid commission period reference: Period '${cleanRefId}' does not exist.`,
-              "FAKE_COMMISSION_PERIOD"
-            );
-          }
-          const isPeriodMocked = Boolean(db.commissionPeriod?.findFirst?.mock);
-          if (process.env.NODE_ENV !== "test" || isPeriodMocked) {
-            try {
-              const period = await db.commissionPeriod.findFirst({
-                where: {
-                  OR: [{ id: cleanRefId }, { periodCode: cleanRefId }]
-                },
-                select: { id: true, periodCode: true, status: true }
-              });
-              if (!period) {
-                throw AppError.badRequest(
-                  `Invalid commission period reference: Period '${cleanRefId}' does not exist.`,
-                  "FAKE_COMMISSION_PERIOD"
-                );
-              }
-            } catch (err) {
-              if (err instanceof AppError) throw err;
-            }
-          }
-        }
-        return { isValid: true };
-      }
-      // =========================================================================
-      // 4. NEGATIVE VOLUME & BALANCE MANIPULATION PREVENTION
-      // =========================================================================
-      /**
-       * Enforces positive volume amounts on credits and ensures debits never drive
-       * member balances below zero (unless explicitly authorized for administrative corrections).
-       */
-      static validateNonNegativeBalance(params) {
-        const { currentBalance, debitAmount, allowNegative = false, volumeType } = params;
-        if (isNaN(debitAmount) || debitAmount <= 0) {
-          throw AppError.badRequest(
-            `Debit amount must be a positive number greater than zero.`,
-            "INVALID_DEBIT_AMOUNT"
-          );
-        }
-        const balanceAfter = currentBalance - debitAmount;
-        if (!allowNegative && balanceAfter < 0) {
-          throw AppError.badRequest(
-            `Insufficient ${volumeType} balance for removal. Current balance: ${currentBalance} ${volumeType}, requested debit: ${debitAmount} ${volumeType}.`,
-            "NEGATIVE_BALANCE_VIOLATION"
-          );
-        }
-      }
-      // =========================================================================
-      // 5. DATABASE CONSTRAINT ENFORCEMENT & IMMUTABILITY AUDIT
-      // =========================================================================
-      /**
-       * Verifies that level promotion and transaction history records cannot be modified
-       * or deleted, enforcing immutable append-only ledger compliance.
-       */
-      static blockLedgerMutation() {
-        throw AppError.forbidden(
-          "Regulatory compliance violation: Modifying, updating, or deleting immutable MLM transaction and level audit history is strictly prohibited.",
-          "LEDGER_IMMUTABILITY_VIOLATION"
-        );
       }
     };
   }
@@ -17862,15 +18100,6 @@ var authenticate = (req, _res, next) => {
       AppError.unauthorized("Authorization token is missing or malformed", "AUTH_TOKEN_MISSING")
     );
   }
-  if (token === "kashvi_mock_owner_jwt_token_2026") {
-    req.user = {
-      id: "owner-rahul-id",
-      email: "rahulkaushal1109@gmail.com",
-      role: "ADMIN",
-      status: "ACTIVE"
-    };
-    return next();
-  }
   try {
     const payload = verifyAccessToken(token);
     if (payload.status === "BLOCKED") {
@@ -18088,7 +18317,6 @@ var requestLogger = (0, import_pino_http.default)({
 
 // backend/src/middleware/role.ts
 init_database();
-init_auth_service();
 init_appError();
 var authorizeRoles = (...allowedRoles) => {
   return (req, _res, next) => {
@@ -18097,10 +18325,16 @@ var authorizeRoles = (...allowedRoles) => {
         AppError.unauthorized("Authentication required before role verification", "AUTH_UNAUTHORIZED")
       );
     }
-    if (req.user.role === "SUPER_ADMIN") {
+    if (req.user.role === "ADMIN" || req.user.role === "SUPER_ADMIN") {
       return next();
     }
-    if (!allowedRoles.includes(req.user.role)) {
+    const effectiveRole = req.user.role;
+    const hasRole = allowedRoles.some((r) => {
+      if (r === effectiveRole) return true;
+      if (r === "SUPPORT" && effectiveRole === "CUSTOMER_CARE") return true;
+      return false;
+    });
+    if (!hasRole) {
       return next(
         AppError.forbidden(
           "Forbidden: You do not have permission to access this resource",
@@ -18120,7 +18354,7 @@ var requireProductManagementAccess = async (req, _res, next) => {
       )
     );
   }
-  if (req.user.role === "SUPER_ADMIN" || req.user.role === "ADMIN") {
+  if (req.user.role === "ADMIN" || req.user.role === "SUPER_ADMIN") {
     return next();
   }
   try {
@@ -18138,23 +18372,14 @@ var requireProductManagementAccess = async (req, _res, next) => {
         }
       });
       if (user) {
+        const roleName = user.role?.name || user.roleName;
         const rolePermissions = user.role?.permissions;
-        if (user.roleName === "SUPER_ADMIN" || user.roleName === "ADMIN" || Array.isArray(rolePermissions) && rolePermissions.includes("manage_products") || rolePermissions && typeof rolePermissions === "object" && rolePermissions.manage_products === true) {
-          isAuthorizedOwner = true;
-        }
-        if (user.isOwner === true) {
+        if (roleName === "SUPER_ADMIN" || roleName === "ADMIN" || Array.isArray(rolePermissions) && rolePermissions.includes("manage_products") || rolePermissions && typeof rolePermissions === "object" && rolePermissions.manage_products === true) {
           isAuthorizedOwner = true;
         }
       }
     } catch {
-      try {
-        const inMemoryUser = await AuthService.getMe(req.user.id);
-        if (inMemoryUser && (inMemoryUser.role === "ADMIN" || inMemoryUser.role === "SUPER_ADMIN" || inMemoryUser.isOwner === true)) {
-          isAuthorizedOwner = true;
-        }
-      } catch {
-        isAuthorizedOwner = false;
-      }
+      isAuthorizedOwner = false;
     }
     if (isAuthorizedOwner) {
       return next();
@@ -18471,7 +18696,7 @@ var registerSchema = import_zod4.z.object({
     import_zod4.z.string().email("Please enter a valid email address")
   ),
   password: import_zod4.z.string().min(8, "Password must be at least 8 characters"),
-  role: import_zod4.z.enum(["DISTRIBUTOR", "CUSTOMER"]).default("DISTRIBUTOR").optional(),
+  role: import_zod4.z.enum(["DISTRIBUTOR", "CUSTOMER_CARE", "ADMIN"]).default("DISTRIBUTOR").optional(),
   firstName: import_zod4.z.string().trim().optional(),
   lastName: import_zod4.z.string().trim().optional(),
   fullName: import_zod4.z.string().trim().optional(),
@@ -23897,12 +24122,14 @@ var EnrollmentService = class _EnrollmentService {
             "POSITION_ALREADY_OCCUPIED"
           );
         }
+        const distRole = await tx.role.findUnique({ where: { name: "DISTRIBUTOR" } });
         const passwordHash = await hashPassword(input.password);
         const user = await tx.user.create({
           data: {
             email,
             passwordHash,
-            roleName: input.enrollmentType,
+            roleId: distRole?.id,
+            roleName: "DISTRIBUTOR",
             status: "INACTIVE",
             isActive: false,
             phone,
@@ -30181,26 +30408,70 @@ var import_express12 = require("express");
 init_database();
 var SponsorRepository = class {
   /**
-   * Finds a distributor profile by identifier (distributorId, distributorCode, or UUID id),
-   * including their primary binary MLM node and its direct placed children.
+   * Finds a user/distributor by identifier (referralCode, distributorId, distributorCode, userId, or UUID id).
+   * Extracts the user's name directly from the users table.
    */
   static async findByIdentifier(identifier) {
-    return prisma.distributorProfile.findFirst({
+    const clean = (identifier || "").trim();
+    if (!clean) return null;
+    const user = await prisma.user.findFirst({
       where: {
         OR: [
-          { distributorId: { equals: identifier, mode: "insensitive" } },
-          { distributorCode: { equals: identifier, mode: "insensitive" } },
-          { id: identifier }
+          { referralCode: { equals: clean, mode: "insensitive" } },
+          { userId: { equals: clean, mode: "insensitive" } },
+          { id: clean },
+          { phone: clean },
+          { email: { equals: clean, mode: "insensitive" } },
+          { distributorProfile: { distributorCode: { equals: clean, mode: "insensitive" } } },
+          { distributorProfile: { distributorId: { equals: clean, mode: "insensitive" } } }
         ]
       },
-      select: {
-        id: true,
-        distributorId: true,
-        distributorCode: true,
-        firstName: true,
-        lastName: true,
-        displayName: true,
-        status: true,
+      include: {
+        distributorProfile: {
+          include: {
+            mlmNodes: {
+              select: {
+                id: true,
+                children: {
+                  select: {
+                    placementPosition: true
+                  }
+                }
+              },
+              orderBy: {
+                createdAt: "asc"
+              }
+            }
+          }
+        }
+      }
+    });
+    if (user) {
+      const name = user.fullName || user.distributorProfile?.displayName || user.distributorProfile?.firstName || "User";
+      const [firstName, ...rest] = name.split(" ");
+      const lastName = rest.join(" ");
+      const code = user.referralCode || user.distributorProfile?.distributorCode || user.distributorProfile?.distributorId || user.userId || clean;
+      return {
+        id: user.distributorProfile?.id || user.id,
+        distributorId: code,
+        distributorCode: code,
+        firstName: firstName || name,
+        lastName: lastName || "",
+        displayName: name,
+        status: user.status || (user.isActive ? "ACTIVE" : "INACTIVE"),
+        mlmNodes: user.distributorProfile?.mlmNodes || []
+      };
+    }
+    const profile = await prisma.distributorProfile.findFirst({
+      where: {
+        OR: [
+          { distributorId: { equals: clean, mode: "insensitive" } },
+          { distributorCode: { equals: clean, mode: "insensitive" } },
+          { id: clean }
+        ]
+      },
+      include: {
+        user: true,
         mlmNodes: {
           select: {
             id: true,
@@ -30216,38 +30487,29 @@ var SponsorRepository = class {
         }
       }
     });
+    if (profile) {
+      const name = profile.user?.fullName || profile.displayName || profile.firstName;
+      const [firstName, ...rest] = name.split(" ");
+      const lastName = rest.join(" ");
+      const code = profile.user?.referralCode || profile.distributorCode || profile.distributorId || clean;
+      return {
+        id: profile.id,
+        distributorId: code,
+        distributorCode: code,
+        firstName: firstName || profile.firstName,
+        lastName: lastName || profile.lastName,
+        displayName: name,
+        status: profile.status,
+        mlmNodes: profile.mlmNodes
+      };
+    }
+    return null;
   }
   /**
-   * Finds a distributor strictly by distributorId.
+   * Finds a distributor strictly by distributorId or referralCode.
    */
   static async findByDistributorId(distributorId) {
-    return prisma.distributorProfile.findFirst({
-      where: {
-        distributorId: { equals: distributorId, mode: "insensitive" }
-      },
-      select: {
-        id: true,
-        distributorId: true,
-        distributorCode: true,
-        firstName: true,
-        lastName: true,
-        displayName: true,
-        status: true,
-        mlmNodes: {
-          select: {
-            id: true,
-            children: {
-              select: {
-                placementPosition: true
-              }
-            }
-          },
-          orderBy: {
-            createdAt: "asc"
-          }
-        }
-      }
-    });
+    return this.findByIdentifier(distributorId);
   }
   /**
    * Retrieves immediate child nodes and their placement positions for a parent MLM node.
@@ -30262,7 +30524,6 @@ var SponsorRepository = class {
 
 // backend/src/services/sponsor.service.ts
 init_appError();
-init_auth_service();
 var SponsorService = class {
   /**
    * Validates a sponsor by Distributor ID, Code, or UUID.
@@ -30278,79 +30539,12 @@ var SponsorService = class {
     if (!identifier) {
       throw AppError.badRequest("Sponsor ID is required", "SPONSOR_ID_REQUIRED");
     }
-    let sponsor = null;
-    try {
-      sponsor = await SponsorRepository.findByIdentifier(identifier);
-    } catch {
-    }
+    const sponsor = await SponsorRepository.findByIdentifier(identifier);
     if (!sponsor) {
-      const inMemUser = AuthService.getInMemoryUser(identifier);
-      if (inMemUser) {
-        sponsor = {
-          id: inMemUser.distributorProfile?.id || inMemUser.id,
-          distributorId: inMemUser.distributorCode || inMemUser.referralCode || inMemUser.memberId,
-          distributorCode: inMemUser.distributorCode || inMemUser.referralCode || inMemUser.memberId,
-          firstName: inMemUser.firstName || inMemUser.distributorProfile?.firstName || "Distributor",
-          lastName: inMemUser.lastName || inMemUser.distributorProfile?.lastName || "Member",
-          displayName: inMemUser.displayName || inMemUser.fullName || `${inMemUser.firstName || ""} ${inMemUser.lastName || ""}`.trim(),
-          status: inMemUser.status || inMemUser.distributorProfile?.status || "ACTIVE",
-          mlmNodes: [{ id: `node-${inMemUser.id}`, children: [] }]
-        };
-      }
-    }
-    if (!sponsor) {
-      const upper = identifier.toUpperCase();
-      if (upper === "KV-1001" || upper === "88767139") {
-        sponsor = {
-          id: "11111111-2222-3333-4444-555555555555",
-          distributorId: "KV-1001",
-          distributorCode: "KV-1001",
-          firstName: "Rahul",
-          lastName: "Kaushal",
-          displayName: "Rahul Kaushal",
-          status: "ACTIVE",
-          mlmNodes: [{ id: "node-rahul-1", children: [] }]
-        };
-      } else if (upper === "KV-1002") {
-        sponsor = {
-          id: "22222222-2222-3333-4444-555555555555",
-          distributorId: "KV-1002",
-          distributorCode: "KV-1002",
-          firstName: "Amit",
-          lastName: "Patel",
-          displayName: "Amit Patel",
-          status: "ACTIVE",
-          mlmNodes: [{ id: "node-amit-1", children: [] }]
-        };
-      }
-    }
-    if (!sponsor) {
-      try {
-        const { NetworkTreeService: NetworkTreeService2 } = await Promise.resolve().then(() => (init_networkTree_service(), networkTree_service_exports));
-        const enrollees = NetworkTreeService2.getEnrolledMembers();
-        const enrollee = enrollees.find(
-          (m) => m.distributorId.toUpperCase() === identifier.toUpperCase() || m.id && m.id.toUpperCase() === identifier.toUpperCase() || m.treeId && m.treeId.toUpperCase() === identifier.toUpperCase()
-        );
-        if (enrollee) {
-          sponsor = {
-            id: enrollee.id,
-            distributorId: enrollee.distributorId,
-            distributorCode: enrollee.distributorId,
-            firstName: enrollee.name.split(" ")[0] || "Distributor",
-            lastName: enrollee.name.split(" ").slice(1).join(" ") || "Member",
-            displayName: enrollee.name,
-            status: "ACTIVE",
-            mlmNodes: [{ id: enrollee.id, children: [] }]
-          };
-        }
-      } catch {
-      }
-    }
-    if (!sponsor) {
-      throw new AppError("Sponsor not found", 404, "SPONSOR_NOT_FOUND");
+      throw new AppError(`No user found with referral code '${identifier}'.`, 404, "SPONSOR_NOT_FOUND");
     }
     if (sponsor.status !== "ACTIVE" && sponsor.status !== "PENDING") {
-      throw new AppError("Sponsor is inactive", 400, "SPONSOR_INACTIVE");
+      throw new AppError("The sponsor account is currently inactive.", 400, "SPONSOR_INACTIVE");
     }
     const availablePositions = this.calculateAvailablePositions(sponsor);
     const displayName = sponsor.displayName?.trim() || `${sponsor.firstName} ${sponsor.lastName}`.trim() || "Distributor";

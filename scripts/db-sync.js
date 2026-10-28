@@ -37,6 +37,14 @@ function syncDatabase() {
 
   if (res.status === 0) {
     console.log('✅ [db-sync] Database schema synchronized successfully.');
+
+    // Automatically enforce 3 canonical roles on deployment
+    console.log('🔄 [db-sync] Enforcing 3 canonical roles (Admin, Distributor, Customer Care)...');
+    spawnSync('npx', ['tsx', 'scripts/migrate-roles.ts'], {
+      stdio: 'inherit',
+      env: process.env,
+      cwd: backendDir,
+    });
   } else {
     console.warn(`⚠️ [db-sync] Automated db push exited with code ${res.status}. Continuing build...`);
     console.warn('ℹ️ [db-sync] If your remote database requires direct terminal sync, run:');

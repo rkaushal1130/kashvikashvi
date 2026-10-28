@@ -19,7 +19,7 @@ const getApiBaseUrl = () => {
     return '/api';
   }
 
-  return 'http://localhost:5000/api';
+  return 'http://localhost:5001/api';
 };
 
 const API_BASE_URL = getApiBaseUrl();
@@ -203,16 +203,6 @@ class ApiClient {
       const authStr = localStorage.getItem('kashvi_auth');
       if (authStr) {
         const parsed = JSON.parse(authStr);
-        if (
-          parsed.isLoggedIn &&
-          parsed.user &&
-          (parsed.user.isOwner ||
-            parsed.user.email === 'rahulkaushal1109@gmail.com' ||
-            parsed.user.memberId === 'KV-1001' ||
-            (parsed.token && (parsed.token.startsWith('kashvi_reg_token_') || parsed.token.startsWith('kashvi_mock_'))))
-        ) {
-          return;
-        }
         parsed.isLoggedIn = false;
         parsed.token = null;
         localStorage.setItem('kashvi_auth', JSON.stringify(parsed));

@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from 'crypto';
-import { PlacementPosition, AccountStatus, DistributorStatus } from '@prisma/client';
+import { PlacementPosition, AccountStatus, DistributorStatus, UserRole } from '@prisma/client';
 import { prisma } from '../config/database';
 import { logger } from '../config/logger';
 import { AuthUser, JwtAccessPayload, JwtRefreshPayload } from '../types';
@@ -8,6 +8,7 @@ import { hashToken, signAccessToken, signRefreshToken, verifyRefreshToken } from
 import { hashPassword, verifyPassword, validatePasswordStrength } from '../utils/password';
 import { LoginInput, RegisterInput, ResetPasswordInput } from '../validators/auth.validators';
 import { MemberIdService } from './memberId.service';
+import { TreePlacementService } from './treePlacement.service';
 
 interface RequestMetadata {
   userAgent?: string;
@@ -486,9 +487,8 @@ export class AuthService {
     const userId = randomUUID();
     const uniqueSuffix = Math.floor(10000 + Math.random() * 90000);
     const generatedUserId = `USR-${uniqueSuffix}`;
-    const role = input.role || 'DISTRIBUTOR';
-    const uniqueMemberId = await MemberIdService.generateNextMemberId();
-    const distributorCode = role === 'CUSTOMER' ? `CUST-${uniqueSuffix}` : uniqueMemberId;
+    const role: UserRole = 'DISTRIBUTOR';
+    const distributorCode = await MemberIdService.generateNextDistributorCode();
 
     const fullNameStr = (input.fullName || input.name || '').trim();
     const parts = fullNameStr ? fullNameStr.split(/\s+/) : [];
@@ -532,15 +532,22 @@ export class AuthService {
       }
     }
 
-    // 9. Zero-trust security: initial PENDING status until payment confirmation
+    // 9. Find next Right-First BFS slot under sponsor
+    const { NetworkTreeService } = await import('./networkTree.service');
+    const slot = NetworkTreeService.findNextAvailableSlot(sponsorDistCode, 'RIGHT');
+    const placementParentId = slot.targetParentId;
+    const placementPosition = slot.position;
+    const treeId = `node-${distributorCode.toLowerCase()}`;
+
     const userObj: any = {
       id: userId,
       userId: generatedUserId,
       email,
       passwordHash,
-      roleName: role,
-      role,
-      status: 'PENDING',
+      roleName: 'DISTRIBUTOR',
+      role: 'DISTRIBUTOR',
+      status: 'ACTIVE',
+      paymentStatus: 'PAID',
       phone,
       username: input.username?.trim(),
       firstName,
@@ -554,14 +561,18 @@ export class AuthService {
       distributorId: distributorCode,
       sponsorId: sponsorDistCode,
       sponsorProfileId,
+      treeId,
+      placementParentId,
+      placementPosition,
       distributorProfile: {
         id: randomUUID(),
         distributorCode,
         firstName,
         lastName,
         displayName,
-        status: 'PENDING',
-        activatedAt: null,
+        status: 'ACTIVE',
+        paymentStatus: 'PAID',
+        activatedAt: new Date().toISOString(),
         sponsorId: sponsorProfileId,
         currentRank: { name: 'Distributor' },
         lifetimePV: 0,
@@ -604,13 +615,13 @@ export class AuthService {
         balance: 0,
         availableBalance: 0,
         pendingBalance: 0,
-        currency: 'USD',
+        currency: 'INR',
       },
       addresses: [],
       createdAt: new Date().toISOString(),
     };
 
-    // Requirement 6: Maintain sponsor's downline array
+    // Maintain sponsor's downline array
     if (resolvedSponsorUser.distributorProfile) {
       if (!resolvedSponsorUser.distributorProfile.sponsoredDistributors) {
         resolvedSponsorUser.distributorProfile.sponsoredDistributors = [];
@@ -621,31 +632,23 @@ export class AuthService {
         firstName,
         lastName,
         displayName,
-        status: 'PENDING',
+        status: 'ACTIVE',
         joinedAt: new Date().toISOString(),
       });
     }
 
-    const treeId = `node-${distributorCode.toLowerCase()}`;
-    const preferredLeg: 'LEFT' | 'RIGHT' = (input.placementPosition as 'LEFT' | 'RIGHT') || 'RIGHT';
-
-    userObj.treeId = treeId;
-    userObj.placementParentId = sponsorDistCode;
-    userObj.placementPosition = preferredLeg;
-    userObj.paymentStatus = 'PENDING';
-
     // Automatically place in NetworkTreeService with unique Tree ID
     try {
-      const { NetworkTreeService } = await import('./networkTree.service');
       NetworkTreeService.addEnrolledMember({
         id: treeId,
         distributorId: distributorCode,
         name: displayName,
-        status: 'PENDING',
-        position: preferredLeg,
+        status: 'ACTIVE',
+        paymentStatus: 'PAID',
+        position: placementPosition,
         sponsor: sponsorDistCode,
         sponsorName: sponsorFullName,
-        placementParent: sponsorDistCode,
+        placementParent: placementParentId,
         placementParentName: sponsorFullName,
         bv: 100,
         email,
@@ -684,8 +687,8 @@ export class AuthService {
         userId: generatedUserId,
         email,
         role,
-        status: 'PENDING',
-        paymentStatus: 'PENDING',
+        status: 'ACTIVE',
+        paymentStatus: 'PAID',
         firstName,
         lastName,
         name: displayName,
@@ -699,8 +702,8 @@ export class AuthService {
         sponsorId: sponsorDistCode,
         sponsorProfileId,
         treeId,
-        placementParentId: sponsorDistCode,
-        placementPosition: preferredLeg,
+        placementParentId,
+        placementPosition,
         sponsor: {
           id: sponsorProfileId,
           distributorCode: sponsorDistCode,
@@ -778,35 +781,48 @@ export class AuthService {
 
     let resolvedSponsor: any = null;
     if (sponsorLookup) {
-      resolvedSponsor = await prisma.distributorProfile.findFirst({
+      // 1. Try finding by user's referral code or id directly in users table
+      const sponsorUser = await prisma.user.findFirst({
         where: {
           OR: [
-            { distributorCode: { equals: sponsorLookup, mode: 'insensitive' } },
+            { referralCode: { equals: sponsorLookup, mode: 'insensitive' } },
+            { userId: { equals: sponsorLookup, mode: 'insensitive' } },
             { id: sponsorLookup },
-            { distributorId: { equals: sponsorLookup, mode: 'insensitive' } },
+            { distributorProfile: { distributorCode: { equals: sponsorLookup, mode: 'insensitive' } } },
+            { distributorProfile: { distributorId: { equals: sponsorLookup, mode: 'insensitive' } } },
           ],
         },
         include: {
-          user: true,
+          distributorProfile: true,
         },
       });
 
-      if (!resolvedSponsor && referralInput && referralInput !== 'KV-1001') {
-        throw AppError.notFound('Invalid referral code. Sponsor not found.', 'AUTH_INVALID_REFERRAL_CODE');
-      }
-
-      if (!resolvedSponsor) {
+      if (sponsorUser) {
+        resolvedSponsor = {
+          id: sponsorUser.distributorProfile?.id || sponsorUser.id,
+          distributorCode: sponsorUser.referralCode || sponsorUser.distributorProfile?.distributorCode || sponsorLookup,
+          distributorId: sponsorUser.referralCode || sponsorUser.distributorProfile?.distributorId || sponsorLookup,
+          status: (sponsorUser.status as string) || (sponsorUser.isActive ? 'ACTIVE' : 'INACTIVE'),
+          user: sponsorUser,
+        };
+      } else {
+        // Also check distributorProfile if orphaned
         resolvedSponsor = await prisma.distributorProfile.findFirst({
           where: {
             OR: [
-              { distributorCode: 'KV-1001' },
-              { distributorCode: 'KV-88767139' },
+              { distributorCode: { equals: sponsorLookup, mode: 'insensitive' } },
+              { id: sponsorLookup },
+              { distributorId: { equals: sponsorLookup, mode: 'insensitive' } },
             ],
           },
           include: {
             user: true,
           },
         });
+      }
+
+      if (!resolvedSponsor && referralInput) {
+        throw AppError.notFound('Invalid referral code. Sponsor not found.', 'AUTH_INVALID_REFERRAL_CODE');
       }
     }
 
@@ -834,26 +850,81 @@ export class AuthService {
     // 8. Generate unique IDs (backend controlled, permanent unique KV ID)
     const uniqueSuffix = Math.floor(10000 + Math.random() * 90000);
     const generatedUserId = `USR-${uniqueSuffix}`;
-    const uniqueMemberId = await MemberIdService.generateNextMemberId();
-    const distributorCode = role === 'CUSTOMER' ? `CUST-${uniqueSuffix}` : uniqueMemberId;
     const displayName = `${firstName} ${lastName}`.trim();
-    const sponsorId = resolvedSponsor?.id || undefined;
 
     // 9. Atomic Registration Transaction
     return await prisma.$transaction(async (tx) => {
-      // 1. Create User
+      // Pick role strictly from the database roles table (always DISTRIBUTOR on public registration)
+      const targetRoleName: UserRole = 'DISTRIBUTOR';
+      let dbRole = await tx.role.findUnique({
+        where: { name: targetRoleName },
+      });
+
+      if (!dbRole) {
+        dbRole = await tx.role.create({
+          data: {
+            name: targetRoleName,
+            description: 'Distributor',
+            permissions: { portal: true, businessCenter: true, wallet: true },
+          },
+        });
+      }
+
+      // Ensure sponsor has a valid distributorProfile record so relations and placement are valid
+      let sponsorProfileId = resolvedSponsor?.distributorProfileId || resolvedSponsor?.user?.distributorProfile?.id;
+      if (!sponsorProfileId && resolvedSponsor?.user?.id) {
+        let sp = await tx.distributorProfile.findUnique({
+          where: { userId: resolvedSponsor.user.id },
+        });
+        if (!sp) {
+          const sCode = resolvedSponsor.distributorCode || resolvedSponsor.user.referralCode || 'KV-1001';
+          sp = await tx.distributorProfile.create({
+            data: {
+              userId: resolvedSponsor.user.id,
+              distributorId: sCode,
+              distributorCode: sCode,
+              firstName: resolvedSponsor.user.fullName?.split(' ')[0] || 'Distributor',
+              lastName: resolvedSponsor.user.fullName?.split(' ').slice(1).join(' ') || 'Member',
+              displayName: resolvedSponsor.user.fullName || 'Distributor',
+              status: 'ACTIVE',
+              paymentStatus: 'PAID',
+            },
+          });
+        }
+        sponsorProfileId = sp.id;
+      }
+
+      // Level-Order Breadth-First Traversal (Right leg first, then Left leg, then Right's Right, etc.)
+      let placement: {
+        placementParentNodeId: string;
+        placementPosition: 'RIGHT' | 'LEFT';
+        depth: number;
+        binaryPath: string;
+      } | null = null;
+
+      if (sponsorProfileId) {
+        placement = await TreePlacementService.findNextRightFirstPlacement(sponsorProfileId, tx);
+      }
+
+      // Generate sequential DST-XXXX code (DST-0001, DST-0002, DST-0003...)
+      const distributorCode = await MemberIdService.generateNextDistributorCode(tx);
+
+      // 1. Create User linked strictly to the dbRole.id foreign key
       const user = await tx.user.create({
         data: {
           email,
           userId: generatedUserId,
           fullName: displayName,
           passwordHash,
-          roleName: role,
+          roleId: dbRole.id, // Strictly from roles table!
+          roleName: targetRoleName, // Always DISTRIBUTOR
           phone,
-          referralCode: distributorCode,
-          sponsorId: sponsorId || null,
-          status: 'INACTIVE', // backend controlled: pending enrollment payment
-          isActive: false,
+          referralCode: distributorCode, // DST-0001, DST-0002...
+          sponsorId: resolvedSponsor?.user?.id || sponsorProfileId || null,
+          placementId: placement ? placement.placementParentNodeId : null,
+          position: placement ? placement.placementPosition : null,
+          status: 'ACTIVE',
+          isActive: true,
           emailVerified: false,
           securityProfile: {
             create: {
@@ -862,223 +933,159 @@ export class AuthService {
           },
           wallet: {
             create: {
-              balance: 0, // backend controlled
+              balance: 0,
               availableBalance: 0,
-              currency: 'USD',
+              currency: 'INR',
             },
           },
         },
         include: {
+          role: true,
           wallet: true,
         },
       });
 
-      let distributorProfileData: any = null;
-      let customerData: any = null;
+      // 2. Create Distributor Profile
+      const profile = await tx.distributorProfile.create({
+        data: {
+          userId: user.id,
+          distributorId: distributorCode,
+          distributorCode,
+          firstName,
+          lastName,
+          displayName,
+          status: 'ACTIVE',
+          paymentStatus: 'PAID',
+          sponsorId: sponsorProfileId || null,
+          lifetimePV: 0,
+          lifetimeGV: 0,
+          currentBB: 0,
+          currentMatching: 0,
+          activatedAt: new Date(),
+        },
+      });
 
-      if (role === 'DISTRIBUTOR') {
-        // Create Distributor Profile
-        const profile = await tx.distributorProfile.create({
-          data: {
-            userId: user.id,
-            distributorId: distributorCode,
-            distributorCode,
-            firstName,
-            lastName,
-            displayName,
-            status: 'PENDING',
-            paymentStatus: 'UNPAID',
-            sponsorId,
-            lifetimePV: 0, // backend controlled
-            lifetimeGV: 0, // backend controlled
-            currentBB: 0,
-            currentMatching: 0,
-            activatedAt: null,
-          },
-        });
+      // 3. Create Default Primary Business Center (BC1)
+      const bc = await tx.businessCenter.create({
+        data: {
+          distributorId: profile.id,
+          centerNumber: 1,
+          centerCode: `${distributorCode}-BC1`,
+          status: 'ACTIVE',
+          leftVolume: 0,
+          rightVolume: 0,
+        },
+      });
 
-        // Create Default Primary Business Center (BC1) in pending/inactive status
-        const bc = await tx.businessCenter.create({
-          data: {
-            distributorId: profile.id,
-            centerNumber: 1,
-            centerCode: `${distributorCode}-BC1`,
-            status: 'INACTIVE',
-            leftVolume: 0,
-            rightVolume: 0,
-          },
-        });
-
-        // Record Sponsorship Lineage if sponsored
-        if (sponsorId) {
-          if (sponsorId === profile.id) {
-            throw AppError.badRequest('A user cannot be their own sponsor.', 'SELF_SPONSOR_FORBIDDEN');
-          }
-
-          // Check circular network relationship
-          const ancestors = await tx.sponsorRelationship.findMany({
-            where: { descendantId: sponsorId },
-          });
-
-          for (const anc of ancestors) {
-            if (anc.ancestorId === profile.id) {
-              throw AppError.badRequest('Circular network sponsorship detected.', 'CIRCULAR_SPONSOR_FORBIDDEN');
-            }
-          }
-
-          await tx.sponsorRelationship.create({
-            data: {
-              ancestorId: sponsorId,
-              descendantId: profile.id,
-              depth: 1,
-              isDirect: true,
-            },
-          });
-
-          // Propagate indirect sponsors
-          for (const anc of ancestors) {
-            await tx.sponsorRelationship.create({
-              data: {
-                ancestorId: anc.ancestorId,
-                descendantId: profile.id,
-                depth: anc.depth + 1,
-                isDirect: false,
-              },
-            });
-          }
-        }
-
-        // Automatic Binary Tree Placement & Unique Tree ID Generation
-        let placementParentNode: any = null;
-        let placementPosition: PlacementPosition = (input.placementPosition as PlacementPosition) || 'RIGHT';
-
-        if (sponsorId) {
-          // Find sponsor's MLM node
-          const sponsorNode = await tx.mLMNode.findFirst({
-            where: { distributorId: sponsorId },
-            include: {
-              children: {
-                select: { id: true, placementPosition: true },
-              },
-            },
-            orderBy: { depth: 'asc' },
-          });
-
-          if (sponsorNode) {
-            const leftChild = sponsorNode.children.find((c: any) => c.placementPosition === 'LEFT');
-            const rightChild = sponsorNode.children.find((c: any) => c.placementPosition === 'RIGHT');
-
-            if (placementPosition === 'LEFT' && !leftChild) {
-              placementParentNode = sponsorNode;
-              placementPosition = 'LEFT';
-            } else if (placementPosition === 'RIGHT' && !rightChild) {
-              placementParentNode = sponsorNode;
-              placementPosition = 'RIGHT';
-            } else if (!leftChild) {
-              placementParentNode = sponsorNode;
-              placementPosition = 'LEFT';
-            } else if (!rightChild) {
-              placementParentNode = sponsorNode;
-              placementPosition = 'RIGHT';
-            } else {
-              // Spillover down the selected leg
-              let currentParent: any = sponsorNode;
-              while (currentParent) {
-                const legChildren: any[] = await tx.mLMNode.findMany({
-                  where: { placementParentId: currentParent.id },
-                  select: { id: true, placementPosition: true, depth: true, binaryPath: true },
-                });
-                const matchChild = legChildren.find((c: any) => c.placementPosition === placementPosition);
-                if (!matchChild) {
-                  placementParentNode = currentParent;
-                  break;
-                }
-                const nextParent = await tx.mLMNode.findUnique({
-                  where: { id: matchChild.id },
-                  select: { id: true, depth: true, binaryPath: true },
-                });
-                if (!nextParent) {
-                  placementParentNode = currentParent;
-                  break;
-                }
-                currentParent = nextParent;
-              }
-            }
-          }
-        }
-
-        const newDepth = placementParentNode ? placementParentNode.depth + 1 : 1;
-        const parentPath = placementParentNode?.binaryPath || 'ROOT';
-        const legIndicator = placementPosition === 'LEFT' ? 'L' : 'R';
-        const binaryPath = placementParentNode ? `${parentPath}/${legIndicator}` : 'ROOT';
-
-        // Create Unique Binary Tree Node (Tree ID)
-        const mlmNode = await tx.mLMNode.create({
+      // 4. Create Binary Tree MLMNode
+      let mlmNode: any = null;
+      if (placement) {
+        mlmNode = await tx.mLMNode.create({
           data: {
             distributorId: profile.id,
             businessCenterId: bc.id,
-            placementParentId: placementParentNode ? placementParentNode.id : null,
-            placementPosition: placementParentNode ? placementPosition : null,
-            depth: newDepth,
-            binaryPath,
+            placementParentId: placement.placementParentNodeId,
+            placementPosition: placement.placementPosition,
+            depth: placement.depth,
+            binaryPath: placement.binaryPath,
           },
         });
-
-        distributorProfileData = {
-          ...profile,
-          treeId: mlmNode.id,
-          placementParentId: placementParentNode?.id || null,
-          placementPosition,
-        };
       } else {
-        const customer = await tx.customer.create({
+        mlmNode = await tx.mLMNode.create({
           data: {
-            userId: user.id,
-            customerCode: distributorCode,
-            sponsorId,
-            isPreferred: false,
+            distributorId: profile.id,
+            businessCenterId: bc.id,
+            depth: 0,
+            binaryPath: 'ROOT',
+          },
+        });
+      }
+
+      // 5. Record Sponsorship Lineage
+      if (sponsorProfileId) {
+        if (sponsorProfileId === profile.id) {
+          throw AppError.badRequest('A user cannot be their own sponsor.', 'SELF_SPONSOR_FORBIDDEN');
+        }
+
+        const ancestors = await tx.sponsorRelationship.findMany({
+          where: { descendantId: sponsorProfileId },
+        });
+
+        for (const anc of ancestors) {
+          if (anc.ancestorId === profile.id) {
+            throw AppError.badRequest('Circular network sponsorship detected.', 'CIRCULAR_SPONSOR_FORBIDDEN');
+          }
+        }
+
+        await tx.sponsorRelationship.create({
+          data: {
+            ancestorId: sponsorProfileId,
+            descendantId: profile.id,
+            depth: 1,
+            isDirect: true,
           },
         });
 
-        customerData = customer;
+        for (const anc of ancestors) {
+          await tx.sponsorRelationship.create({
+            data: {
+              ancestorId: anc.ancestorId,
+              descendantId: profile.id,
+              depth: anc.depth + 1,
+              isDirect: false,
+            },
+          });
+        }
+      }
+
+      // Resolve human-readable parent info for tree display
+      let parentDistributorCode = resolvedSponsor?.distributorCode || 'KV-1001';
+      let parentDistributorName = resolvedSponsor?.displayName || 'Admin';
+
+      if (placement?.placementParentNodeId) {
+        const parentNode = await tx.mLMNode.findUnique({
+          where: { id: placement.placementParentNodeId },
+          include: { distributor: true },
+        });
+        if (parentNode?.distributor) {
+          parentDistributorCode = parentNode.distributor.distributorCode;
+          parentDistributorName = parentNode.distributor.displayName || `${parentNode.distributor.firstName} ${parentNode.distributor.lastName}`.trim();
+        }
       }
 
       // Generate Tokens & Session
       const tokens = await this.createSession(
         user.id,
         user.email,
-        user.roleName,
+        dbRole.name,
         user.status,
         metadata,
         tx
       );
 
-      logger.info({ userId: user.id, email: user.email, role }, 'New user successfully registered');
+      logger.info({ userId: user.id, email: user.email, role: dbRole.name, distributorCode }, 'New distributor successfully registered and placed in tree');
 
-      const memberCode = distributorProfileData?.distributorCode || distributorCode;
-
-      if (role === 'DISTRIBUTOR') {
-        try {
-          const { NetworkTreeService } = await import('./networkTree.service');
-          NetworkTreeService.addEnrolledMember({
-            id: distributorProfileData?.treeId || `node-${memberCode.toLowerCase()}`,
-            treeId: distributorProfileData?.treeId || `node-${memberCode.toLowerCase()}`,
-            distributorId: memberCode,
-            name: displayName,
-            status: distributorProfileData?.status || user.status || 'PENDING',
-            paymentStatus: 'PENDING',
-            position: (distributorProfileData?.placementPosition as any) || 'RIGHT',
-            sponsor: resolvedSponsor?.distributorCode || sponsorId || 'KV-1001',
-            sponsorName: resolvedSponsor?.displayName || 'Rahul Kaushal',
-            placementParent: distributorProfileData?.placementParentId || resolvedSponsor?.distributorCode || 'KV-1001',
-            placementParentName: resolvedSponsor?.displayName || 'Rahul Kaushal',
-            bv: 100,
-            email: user.email,
-            phone: user.phone || undefined,
-          });
-        } catch (e: any) {
-          logger.warn({ err: e.message }, 'Resilient tree sync notification');
-        }
+      // Resilient tree synchronization for visualizers
+      try {
+        const { NetworkTreeService } = await import('./networkTree.service');
+        NetworkTreeService.addEnrolledMember({
+          id: mlmNode.id,
+          treeId: mlmNode.id,
+          distributorId: distributorCode,
+          name: displayName,
+          status: 'ACTIVE',
+          paymentStatus: 'PAID',
+          position: (placement?.placementPosition as any) || 'RIGHT',
+          sponsor: resolvedSponsor?.distributorCode || 'KV-1001',
+          sponsorName: resolvedSponsor?.displayName || 'Admin',
+          placementParent: parentDistributorCode,
+          placementParentName: parentDistributorName,
+          bv: 100,
+          email: user.email,
+          phone: user.phone || undefined,
+        });
+      } catch (e: any) {
+        logger.warn({ err: e.message }, 'Resilient tree sync notification');
       }
 
       return {
@@ -1086,33 +1093,32 @@ export class AuthService {
           id: user.id,
           userId: generatedUserId,
           fullName: displayName,
+          firstName,
+          lastName,
           name: displayName,
           email: user.email,
-          role: user.roleName,
-          status: distributorProfileData?.status || user.status || 'PENDING',
-          paymentStatus: 'PENDING',
-          referralCode: memberCode,
-          distributorCode: memberCode,
-          memberId: memberCode,
-          distributorId: memberCode,
+          role: dbRole.name,
+          roleName: dbRole.name,
+          roleId: dbRole.id,
+          rolePermissions: dbRole.permissions,
+          status: 'ACTIVE',
+          paymentStatus: 'PAID',
+          referralCode: distributorCode,
+          distributorCode,
+          memberId: distributorCode,
+          distributorId: distributorCode,
           phone: user.phone,
-          sponsorId: resolvedSponsor?.distributorCode || sponsorId || 'KV-1001',
-          sponsorProfileId: sponsorId,
-          treeId: distributorProfileData?.treeId || undefined,
-          placementParentId: distributorProfileData?.placementParentId || undefined,
-          placementPosition: distributorProfileData?.placementPosition || undefined,
+          sponsorId: resolvedSponsor?.distributorCode || 'KV-1001',
+          sponsorProfileId,
+          treeId: mlmNode.id,
+          placementParentId: placement?.placementParentNodeId || undefined,
+          placementPosition: placement?.placementPosition || undefined,
           sponsor: resolvedSponsor ? {
             id: resolvedSponsor.id,
             distributorCode: resolvedSponsor.distributorCode,
-            name: resolvedSponsor.displayName || `${resolvedSponsor.firstName} ${resolvedSponsor.lastName}`.trim(),
+            name: resolvedSponsor.displayName || `${resolvedSponsor.firstName || ''} ${resolvedSponsor.lastName || ''}`.trim() || 'Admin',
           } : undefined,
-          ...(distributorProfileData && {
-            distributorProfileId: distributorProfileData.id,
-          }),
-          ...(customerData && {
-            customerId: customerData.id,
-            customerCode: customerData.customerCode,
-          }),
+          distributorProfileId: profile.id,
         },
         tokens,
         accessToken: tokens.accessToken,
@@ -1256,7 +1262,7 @@ export class AuthService {
     // 2. Normalize email / identifier
     const cleanId = rawId.toLowerCase();
 
-    // 3. Fetch user with security profile and domain profiles (by email, phone, or distributor code)
+    // 3. Fetch user with relational role from roles table, security profile, and domain profiles
     const user = await prisma.user.findFirst({
       where: {
         OR: [
@@ -1266,6 +1272,7 @@ export class AuthService {
         ],
       },
       include: {
+        role: true, // Strictly from roles table
         distributorProfile: true,
         customer: true,
         securityProfile: true,
@@ -1273,14 +1280,6 @@ export class AuthService {
     });
 
     if (!user) {
-      if (
-        cleanId === 'rahulkaushal1109@gmail.com' ||
-        cleanId === 'rahul.kaushal@kashvimlm.com' ||
-        cleanId === 'rahul' ||
-        cleanId === 'kv-1001'
-      ) {
-        return await this.loginInMemory(input, metadata);
-      }
       throw AppError.invalidCredentials('Invalid email or password.');
     }
 
@@ -1353,16 +1352,19 @@ export class AuthService {
       },
     });
 
-    // 7. Create session and issue tokens
+    // 7. Resolve role strictly from the relational roles table (user.role)
+    const effectiveRole = (user.role?.name || user.roleName || 'DISTRIBUTOR') as UserRole;
+
+    // Create session and issue tokens
     const tokens = await this.createSession(
       user.id,
       user.email,
-      user.roleName,
+      effectiveRole,
       user.status,
       metadata
     );
 
-    logger.info({ userId: user.id, email: user.email }, 'User logged in successfully');
+    logger.info({ userId: user.id, email: user.email, role: effectiveRole }, 'User logged in successfully');
 
     // 8. Return safe user information (never passwordHash, secrets, or reset tokens)
     const userDisplayName =
@@ -1377,7 +1379,10 @@ export class AuthService {
         id: user.id,
         userId: user.userId || user.id,
         email: user.email,
-        role: user.roleName,
+        role: effectiveRole,
+        roleName: effectiveRole,
+        roleId: user.roleId || user.role?.id,
+        rolePermissions: user.role?.permissions || null,
         status: user.status,
         firstName: user.distributorProfile?.firstName || '',
         lastName: user.distributorProfile?.lastName || '',
@@ -1466,10 +1471,14 @@ export class AuthService {
 
     const tokenHash = hashToken(token);
 
-    // Look up session in database
+    // Look up session in database with user's role from roles table
     const session = await prisma.session.findUnique({
       where: { refreshTokenHash: tokenHash },
-      include: { user: true },
+      include: {
+        user: {
+          include: { role: true },
+        },
+      },
     });
 
     // -----------------------------------------------------------
@@ -1539,10 +1548,11 @@ export class AuthService {
         },
       });
 
+      const effectiveRole = (user.role?.name || user.roleName || 'DISTRIBUTOR') as UserRole;
       const accessToken = signAccessToken({
         sub: user.id,
         email: user.email,
-        role: user.roleName,
+        role: effectiveRole,
         status: user.status,
       });
 
@@ -1644,6 +1654,7 @@ export class AuthService {
     const user = await prisma.user.findUnique({
       where: { id: userId },
       include: {
+        role: true, // Strictly from roles table
         distributorProfile: {
           include: {
             businessCenters: true,
@@ -1664,7 +1675,7 @@ export class AuthService {
     });
 
     if (!user) {
-      return await this.getMeInMemory(userId);
+      throw AppError.notFound('User not found.', 'AUTH_USER_NOT_FOUND');
     }
 
     const dp = user.distributorProfile;
@@ -1674,6 +1685,7 @@ export class AuthService {
     const status = user.status;
     const accountStatus = status === 'ACTIVE' && paymentStatus === 'PAID' ? 'ACTIVE' : 'PENDING_PAYMENT';
     const isActive = Boolean(user.isActive && status === 'ACTIVE' && paymentStatus === 'PAID');
+    const effectiveRole = (user.role?.name || user.roleName || 'DISTRIBUTOR') as UserRole;
 
     return {
       id: user.id,
@@ -1685,7 +1697,10 @@ export class AuthService {
       fullName: user.fullName || `${dp?.firstName || ''} ${dp?.lastName || ''}`.trim() || 'Distributor',
       name: user.fullName || `${dp?.firstName || ''} ${dp?.lastName || ''}`.trim() || 'Distributor',
       email: user.email,
-      role: user.roleName,
+      role: effectiveRole,
+      roleName: effectiveRole,
+      roleId: user.roleId || user.role?.id,
+      rolePermissions: user.role?.permissions || null,
       status: user.status,
       accountStatus,
       paymentStatus,
@@ -1693,38 +1708,38 @@ export class AuthService {
       phone: user.phone || undefined,
       distributorProfile: dp
         ? {
-            id: dp.id,
-            memberId,
-            distributorId: memberId,
-            distributorCode: dp.distributorCode || memberId,
-            firstName: dp.firstName,
-            lastName: dp.lastName,
-            displayName: dp.displayName,
-            status: dp.status,
-            accountStatus,
-            paymentStatus,
-            isActive,
-            paymentVerifiedAt: dp.activatedAt,
-            currentRank: dp.currentRank?.name || 'Unranked',
-            lifetimePV: Number(dp.lifetimePV),
-            lifetimeGV: Number(dp.lifetimeGV),
-            sponsor: dp.sponsor,
-            businessCenters: dp.businessCenters.map((bc) => ({
-              id: bc.id,
-              centerCode: bc.centerCode,
-              centerNumber: bc.centerNumber,
-              leftVolume: Number(bc.leftVolume),
-              rightVolume: Number(bc.rightVolume),
-            })),
-          }
+          id: dp.id,
+          memberId,
+          distributorId: memberId,
+          distributorCode: dp.distributorCode || memberId,
+          firstName: dp.firstName,
+          lastName: dp.lastName,
+          displayName: dp.displayName,
+          status: dp.status,
+          accountStatus,
+          paymentStatus,
+          isActive,
+          paymentVerifiedAt: dp.activatedAt,
+          currentRank: dp.currentRank?.name || 'Unranked',
+          lifetimePV: Number(dp.lifetimePV),
+          lifetimeGV: Number(dp.lifetimeGV),
+          sponsor: dp.sponsor,
+          businessCenters: dp.businessCenters.map((bc) => ({
+            id: bc.id,
+            centerCode: bc.centerCode,
+            centerNumber: bc.centerNumber,
+            leftVolume: Number(bc.leftVolume),
+            rightVolume: Number(bc.rightVolume),
+          })),
+        }
         : undefined,
       customer: user.customer || undefined,
       wallet: user.wallet
         ? {
-            balance: Number(user.wallet.balance),
-            pendingBalance: Number(user.wallet.pendingBalance),
-            currency: user.wallet.currency,
-          }
+          balance: Number(user.wallet.balance),
+          pendingBalance: Number(user.wallet.pendingBalance),
+          currency: user.wallet.currency,
+        }
         : undefined,
       addresses: user.addresses,
       createdAt: user.createdAt,
@@ -1886,85 +1901,85 @@ export class AuthService {
     if (!this.isDbOffline) {
       try {
         const profile = await prisma.distributorProfile.findFirst({
-        where: {
-          OR: [
-            { id: cleanId },
-            { userId: cleanId },
-            { distributorId: { equals: cleanId, mode: 'insensitive' } },
-            { distributorCode: { equals: cleanId, mode: 'insensitive' } },
-          ],
-        },
-      });
+          where: {
+            OR: [
+              { id: cleanId },
+              { userId: cleanId },
+              { distributorId: { equals: cleanId, mode: 'insensitive' } },
+              { distributorCode: { equals: cleanId, mode: 'insensitive' } },
+            ],
+          },
+        });
 
-      if (profile) {
-        // Idempotency: If already active and already placed, return existing state
-        if (profile.status === 'ACTIVE') {
-          const existingNode = await prisma.mLMNode.findFirst({
-            where: { distributorId: profile.id },
-          });
-          if (existingNode) {
-            return {
-              success: true,
-              alreadyActivated: true,
-              distributorId: profile.distributorId || profile.distributorCode,
-              status: 'ACTIVE',
-              placement: {
-                nodeId: existingNode.id,
-                placementParentId: existingNode.placementParentId,
-                placementPosition: existingNode.placementPosition,
-              },
-            };
+        if (profile) {
+          // Idempotency: If already active and already placed, return existing state
+          if (profile.status === 'ACTIVE') {
+            const existingNode = await prisma.mLMNode.findFirst({
+              where: { distributorId: profile.id },
+            });
+            if (existingNode) {
+              return {
+                success: true,
+                alreadyActivated: true,
+                distributorId: profile.distributorId || profile.distributorCode,
+                status: 'ACTIVE',
+                placement: {
+                  nodeId: existingNode.id,
+                  placementParentId: existingNode.placementParentId,
+                  placementPosition: existingNode.placementPosition,
+                },
+              };
+            }
           }
-        }
 
-        // Atomically activate distributor, user account, and business center
-        await prisma.$transaction(async (tx) => {
-          await tx.distributorProfile.update({
-            where: { id: profile.id },
-            data: { status: 'ACTIVE', paymentStatus: 'PAID', activatedAt: new Date() },
+          // Atomically activate distributor, user account, and business center
+          await prisma.$transaction(async (tx) => {
+            await tx.distributorProfile.update({
+              where: { id: profile.id },
+              data: { status: 'ACTIVE', paymentStatus: 'PAID', activatedAt: new Date() },
+            });
+            await tx.user.update({
+              where: { id: profile.userId },
+              data: { status: 'ACTIVE' },
+            });
+            await tx.businessCenter.updateMany({
+              where: { distributorId: profile.id },
+              data: { status: 'ACTIVE' },
+            });
           });
-          await tx.user.update({
-            where: { id: profile.userId },
-            data: { status: 'ACTIVE' },
-          });
-          await tx.businessCenter.updateMany({
-            where: { distributorId: profile.id },
-            data: { status: 'ACTIVE' },
-          });
-        });
 
-        // If node already exists from registration, link it; otherwise trigger auto-placement
-        let existingNode = await prisma.mLMNode.findFirst({
-          where: { distributorId: profile.id },
-        });
-
-        if (!existingNode) {
-          const sponsorId = profile.sponsorId || 'KV-1001';
-          const { TreePlacementService } = await import('./treePlacement.service');
-          await TreePlacementService.autoPlaceUnderSponsor(profile.id, sponsorId, 'RIGHT');
-          existingNode = await prisma.mLMNode.findFirst({
+          // If node already exists from registration, link it; otherwise trigger auto-placement
+          let existingNode = await prisma.mLMNode.findFirst({
             where: { distributorId: profile.id },
           });
-        }
 
-        return {
-          success: true,
-          distributorId: profile.distributorId || profile.distributorCode,
-          status: 'ACTIVE',
-          paymentStatus: 'PAID',
-          treeId: existingNode?.id,
-          placement: existingNode ? {
-            nodeId: existingNode.id,
-            placementParentId: existingNode.placementParentId,
-            placementPosition: existingNode.placementPosition,
-          } : undefined,
-        };
+          if (!existingNode) {
+            const sponsorId = profile.sponsorId || 'KV-1001';
+            const { TreePlacementService } = await import('./treePlacement.service');
+            await TreePlacementService.autoPlaceUnderSponsor(profile.id, sponsorId, 'RIGHT');
+            existingNode = await prisma.mLMNode.findFirst({
+              where: { distributorId: profile.id },
+            });
+          }
+
+          return {
+            success: true,
+            distributorId: profile.distributorId || profile.distributorCode,
+            status: 'ACTIVE',
+            paymentStatus: 'PAID',
+            treeId: existingNode?.id,
+            placement: existingNode ? {
+              nodeId: existingNode.id,
+              placementParentId: existingNode.placementParentId,
+              placementPosition: existingNode.placementPosition,
+            } : undefined,
+          };
+        }
+      } catch {
+        this.isDbOffline = true;
+        // Offline fallback
       }
-    } catch {
-      this.isDbOffline = true;
-      // Offline fallback
     }
-  }
 
     // 2. In-memory & Dynamic Enrollees Fallback
     let inMem = this.inMemoryUsers.get(cleanId) || this.inMemoryUsers.get(cleanId.toLowerCase());

@@ -204,8 +204,8 @@ function Join() {
       formData.starterKitId === 'kit_pro'
         ? 100
         : formData.starterKitId === 'kit_elite'
-        ? 200
-        : 50;
+          ? 200
+          : 50;
 
     const kitPrice = 1;
 
@@ -230,8 +230,8 @@ function Join() {
         formData.starterKitId === 'kit_pro'
           ? 'Professional Activation Kit'
           : formData.starterKitId === 'kit_elite'
-          ? 'Elite Executive Kit'
-          : 'Basic Starter Pack',
+            ? 'Elite Executive Kit'
+            : 'Basic Starter Pack',
       price: kitPrice,
       bv: kitBV,
       bankName: formData.bankName,
@@ -511,7 +511,7 @@ function Join() {
                       className="btn-pill-link"
                       onClick={() => setSearchParams({ ref: 'KV-1001' })}
                     >
-                      Use KV-1001 (Rahul Kaushal)
+                      Use KV-1001 (Admin)
                     </button>
                   </div>
                 </form>

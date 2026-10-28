@@ -57,7 +57,7 @@ export class SupportController {
     try {
       const { id } = req.params;
       const userId = req.user?.id;
-      const isAdmin = req.user?.role === 'ADMIN' || req.user?.role === 'SUPER_ADMIN';
+      const isAdmin = req.user?.role === 'ADMIN' || (req.user?.role as string) === 'SUPER_ADMIN';
 
       const ticket = await SupportService.getTicketById(id, userId, isAdmin);
 
@@ -75,7 +75,7 @@ export class SupportController {
       const { id } = req.params;
       const userId = req.user?.id || 'usr-anonymous';
       const input = req.body as AddTicketMessageInput;
-      const isAdmin = req.user?.role === 'ADMIN' || req.user?.role === 'SUPER_ADMIN';
+      const isAdmin = req.user?.role === 'ADMIN' || (req.user?.role as string) === 'SUPER_ADMIN';
       const senderName = req.user?.distributorCode || req.user?.email;
 
       const message = await SupportService.addMessage(id, userId, input, senderName, isAdmin);
@@ -94,7 +94,7 @@ export class SupportController {
     try {
       const { id } = req.params;
       const userId = req.user?.id;
-      const isAdmin = req.user?.role === 'ADMIN' || req.user?.role === 'SUPER_ADMIN';
+      const isAdmin = req.user?.role === 'ADMIN' || (req.user?.role as string) === 'SUPER_ADMIN';
 
       const ticket = await SupportService.closeTicket(id, userId, isAdmin);
 

@@ -24,26 +24,76 @@ export interface SponsorRecord {
  */
 export class SponsorRepository {
   /**
-   * Finds a distributor profile by identifier (distributorId, distributorCode, or UUID id),
-   * including their primary binary MLM node and its direct placed children.
+   * Finds a user/distributor by identifier (referralCode, distributorId, distributorCode, userId, or UUID id).
+   * Extracts the user's name directly from the users table.
    */
   public static async findByIdentifier(identifier: string): Promise<SponsorRecord | null> {
-    return prisma.distributorProfile.findFirst({
+    const clean = (identifier || '').trim();
+    if (!clean) return null;
+
+    // 1. Search in users table first by referralCode, userId, id, phone, or email
+    const user = await prisma.user.findFirst({
       where: {
         OR: [
-          { distributorId: { equals: identifier, mode: 'insensitive' } },
-          { distributorCode: { equals: identifier, mode: 'insensitive' } },
-          { id: identifier },
+          { referralCode: { equals: clean, mode: 'insensitive' } },
+          { userId: { equals: clean, mode: 'insensitive' } },
+          { id: clean },
+          { phone: clean },
+          { email: { equals: clean, mode: 'insensitive' } },
+          { distributorProfile: { distributorCode: { equals: clean, mode: 'insensitive' } } },
+          { distributorProfile: { distributorId: { equals: clean, mode: 'insensitive' } } },
         ],
       },
-      select: {
-        id: true,
-        distributorId: true,
-        distributorCode: true,
-        firstName: true,
-        lastName: true,
-        displayName: true,
-        status: true,
+      include: {
+        distributorProfile: {
+          include: {
+            mlmNodes: {
+              select: {
+                id: true,
+                children: {
+                  select: {
+                    placementPosition: true,
+                  },
+                },
+              },
+              orderBy: {
+                createdAt: 'asc',
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (user) {
+      const name = user.fullName || user.distributorProfile?.displayName || user.distributorProfile?.firstName || 'User';
+      const [firstName, ...rest] = name.split(' ');
+      const lastName = rest.join(' ');
+      const code = user.referralCode || user.distributorProfile?.distributorCode || user.distributorProfile?.distributorId || user.userId || clean;
+
+      return {
+        id: user.distributorProfile?.id || user.id,
+        distributorId: code,
+        distributorCode: code,
+        firstName: firstName || name,
+        lastName: lastName || '',
+        displayName: name,
+        status: (user.status as string) || (user.isActive ? 'ACTIVE' : 'INACTIVE'),
+        mlmNodes: user.distributorProfile?.mlmNodes || [],
+      };
+    }
+
+    // 2. Also search directly in distributor_profiles if profile exists independently
+    const profile = await prisma.distributorProfile.findFirst({
+      where: {
+        OR: [
+          { distributorId: { equals: clean, mode: 'insensitive' } },
+          { distributorCode: { equals: clean, mode: 'insensitive' } },
+          { id: clean },
+        ],
+      },
+      include: {
+        user: true,
         mlmNodes: {
           select: {
             id: true,
@@ -59,39 +109,33 @@ export class SponsorRepository {
         },
       },
     });
+
+    if (profile) {
+      const name = profile.user?.fullName || profile.displayName || profile.firstName;
+      const [firstName, ...rest] = name.split(' ');
+      const lastName = rest.join(' ');
+      const code = profile.user?.referralCode || profile.distributorCode || profile.distributorId || clean;
+
+      return {
+        id: profile.id,
+        distributorId: code,
+        distributorCode: code,
+        firstName: firstName || profile.firstName,
+        lastName: lastName || profile.lastName,
+        displayName: name,
+        status: profile.status,
+        mlmNodes: profile.mlmNodes,
+      };
+    }
+
+    return null;
   }
 
   /**
-   * Finds a distributor strictly by distributorId.
+   * Finds a distributor strictly by distributorId or referralCode.
    */
   public static async findByDistributorId(distributorId: string): Promise<SponsorRecord | null> {
-    return prisma.distributorProfile.findFirst({
-      where: {
-        distributorId: { equals: distributorId, mode: 'insensitive' },
-      },
-      select: {
-        id: true,
-        distributorId: true,
-        distributorCode: true,
-        firstName: true,
-        lastName: true,
-        displayName: true,
-        status: true,
-        mlmNodes: {
-          select: {
-            id: true,
-            children: {
-              select: {
-                placementPosition: true,
-              },
-            },
-          },
-          orderBy: {
-            createdAt: 'asc',
-          },
-        },
-      },
-    });
+    return this.findByIdentifier(distributorId);
   }
 
   /**

@@ -42,15 +42,6 @@ export const authApi = {
    * Refresh session and retrieve fresh access token via HttpOnly cookie
    */
   async refresh() {
-    const token = apiClient.getToken();
-    if (
-      token &&
-      (token === 'kashvi_mock_owner_jwt_token_2026' ||
-        token.startsWith('kashvi_reg_token_') ||
-        token.startsWith('kashvi_mock_'))
-    ) {
-      return { success: true, data: { accessToken: token } };
-    }
     return apiClient.post('/auth/refresh', {});
   },
 
@@ -58,25 +49,6 @@ export const authApi = {
    * Get authenticated user profile & session
    */
   async getMe() {
-    const token = apiClient.getToken();
-    if (
-      token &&
-      (token === 'kashvi_mock_owner_jwt_token_2026' ||
-        token.startsWith('kashvi_reg_token_') ||
-        token.startsWith('kashvi_mock_'))
-    ) {
-      const saved = localStorage.getItem('kashvi_auth');
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          if (parsed.user) {
-            return { success: true, data: { user: parsed.user } };
-          }
-        } catch {
-          // ignore
-        }
-      }
-    }
     return apiClient.get('/auth/me');
   },
 
