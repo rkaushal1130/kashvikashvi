@@ -4,9 +4,9 @@ export const productStatusEnum = z.enum(['DRAFT', 'ACTIVE', 'OUT_OF_STOCK', 'INA
 export const productSortEnum = z.enum(['featured', 'newest', 'price_low', 'price_high', 'BV']);
 
 export const imageInputSchema = z.union([
-  z.string().url('Image must be a valid URL'),
+  z.string().min(1, 'Image must not be empty'),
   z.object({
-    url: z.string().url('Image must be a valid URL'),
+    url: z.string().min(1, 'Image must not be empty'),
     altText: z.string().trim().optional(),
     isPrimary: z.boolean().default(false),
     displayOrder: z.coerce.number().int().min(0).default(0),

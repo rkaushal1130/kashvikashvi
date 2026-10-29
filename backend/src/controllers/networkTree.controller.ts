@@ -62,33 +62,30 @@ export class NetworkTreeController {
       const isAdmin = requestingUser.role === 'ADMIN' || (requestingUser.role as string) === 'SUPER_ADMIN';
 
       if (!isAdmin) {
-        // 2. User can view their own network
+        // 2. User can view their own network only
         const isSelf = await NetworkTreeService.isSelf(requestingUser.id, distributorId);
 
-        // 3. User can only view other networks if in downline organization
+        // Distributor can see his own tree only not any other's
         if (!isSelf) {
-          const isDownline = await NetworkTreeService.isDownline(requestingUser.id, distributorId);
-          if (!isDownline) {
-            // Audit log unauthorized access attempt
-            await AuditService.recordLog({
-              userId: requestingUser.id,
-              action: 'UNAUTHORIZED_TREE_VIEW_ATTEMPT',
-              entityType: 'NetworkTree',
-              entityId: distributorId,
-              ipAddress: req.ip,
-              userAgent: req.get('user-agent'),
-              newValue: {
-                requesterId: requestingUser.id,
-                targetDistributorId: distributorId,
-                reason: 'Target distributor is outside requesting user downline organization',
-              },
-            });
+          // Audit log unauthorized access attempt
+          await AuditService.recordLog({
+            userId: requestingUser.id,
+            action: 'UNAUTHORIZED_TREE_VIEW_ATTEMPT',
+            entityType: 'NetworkTree',
+            entityId: distributorId,
+            ipAddress: req.ip,
+            userAgent: req.get('user-agent'),
+            newValue: {
+              requesterId: requestingUser.id,
+              targetDistributorId: distributorId,
+              reason: 'Distributor can see their own tree only',
+            },
+          });
 
-            throw AppError.forbidden(
-              'You are not authorized to view networks outside of your downline organisation',
-              'FORBIDDEN_NETWORK_VIEW'
-            );
-          }
+          throw AppError.forbidden(
+            'You are not authorized to view this network tree. Distributors can see their own tree only.',
+            'FORBIDDEN_NETWORK_VIEW'
+          );
         }
       }
 
@@ -129,27 +126,24 @@ export class NetworkTreeController {
       if (!isAdmin) {
         const isSelf = await NetworkTreeService.isSelf(requestingUser.id, distributorId);
         if (!isSelf) {
-          const isDownline = await NetworkTreeService.isDownline(requestingUser.id, distributorId);
-          if (!isDownline) {
-            await AuditService.recordLog({
-              userId: requestingUser.id,
-              action: 'UNAUTHORIZED_TREE_SUMMARY_ATTEMPT',
-              entityType: 'NetworkTree',
-              entityId: distributorId,
-              ipAddress: req.ip,
-              userAgent: req.get('user-agent'),
-              newValue: {
-                requesterId: requestingUser.id,
-                targetDistributorId: distributorId,
-                reason: 'Target distributor is outside requesting user downline organization',
-              },
-            });
+          await AuditService.recordLog({
+            userId: requestingUser.id,
+            action: 'UNAUTHORIZED_TREE_SUMMARY_ATTEMPT',
+            entityType: 'NetworkTree',
+            entityId: distributorId,
+            ipAddress: req.ip,
+            userAgent: req.get('user-agent'),
+            newValue: {
+              requesterId: requestingUser.id,
+              targetDistributorId: distributorId,
+              reason: 'Distributor can see their own network summary only',
+            },
+          });
 
-            throw AppError.forbidden(
-              'You are not authorized to view networks outside of your downline organisation',
-              'FORBIDDEN_NETWORK_VIEW'
-            );
-          }
+          throw AppError.forbidden(
+            'You are not authorized to view this network summary. Distributors can see their own tree only.',
+            'FORBIDDEN_NETWORK_VIEW'
+          );
         }
       }
 

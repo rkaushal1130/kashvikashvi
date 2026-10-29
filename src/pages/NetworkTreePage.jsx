@@ -68,15 +68,16 @@ function NetworkTreePage({ embedded = false }) {
     'KV-1001';
 
   // Read URL member param for state persistence on refresh (?member=KV-1002)
+  // Non-admins can only see their own tree, never another user's tree
   const urlMemberId = searchParams.get('member');
-  const effectiveInitialRootId = urlMemberId || initialDistributorId;
+  const effectiveInitialRootId = isAdmin ? (urlMemberId || initialDistributorId) : initialDistributorId;
 
-  // 2. Tree Navigation & Depth State
+  // 2. Tree Navigation & Depth State (depth 2: shows parent and leaf of parent, not leaf of leaf)
   const [currentRootId, setCurrentRootId] = useState(effectiveInitialRootId);
-  const [depth, setDepth] = useState(3);
+  const [depth, setDepth] = useState(2);
   const [breadcrumbs, setBreadcrumbs] = useState(() => {
     const rootName = currentUser?.name || currentUser?.displayName || currentUser?.fullName || initialDistributorId;
-    if (urlMemberId && urlMemberId !== initialDistributorId) {
+    if (isAdmin && urlMemberId && urlMemberId !== initialDistributorId) {
       return [
         { id: initialDistributorId, name: `${rootName} (My Root)` },
         { id: urlMemberId, name: urlMemberId },
@@ -284,11 +285,13 @@ function NetworkTreePage({ embedded = false }) {
 
   // 5. Fetch Tree Data & Summary from API
   const fetchTreeData = useCallback(
-    async (rootId, maxDepth) => {
+    async (rootId, maxDepth = 2) => {
       setLoading(true);
       setError(null);
       try {
-        const targetId = rootId || initialDistributorId;
+        const targetId = (!isAdmin && rootId !== initialDistributorId)
+          ? initialDistributorId
+          : (rootId || initialDistributorId);
 
         // Fetch tree: try treeApi.getTree first (handles downline security check & 403 authorization)
         let data = null;
@@ -306,7 +309,7 @@ function NetworkTreePage({ embedded = false }) {
           ) {
             setError(
               apiErr.message ||
-                '403 Forbidden: You do not have permission to access or view this distributor network.'
+              '403 Forbidden: You do not have permission to access or view this distributor network.'
             );
             setLoading(false);
             return;
@@ -353,17 +356,25 @@ function NetworkTreePage({ embedded = false }) {
         setLoading(false);
       }
     },
-    [initialDistributorId]
+    [initialDistributorId, isAdmin]
   );
 
   // Keep root aligned with authenticated session when not viewing a specific downline param
   useEffect(() => {
+    if (!isAdmin) {
+      if (currentRootId !== initialDistributorId) {
+        setCurrentRootId(initialDistributorId);
+      }
+      const rootName = currentUser?.name || currentUser?.displayName || currentUser?.fullName || initialDistributorId;
+      setBreadcrumbs([{ id: initialDistributorId, name: `${rootName} (My Root)` }]);
+      return;
+    }
     if (!urlMemberId && initialDistributorId) {
       setCurrentRootId(initialDistributorId);
       const rootName = currentUser?.name || currentUser?.displayName || currentUser?.fullName || initialDistributorId;
       setBreadcrumbs([{ id: initialDistributorId, name: `${rootName} (My Root)` }]);
     }
-  }, [initialDistributorId, urlMemberId, currentUser?.name, currentUser?.displayName, currentUser?.fullName]);
+  }, [initialDistributorId, urlMemberId, currentUser?.name, currentUser?.displayName, currentUser?.fullName, isAdmin, currentRootId]);
 
   useEffect(() => {
     fetchTreeData(currentRootId, depth);
@@ -382,9 +393,9 @@ function NetworkTreePage({ embedded = false }) {
     };
   }, [currentRootId, depth, fetchTreeData]);
 
-  // 6. Navigation & View Network Handlers (Prompt 11 & 13)
+  // 6. Navigation & View Network Handlers (Prompt 11 & 13) - Admin Only
   const handleViewNetwork = (member) => {
-    if (!member) return;
+    if (!isAdmin || !member) return;
     const memberId = member.distributorId || member.id || member.distributor?.distributorCode;
     const memberName = member.name || member.distributor?.displayName || member.distributor?.firstName || memberId;
 
@@ -408,7 +419,7 @@ function NetworkTreePage({ embedded = false }) {
   };
 
   const handleSelectSearchResult = (distributor) => {
-    if (!distributor) return;
+    if (!isAdmin || !distributor) return;
     const memberId = distributor.distributorId || distributor.id;
     const memberName = distributor.name || memberId;
 
@@ -437,6 +448,7 @@ function NetworkTreePage({ embedded = false }) {
   };
 
   const handleBreadcrumbClick = (crumbId, index) => {
+    if (!isAdmin && crumbId !== initialDistributorId) return;
     setCurrentRootId(crumbId);
     if (crumbId === initialDistributorId) {
       setSearchParams({});
@@ -451,11 +463,12 @@ function NetworkTreePage({ embedded = false }) {
   const handleResetToRoot = () => {
     setCurrentRootId(initialDistributorId);
     setSearchParams({}); // removes ?member from URL
+    const rootName = currentUser?.name || currentUser?.displayName || currentUser?.fullName || initialDistributorId;
     setBreadcrumbs([
-      { id: initialDistributorId, name: `${currentUser?.name || 'Rahul Kaushal'} (Root)` },
+      { id: initialDistributorId, name: `${rootName} (My Root)` },
     ]);
     setZoomLevel(1);
-    setDepth(3);
+    setDepth(2);
     setPanPosition({ x: 0, y: 0 });
     setSelectedMember(null);
     setHoverNode(null);
@@ -487,14 +500,6 @@ function NetworkTreePage({ embedded = false }) {
     setPanPosition({ x: 0, y: 0 });
   };
 
-  const handleExpand = () => {
-    setDepth((prev) => Math.min(5, prev + 1));
-  };
-
-  const handleCollapse = () => {
-    setDepth((prev) => Math.max(2, prev - 1));
-  };
-
   const handleZoomChange = (valOrFn) => {
     setZoomLevel((prev) => {
       const next = typeof valOrFn === 'function' ? valOrFn(prev) : valOrFn;
@@ -506,70 +511,17 @@ function NetworkTreePage({ embedded = false }) {
     setZoomLevel(1);
   };
 
-  // Prompt 14: Dynamic lazy expansion of downline nodes
-  const handleExpandNode = useCallback(async (node) => {
-    if (!node) return;
-    const nodeId = node.distributorId || node.id || node.distributor?.distributorCode;
-    if (!nodeId) return;
-
-    // If children are already loaded into memory, simply expand without network request
-    if (node.left || node.right || node.leftChild || node.rightChild) {
-      setTreeData((prev) =>
-        updateNodeInTree(prev, nodeId, (curr) => ({
-          ...curr,
-          isExpanded: true,
-          isCollapsed: false,
-        }))
-      );
-      return;
-    }
-
-    // Lazy load next level from backend: GET /api/v1/network-tree/member/:id?depth=2
-    setExpandingNodeIds((prev) => ({ ...prev, [nodeId]: true }));
-    try {
-      const res = await api.getMemberNetworkTree(nodeId, 2);
-      const fetchedRoot = normalizeTree(res?.root || res);
-      if (fetchedRoot) {
-        const hasAnyChildren = Boolean(fetchedRoot.left || fetchedRoot.right);
-        setTreeData((prev) =>
-          updateNodeInTree(prev, nodeId, (curr) => ({
-            ...curr,
-            left: fetchedRoot.left || null,
-            right: fetchedRoot.right || null,
-            hasDeeperMembers: hasAnyChildren ? (fetchedRoot.hasDeeperMembers ?? curr.hasDeeperMembers) : false,
-            hasChildren: hasAnyChildren,
-            isExpanded: true,
-            isCollapsed: false,
-          }))
-        );
-      }
-    } catch (err) {
-      console.error(`Failed to expand node ${nodeId}:`, err);
-    } finally {
-      setExpandingNodeIds((prev) => {
-        const next = { ...prev };
-        delete next[nodeId];
-        return next;
-      });
-    }
-  }, []);
-
-  const handleCollapseNode = useCallback((node) => {
-    if (!node) return;
-    const nodeId = node.distributorId || node.id || node.distributor?.distributorCode;
-    if (!nodeId) return;
-
-    setTreeData((prev) =>
-      updateNodeInTree(prev, nodeId, (curr) => ({
-        ...curr,
-        isExpanded: false,
-        isCollapsed: true,
-      }))
-    );
-  }, []);
-
   // Synchronize state when browser URL query parameter changes
   useEffect(() => {
+    if (!isAdmin) {
+      if (searchParams.get('member')) {
+        setSearchParams({}, { replace: true });
+      }
+      if (currentRootId !== initialDistributorId) {
+        setCurrentRootId(initialDistributorId);
+      }
+      return;
+    }
     const memberParam = searchParams.get('member');
     const targetId = memberParam || initialDistributorId;
     if (targetId !== currentRootId) {
@@ -582,7 +534,7 @@ function NetworkTreePage({ embedded = false }) {
       });
       setPanPosition({ x: 0, y: 0 });
     }
-  }, [searchParams, initialDistributorId, currentRootId]);
+  }, [searchParams, initialDistributorId, currentRootId, isAdmin, setSearchParams]);
 
   // 8. Interaction Handlers (Prompt 10: Desktop Hover; Prompt 11: Click opens Member Details)
   const handleNodeClick = (node) => {
@@ -704,8 +656,8 @@ function NetworkTreePage({ embedded = false }) {
             </p>
           </div>
 
-          {/* Real-time Backend Search (Prompt 13) */}
-          <TreeSearch onSelectMember={handleSelectSearchResult} />
+          {/* Real-time Backend Search (Admin Only - Prompt 13) */}
+          {isAdmin && <TreeSearch onSelectMember={handleSelectSearchResult} />}
         </div>
 
         {/* Network Summary Bar (Prompt 7 Metrics) */}
@@ -741,15 +693,14 @@ function NetworkTreePage({ embedded = false }) {
             onZoomChange={handleZoomChange}
             onResetZoom={handleResetZoom}
             onResetToRoot={handleResetToRoot}
-            onClearTree={() => setClearTreeModalOpen(true)}
+            onClearTree={isAdmin ? () => setClearTreeModalOpen(true) : null}
             onCenterTree={() => handleCenterTree()}
-            onExpand={handleExpand}
-            onCollapse={handleCollapse}
             onRefresh={() => fetchTreeData(currentRootId, depth)}
             loading={loading}
             breadcrumbs={breadcrumbs}
             onBreadcrumbClick={handleBreadcrumbClick}
             selectedMemberName={selectedMember?.name}
+            isAdmin={isAdmin}
           />
         </div>
       </header>
@@ -833,7 +784,7 @@ function NetworkTreePage({ embedded = false }) {
         {!loading && (
           <NetworkTree
             rootNode={treeData}
-            depth={depth}
+            depth={2}
             zoomLevel={zoomLevel}
             onZoomChange={handleZoomChange}
             onResetZoom={handleResetZoom}
@@ -844,13 +795,12 @@ function NetworkTreePage({ embedded = false }) {
             onNodeClick={handleNodeClick}
             onNodeHover={handleNodeHover}
             onNodeLeave={handleNodeLeave}
-            onFocusNode={handleViewNetwork}
+            onFocusNode={isAdmin ? handleViewNetwork : null}
             onAvailableClick={handleAvailableSlotClick}
             highlightedId={selectedMember?.distributorId || null}
             selectedMemberId={selectedMember?.distributorId}
             expandingNodeIds={expandingNodeIds}
-            onExpandNode={handleExpandNode}
-            onCollapseNode={handleCollapseNode}
+            isAdmin={isAdmin}
           />
         )}
       </main>
@@ -877,10 +827,11 @@ function NetworkTreePage({ embedded = false }) {
         <MemberDetailsPanel
           member={selectedMember}
           onClose={() => setSelectedMember(null)}
-          onViewNetwork={handleViewNetwork}
+          onViewNetwork={isAdmin ? handleViewNetwork : null}
           onEnrollDownline={handleEnrollDownline}
-          onMoveDistributor={handleOpenMoveModal}
-          onViewAuditLogs={handleOpenAuditLogs}
+          onMoveDistributor={isAdmin ? handleOpenMoveModal : null}
+          onViewAuditLogs={isAdmin ? handleOpenAuditLogs : null}
+          isAdmin={isAdmin}
         />
       )}
 

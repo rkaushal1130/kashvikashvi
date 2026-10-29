@@ -488,22 +488,37 @@ export class ProductService {
       );
     }
 
-    // 2. Resolve Category (by UUID, categoryCode, or slug)
-    const category = await prisma.productCategory.findFirst({
+    // 2. Resolve Category (by UUID, categoryCode, slug, or name)
+    let category = await prisma.productCategory.findFirst({
       where: {
         OR: [
           { id: input.categoryId },
           { categoryCode: input.categoryId },
           { slug: input.categoryId },
+          { name: { contains: input.categoryId, mode: 'insensitive' } },
         ],
       },
     });
 
     if (!category) {
-      throw AppError.notFound(
-        `Category '${input.categoryId}' not found.`,
-        'PRODUCT_CATEGORY_NOT_FOUND'
-      );
+      await ProductService.ensureDefaultCategories();
+      category = await prisma.productCategory.findFirst({
+        where: {
+          OR: [
+            { id: input.categoryId },
+            { categoryCode: input.categoryId },
+            { slug: input.categoryId },
+            { name: { contains: input.categoryId, mode: 'insensitive' } },
+          ],
+        },
+      });
+      if (!category) {
+        category = await prisma.productCategory.findFirst();
+      }
+    }
+
+    if (!category) {
+      throw AppError.notFound(`Category '${input.categoryId}' not found.`, 'PRODUCT_CATEGORY_NOT_FOUND');
     }
 
     // 3. Generate Unique Slug

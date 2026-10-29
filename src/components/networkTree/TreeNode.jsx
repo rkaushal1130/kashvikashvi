@@ -1,6 +1,6 @@
 import React from 'react';
 import { refId } from '../../utils/treeNormalize.js';
-import { Award, PlusCircle, ArrowUpRight, Info, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
+import { Award, PlusCircle, ArrowUpRight, Info } from 'lucide-react';
 
 /**
  * TreeNode
@@ -37,6 +37,7 @@ function TreeNode({
   adminViewOnly = false,
   isFilterMatched = false,
   isFilterActive = false,
+  isAdmin = false,
 }) {
   // 1. EMPTY SLOT Card
   if (!node) {
@@ -106,8 +107,8 @@ function TreeNode({
   const idColorClass = (isActive && isPaid)
     ? 'id-active-paid'
     : isFailed
-    ? 'id-failed'
-    : 'id-pending';
+      ? 'id-failed'
+      : 'id-pending';
 
   const leftBV = node.leftBV ?? node.businessCenter?.leftVolume ?? 0;
   const rightBV = node.rightBV ?? node.businessCenter?.rightVolume ?? 0;
@@ -143,9 +144,8 @@ function TreeNode({
   return (
     <div className={`tree-node-wrapper ${isRoot ? 'is-root-node' : ''} ${filterClass}`}>
       <div
-        className={`tree-node-card member-card ${isActive && isPaid ? 'status-active' : 'status-inactive'} ${
-          isHighlighted ? 'search-highlighted' : ''
-        } ${filterClass}`}
+        className={`tree-node-card member-card ${isActive && isPaid ? 'status-active' : 'status-inactive'} ${isHighlighted ? 'search-highlighted' : ''
+          } ${filterClass}`}
         data-distributor-id={distributorId}
         onClick={() => onNodeClick && onNodeClick(node)}
         onMouseEnter={(e) => onNodeHover && onNodeHover(node, e)}
@@ -195,9 +195,9 @@ function TreeNode({
 
           {/* Micro Metadata Lineage Tags */}
           <div className="node-micro-meta-row">
-            <span className="meta-tag-pill" title={`Sponsor: ${sponsor}`}>
+            {/* <span className="meta-tag-pill" title={`Sponsor: ${sponsor}`}>
               Sp: {sponsor}
-            </span>
+            </span> */}
             <span className="meta-tag-pill" title={`Placement Parent: ${placementParent}`}>
               Par: {placementParent}
             </span>
@@ -234,7 +234,7 @@ function TreeNode({
             <span>Details</span>
           </button>
 
-          {!isRoot && onFocusNode && (
+          {!isRoot && isAdmin && onFocusNode && (
             <button
               type="button"
               className="node-action-btn focus-subtree-btn"
@@ -248,75 +248,8 @@ function TreeNode({
               <span>Subtree</span>
             </button>
           )}
-
-          {/* Expand / Collapse Action (Prompt 14) */}
-          {hasDeeper && (
-            <button
-              type="button"
-              className={`node-action-btn expand-node-btn ${isExpanding ? 'is-loading' : ''} ${
-                isExpanded ? 'is-expanded' : 'is-collapsed'
-              }`}
-              onClick={(e) => {
-                e.stopPropagation();
-                if (isExpanding) return;
-                if (isExpanded) {
-                  onCollapseNode && onCollapseNode(node);
-                } else {
-                  onExpandNode && onExpandNode(node);
-                }
-              }}
-              disabled={isExpanding}
-              title={isExpanded ? 'Collapse downline' : 'Expand downline members'}
-            >
-              {isExpanding ? (
-                <>
-                  <Loader2 size={12} className="spin-loader" />
-                  <span>Loading...</span>
-                </>
-              ) : isExpanded ? (
-                <>
-                  <ChevronUp size={12} />
-                  <span>Collapse</span>
-                </>
-              ) : (
-                <>
-                  <ChevronDown size={12} />
-                  <span>Expand</span>
-                </>
-              )}
-            </button>
-          )}
         </div>
       </div>
-
-      {/* Prominent Bottom Expand Pill when node has deeper downlines and is collapsed (Prompt 14) */}
-      {hasDeeper && !isExpanded && (
-        <div className="node-bottom-expand-pill-wrap">
-          <button
-            type="button"
-            className={`node-bottom-expand-pill ${isExpanding ? 'is-loading' : ''}`}
-            onClick={(e) => {
-              e.stopPropagation();
-              if (isExpanding) return;
-              onExpandNode && onExpandNode(node);
-            }}
-            disabled={isExpanding}
-            title="Expand downline members from database"
-          >
-            {isExpanding ? (
-              <>
-                <Loader2 size={11} className="spin-loader" />
-                <span>Loading...</span>
-              </>
-            ) : (
-              <>
-                <ChevronDown size={11} />
-                <span>Expand</span>
-              </>
-            )}
-          </button>
-        </div>
-      )}
     </div>
   );
 }

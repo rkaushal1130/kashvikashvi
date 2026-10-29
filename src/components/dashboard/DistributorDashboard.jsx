@@ -36,7 +36,6 @@ import ShopView from './ShopView';
 import ProductManagerView from './ProductManagerView';
 import NetworkTreePage from '../../pages/NetworkTreePage';
 import ClientFundingView from './ClientFundingView';
-import { getStoredCatalog } from '../../data/productCatalog';
 import { api } from '../../services/api.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 
@@ -107,25 +106,33 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
   const [toastMessage, setToastMessage] = useState('');
 
   // Catalog State synced with localStorage across all user sessions & IDs
-  const [catalog, setCatalog] = useState(() => getStoredCatalog());
+  const [catalog, setCatalog] = useState([]);
 
   useEffect(() => {
+    let isMounted = true;
+    async function loadCatalog() {
+      try {
+        const data = await api.getProducts();
+        if (isMounted && Array.isArray(data)) {
+          setCatalog(data);
+        }
+      } catch (err) {
+        console.warn('[Dashboard] Error fetching products from backend:', err);
+      }
+    }
+
+    loadCatalog();
+
     const handleCatalogUpdate = () => {
-      setCatalog(getStoredCatalog());
+      loadCatalog();
     };
     window.addEventListener('kashvi_catalog_update', handleCatalogUpdate);
     window.addEventListener('kashvi_catalog_updated', handleCatalogUpdate);
-    window.addEventListener('storage', handleCatalogUpdate);
     return () => {
+      isMounted = false;
       window.removeEventListener('kashvi_catalog_update', handleCatalogUpdate);
       window.removeEventListener('kashvi_catalog_updated', handleCatalogUpdate);
-      window.removeEventListener('storage', handleCatalogUpdate);
     };
-  }, []);
-
-  // Reload latest catalog whenever user / ID switches
-  useEffect(() => {
-    setCatalog(getStoredCatalog());
   }, [user?.id, user?.distributorId, user?.memberId, effectiveUser?.distributorId]);
 
   // Live Notifications State
@@ -405,9 +412,11 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
   const nextRankName = cumulativeRank?.nextRankName || null;
   const rankProgressPercent = cumulativeRank?.rankProgressPercent ?? 0;
 
+  console.log(effectiveUser)
+
   // Authoritative Member Performance Display Values (PROMPT: Performance Card)
   const displayMemberName = performance?.name || (memberName !== 'NA' ? memberName : (effectiveUser?.name || 'Distributor'));
-  const displayMemberId = performance?.memberId || performance?.distributorCode || (memberId !== 'NA' ? memberId : (effectiveUser?.distributorProfile?.distributorCode || effectiveUser?.memberId || ''));
+  const displayMemberId = effectiveUser.referralCode || 'NA';
   const displayPaymentStatus = (performance?.paymentStatus || paymentStatus || effectiveUser?.paymentStatus || 'PENDING').toUpperCase();
   const displayUserStatus = (performance?.accountStatus || userStatus || effectiveUser?.accountStatus || (displayPaymentStatus === 'PAID' ? 'ACTIVE' : 'PENDING_PAYMENT')).toUpperCase();
   const displayMemberSince = performance?.brandPartnerSince || (memberSince !== 'NA' ? memberSince : 'Today');
@@ -853,39 +862,38 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
                           currentRankCode === 'RUBY'
                             ? '#ffe4e6'
                             : currentRankCode === 'DIAMOND'
-                            ? '#dbeafe'
-                            : currentRankCode === 'PLATINUM'
-                            ? '#cffafe'
-                            : currentRankCode === 'GOLD'
-                            ? '#fef9c3'
-                            : currentRankCode === 'SILVER'
-                            ? '#f1f5f9'
-                            : '#f8fafc',
+                              ? '#dbeafe'
+                              : currentRankCode === 'PLATINUM'
+                                ? '#cffafe'
+                                : currentRankCode === 'GOLD'
+                                  ? '#fef9c3'
+                                  : currentRankCode === 'SILVER'
+                                    ? '#f1f5f9'
+                                    : '#f8fafc',
                         color:
                           currentRankCode === 'RUBY'
                             ? '#be123c'
                             : currentRankCode === 'DIAMOND'
-                            ? '#1d4ed8'
-                            : currentRankCode === 'PLATINUM'
-                            ? '#0e7490'
-                            : currentRankCode === 'GOLD'
-                            ? '#a16207'
-                            : currentRankCode === 'SILVER'
-                            ? '#475569'
-                            : '#64748b',
-                        border: `1px solid ${
-                          currentRankCode === 'RUBY'
-                            ? '#fda4af'
-                            : currentRankCode === 'DIAMOND'
+                              ? '#1d4ed8'
+                              : currentRankCode === 'PLATINUM'
+                                ? '#0e7490'
+                                : currentRankCode === 'GOLD'
+                                  ? '#a16207'
+                                  : currentRankCode === 'SILVER'
+                                    ? '#475569'
+                                    : '#64748b',
+                        border: `1px solid ${currentRankCode === 'RUBY'
+                          ? '#fda4af'
+                          : currentRankCode === 'DIAMOND'
                             ? '#93c5fd'
                             : currentRankCode === 'PLATINUM'
-                            ? '#67e8f9'
-                            : currentRankCode === 'GOLD'
-                            ? '#fde047'
-                            : currentRankCode === 'SILVER'
-                            ? '#cbd5e1'
-                            : '#e2e8f0'
-                        }`,
+                              ? '#67e8f9'
+                              : currentRankCode === 'GOLD'
+                                ? '#fde047'
+                                : currentRankCode === 'SILVER'
+                                  ? '#cbd5e1'
+                                  : '#e2e8f0'
+                          }`,
                         display: 'inline-flex',
                         alignItems: 'center',
                         gap: '4px',
@@ -982,8 +990,8 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
                           {isPaymentInitiating
                             ? 'Processing...'
                             : displayPaymentStatus === 'FAILED'
-                            ? 'Retry Enrollment Payment'
-                            : 'Complete Enrollment Payment'}
+                              ? 'Retry Enrollment Payment'
+                              : 'Complete Enrollment Payment'}
                         </span>
                       </button>
                     </div>

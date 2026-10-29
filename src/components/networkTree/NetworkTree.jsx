@@ -14,7 +14,7 @@ import TreeNode from './TreeNode';
  */
 function NetworkTree({
   rootNode,
-  depth = 3,
+  depth = 2,
   zoomLevel = 1,
   onZoomChange,
   onResetZoom,
@@ -34,6 +34,7 @@ function NetworkTree({
   onCollapseNode,
   filterCriteria = null,
   adminViewOnly = false,
+  isAdmin = false,
 }) {
   const containerRef = useRef(null);
   const [isPanning, setIsPanning] = useState(false);
@@ -207,11 +208,9 @@ function NetworkTree({
     const rightChild = node.right || node.rightChild || null;
     const hasChildren = Boolean(leftChild || rightChild);
 
-    // Node is expanded if explicitly marked expanded, or if within initial depth and not collapsed
-    const isBranchExpanded =
-      hasChildren &&
-      !node.isCollapsed &&
-      (node.isExpanded !== undefined ? node.isExpanded : currentLevel < depth);
+    // The tree should show only the leaf of parent, never leaf of leaf.
+    // Therefore, only the root (parent) expands to show its direct leaves.
+    const isBranchExpanded = isRoot;
 
     const nodeId = node.distributorId || node.id || node.distributor?.distributorCode;
     const isMatch =
@@ -235,7 +234,7 @@ function NetworkTree({
             onNodeClick={onNodeClick}
             onNodeHover={onNodeHover}
             onNodeLeave={onNodeLeave}
-            onFocusNode={onFocusNode}
+            onFocusNode={isAdmin ? onFocusNode : null}
             onAvailableClick={onAvailableClick}
             isHighlighted={isMatch}
             isExpanding={isExpanding}
@@ -245,6 +244,7 @@ function NetworkTree({
             adminViewOnly={adminViewOnly}
             isFilterActive={isFilterActive}
             isFilterMatched={isMatchedByFilter}
+            isAdmin={isAdmin}
           />
         </div>
 

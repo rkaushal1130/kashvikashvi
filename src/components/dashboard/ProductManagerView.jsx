@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import {
   PackagePlus,
   ShieldCheck,
@@ -18,13 +18,9 @@ import {
   Image as ImageIcon,
   CheckCircle2,
   CheckSquare,
-  Sparkles,
-  RotateCcw
 } from 'lucide-react';
 import {
   PRODUCT_CATEGORIES,
-  saveStoredCatalog,
-  HOZRI_ELECTRONIC_PLACEHOLDERS
 } from '../../data/productCatalog';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { api } from '../../services/api.js';
@@ -54,7 +50,7 @@ const PRESET_IMAGES = [
  * Restricted to verified Administrators and explicitly authorized Business Center Owners.
  * Allows adding new products, updating distributor wholesale prices, MRP, and BV points.
  */
-function ProductManagerView({ user, catalog, onUpdateCatalog, onNavigate }) {
+function ProductManagerView({ user, catalog = [], onUpdateCatalog, onNavigate }) {
   const { canManageProducts: authCanManage, isAdmin, isOwner } = useAuth();
 
   // Strict role and ownership verification from authenticated session
@@ -73,6 +69,45 @@ function ProductManagerView({ user, catalog, onUpdateCatalog, onNavigate }) {
   // Active Tab: 'add' (Add Product Form) | 'table' (Catalog & Price Manager)
   const [activeTab, setActiveTab] = useState('table');
 
+  // Backend Database Table State
+  const [productsList, setProductsList] = useState(catalog || []);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Sync with prop when parent updates
+  useEffect(() => {
+    if (Array.isArray(catalog)) {
+      setProductsList(catalog);
+    }
+  }, [catalog]);
+
+  // Fetch products directly from backend database table
+  const fetchProductsFromDb = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const data = await api.getProducts();
+      if (Array.isArray(data)) {
+        setProductsList(data);
+        if (onUpdateCatalog) {
+          onUpdateCatalog(data);
+        }
+      }
+    } catch (err) {
+      console.warn('[ProductManager] Failed to load products from database:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [onUpdateCatalog]);
+
+  useEffect(() => {
+    fetchProductsFromDb();
+    const handleUpdate = () => {
+      fetchProductsFromDb();
+    };
+    window.addEventListener('kashvi_catalog_update', handleUpdate);
+    return () => window.removeEventListener('kashvi_catalog_update', handleUpdate);
+  }, [fetchProductsFromDb]);
+
   // Search & Filter in Table
   const [tableSearch, setTableSearch] = useState('');
   const [inlinePrices, setInlinePrices] = useState({});
@@ -89,7 +124,7 @@ function ProductManagerView({ user, catalog, onUpdateCatalog, onNavigate }) {
   // Checkbox Selection State for Bulk Actions
   const [selectedProductIds, setSelectedProductIds] = useState([]);
 
-  // Add Product Form State (Default data initialized to 0)
+  // Add Product Form State
   const [newProduct, setNewProduct] = useState({
     name: '',
     category: 'Clothes & Hosiery (Hozri)',
@@ -97,7 +132,7 @@ function ProductManagerView({ user, catalog, onUpdateCatalog, onNavigate }) {
     distributorPrice: '0',
     volumeBV: '0',
     stock: 0,
-    status: 'Pending Pricing',
+    status: 'In Stock',
     servingSize: '',
     selectedPresetImg: PRESET_IMAGES[0].src,
     customImgUrl: '',
@@ -130,111 +165,41 @@ function ProductManagerView({ user, catalog, onUpdateCatalog, onNavigate }) {
     }
   };
 
-  // One-Click Bulk Deletion of Selected Items
+  // One-Click Bulk Deletion of Selected Items from Backend Database Table
   const handleDeleteSelected = async () => {
     if (selectedProductIds.length === 0) return;
     const count = selectedProductIds.length;
     const idsToDelete = [...selectedProductIds];
-    const updatedCatalog = catalog.filter((p) => !idsToDelete.includes(p.id));
-    onUpdateCatalog(updatedCatalog);
-    saveStoredCatalog(updatedCatalog);
+    const updated = productsList.filter((p) => !idsToDelete.includes(p.id));
+    setProductsList(updated);
+    if (onUpdateCatalog) onUpdateCatalog(updated);
     setSelectedProductIds([]);
-    showToast(`Deleted ${count} item(s) in one click!`);
     try {
       await api.bulkDeleteProducts(idsToDelete);
+      showToast(`Deleted ${count} item(s) from database table.`);
     } catch (err) {
       console.warn('[ProductManager] Bulk delete remote failed:', err);
+      showToast(`Error deleting items from database.`);
     }
   };
 
-  // One-Click Deletion of ALL Items (Makes catalog data 0)
+  // One-Click Deletion of ALL Items from Backend Database Table
   const handleDeleteAll = async () => {
-    if (catalog.length === 0) {
+    if (productsList.length === 0) {
       showToast('Catalog is already empty (0 items).');
       return;
     }
-    if (window.confirm(`Delete all ${catalog.length} items from catalog? This will reset all catalog data to 0.`)) {
-      onUpdateCatalog([]);
-      saveStoredCatalog([]);
+    if (window.confirm(`Delete all ${productsList.length} items from database tables? This will delete all products.`)) {
+      const allIds = productsList.map((p) => p.id);
+      setProductsList([]);
+      if (onUpdateCatalog) onUpdateCatalog([]);
       setSelectedProductIds([]);
-      showToast('All items deleted! Catalog data is now 0.');
       try {
-        await api.resetZeroProducts();
+        await api.bulkDeleteProducts(allIds);
+        showToast('All products deleted from database tables.');
       } catch (err) {
-        console.warn('[ProductManager] Reset zero remote failed:', err);
+        console.warn('[ProductManager] Delete all remote failed:', err);
       }
-    }
-  };
-
-  // Populate Hozri and Electronic Placeholders with Data = 0
-  const handleLoadHozriAndElectronics = async () => {
-    onUpdateCatalog(HOZRI_ELECTRONIC_PLACEHOLDERS);
-    saveStoredCatalog(HOZRI_ELECTRONIC_PLACEHOLDERS);
-    setSelectedProductIds([]);
-    showToast('Loaded 8 Hozri & Electronic placeholders with all data set to 0!');
-    try {
-      await api.loadPlaceholders();
-    } catch (err) {
-      console.warn('[ProductManager] Load placeholders remote failed:', err);
-    }
-  };
-
-  // Quick fill placeholder templates in Add form
-  const handleQuickFill = (type) => {
-    if (type === 'hozri_tshirt') {
-      setNewProduct({
-        name: "Men's Combed Cotton Hosiery T-Shirt",
-        category: 'Clothes & Hosiery (Hozri)',
-        mrp: '0',
-        distributorPrice: '0',
-        volumeBV: '0',
-        stock: 0,
-        status: 'Pending Pricing',
-        servingSize: 'Size: M / L / XL / XXL',
-        selectedPresetImg: hozriTshirtImg,
-        customImgUrl: '',
-        uploadedGalleryImg: '',
-        shortDesc: '100% Super-combed breathable cotton hosiery fabric with soft ribbed collar.',
-        benefits: 'Breathable comfort, Bio-washed anti-shrink finish, Zero-friction comfort seams',
-        usage: 'Machine wash cold with like colors.',
-      });
-      showToast('Filled Hozri T-Shirt template with 0 data!');
-    } else if (type === 'elec_headphones') {
-      setNewProduct({
-        name: 'Smart Active Wireless Noise-Cancelling Headphones',
-        category: 'Electronics & Smart Devices',
-        mrp: '0',
-        distributorPrice: '0',
-        volumeBV: '0',
-        stock: 0,
-        status: 'Pending Pricing',
-        servingSize: 'Headphones + Type-C Cable + Travel Pouch',
-        selectedPresetImg: elecHeadphonesImg,
-        customImgUrl: '',
-        uploadedGalleryImg: '',
-        shortDesc: 'High-fidelity active noise-cancelling Bluetooth 5.3 headphones with deep bass drivers.',
-        benefits: '40hr total playback, Active noise cancellation, Dual MEMS microphones',
-        usage: 'Power on and pair via Bluetooth.',
-      });
-      showToast('Filled Electronic Headphones template with 0 data!');
-    } else if (type === 'reset_zero') {
-      setNewProduct({
-        name: '',
-        category: 'Clothes & Hosiery (Hozri)',
-        mrp: '0',
-        distributorPrice: '0',
-        volumeBV: '0',
-        stock: 0,
-        status: 'Pending Pricing',
-        servingSize: '',
-        selectedPresetImg: PRESET_IMAGES[0].src,
-        customImgUrl: '',
-        uploadedGalleryImg: '',
-        shortDesc: '',
-        benefits: '',
-        usage: '',
-      });
-      showToast('Reset all form fields to 0!');
     }
   };
 
@@ -298,17 +263,28 @@ function ProductManagerView({ user, catalog, onUpdateCatalog, onNavigate }) {
     }
 
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       const dataUrl = event.target.result;
-      const updatedCatalog = catalog.map((p) => {
+      const updatedCatalog = productsList.map((p) => {
         if (p.id === targetProductForImg.id) {
           return { ...p, image: dataUrl };
         }
         return p;
       });
-      onUpdateCatalog(updatedCatalog);
-      saveStoredCatalog(updatedCatalog);
-      showToast(`Updated image for ${targetProductForImg.name} from gallery!`);
+      setProductsList(updatedCatalog);
+      if (onUpdateCatalog) onUpdateCatalog(updatedCatalog);
+      showToast(`Updated image for ${targetProductForImg.name}!`);
+
+      try {
+        await api.updateProduct(targetProductForImg.id, {
+          image: dataUrl,
+          imageUrl: dataUrl,
+          images: [dataUrl],
+        });
+      } catch (err) {
+        console.warn('[ProductManager] Image update failed:', err);
+      }
+
       setTargetProductForImg(null);
     };
     reader.readAsDataURL(file);
@@ -328,125 +304,148 @@ function ProductManagerView({ user, catalog, onUpdateCatalog, onNavigate }) {
 
   // Analytics Metrics (Safely handles 0 data)
   const metrics = useMemo(() => {
-    const totalProducts = catalog.length;
-    const totalBV = catalog.reduce((acc, p) => acc + (p.volumeBV || 0), 0);
-    const totalInventoryValue = catalog.reduce(
-      (acc, p) => acc + (p.distributorPrice || 0) * (p.stock !== undefined ? p.stock : 0),
+    const totalProducts = productsList.length;
+    const totalBV = productsList.reduce((acc, p) => acc + (p.volumeBV || p.bv || 0), 0);
+    const totalInventoryValue = productsList.reduce(
+      (acc, p) => acc + (p.distributorPrice || p.wholesalePrice || 0) * (p.stock !== undefined ? p.stock : (p.stockQuantity || 0)),
       0
     );
     const avgMargin = totalProducts === 0
       ? 0
       : Math.round(
-          catalog.reduce((acc, p) => {
-            const mrp = p.mrp || 0;
-            const dist = p.distributorPrice || 0;
-            if (mrp <= 0) return acc;
-            const diff = mrp - dist;
-            return acc + (diff / mrp) * 100;
-          }, 0) / totalProducts
-        );
+        productsList.reduce((acc, p) => {
+          const mrp = p.mrp || 0;
+          const dist = p.distributorPrice || p.wholesalePrice || 0;
+          if (mrp <= 0) return acc;
+          const diff = mrp - dist;
+          return acc + (diff / mrp) * 100;
+        }, 0) / totalProducts
+      );
 
     return { totalProducts, totalBV, totalInventoryValue, avgMargin };
-  }, [catalog]);
+  }, [productsList]);
 
   // Filtered catalog for table
   const filteredCatalog = useMemo(() => {
-    if (!tableSearch.trim()) return catalog;
+    if (!tableSearch.trim()) return productsList;
     const q = tableSearch.toLowerCase();
-    return catalog.filter(
+    return productsList.filter(
       (p) =>
-        p.name.toLowerCase().includes(q) ||
-        p.category.toLowerCase().includes(q) ||
-        p.id.toLowerCase().includes(q)
+        (p.name && p.name.toLowerCase().includes(q)) ||
+        (p.category && (typeof p.category === 'string' ? p.category : p.category.name).toLowerCase().includes(q)) ||
+        (p.id && String(p.id).toLowerCase().includes(q)) ||
+        (p.sku && String(p.sku).toLowerCase().includes(q))
     );
-  }, [catalog, tableSearch]);
+  }, [productsList, tableSearch]);
 
-  // Submit New Product
-  const handleCreateProduct = (e) => {
+  // Submit New Product via Form directly to Database Table
+  const handleCreateProduct = async (e) => {
     e.preventDefault();
-    if (!newProduct.name.trim() || newProduct.distributorPrice === '') {
-      alert('Please fill in product name and distributor wholesale price (enter 0 for placeholder).');
+    if (!newProduct.name.trim()) {
+      alert('Please fill in product name.');
+      return;
+    }
+    if (newProduct.distributorPrice === '' || isNaN(Number(newProduct.distributorPrice))) {
+      alert('Please enter a valid distributor wholesale price.');
       return;
     }
 
     const mrpVal = newProduct.mrp !== '' ? (parseFloat(newProduct.mrp) || 0) : 0;
     const distVal = newProduct.distributorPrice !== '' ? (parseFloat(newProduct.distributorPrice) || 0) : 0;
     const bvVal = newProduct.volumeBV !== '' ? (parseFloat(newProduct.volumeBV) || 0) : 0;
+    const stockVal = parseInt(newProduct.stock, 10) || 0;
 
     const benefitsArray = newProduct.benefits
-      ? newProduct.benefits.split(',').map((s) => s.trim()).filter(Boolean)
+      ? (Array.isArray(newProduct.benefits)
+        ? newProduct.benefits
+        : newProduct.benefits.split(',').map((s) => s.trim()).filter(Boolean))
       : ['Quality verified product formulation.'];
 
     const finalImage =
       (imageSourceMode === 'gallery' && newProduct.uploadedGalleryImg)
         ? newProduct.uploadedGalleryImg
         : (imageSourceMode === 'url' && newProduct.customImgUrl.trim())
-        ? newProduct.customImgUrl.trim()
-        : (newProduct.uploadedGalleryImg || newProduct.selectedPresetImg);
+          ? newProduct.customImgUrl.trim()
+          : (newProduct.uploadedGalleryImg || newProduct.selectedPresetImg || '');
 
-    const createdItem = {
-      id: `KASH-${String(catalog.length + 1).padStart(3, '0')}`,
-      name: newProduct.name,
-      category: newProduct.category,
-      mrp: mrpVal,
-      distributorPrice: distVal,
-      volumeBV: bvVal,
-      stock: parseInt(newProduct.stock, 10) || 0,
-      status: newProduct.status,
-      image: finalImage,
-      rating: 0,
-      reviewsCount: 0,
-      servingSize: newProduct.servingSize || 'Standard Pack',
-      shortDesc: newProduct.shortDesc || 'Newly published catalog item.',
-      benefits: benefitsArray,
-      usage: newProduct.usage || 'Use according to product manual instructions.',
-    };
-
-    const updatedCatalog = [createdItem, ...catalog];
-    onUpdateCatalog(updatedCatalog);
-    saveStoredCatalog(updatedCatalog);
-
-    showToast(`Published "${createdItem.name}" to catalog!`);
-    setActiveTab('table');
-
-    try {
-      api.addProduct({
-        sku: `SKU-${Date.now().toString().slice(-6)}`,
-        name: createdItem.name,
-        category: createdItem.category,
-        categoryId: 'a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d',
-        distributorPrice: createdItem.distributorPrice,
-        wholesalePrice: createdItem.distributorPrice,
-        mrp: createdItem.mrp,
-        bv: createdItem.volumeBV,
-        stock: createdItem.stock,
-        status: 'ACTIVE',
-        description: createdItem.shortDesc,
-      });
-    } catch (err) {
-      console.warn('[ProductManager] Remote addProduct error:', err);
+    let categoryId = 'clothes-hosiery';
+    if (newProduct.category && newProduct.category.toLowerCase().includes('elec')) {
+      categoryId = 'electronics-smart-devices';
     }
 
-    // Reset Form to 0
-    setNewProduct({
-      name: '',
-      category: 'Clothes & Hosiery (Hozri)',
-      mrp: '0',
-      distributorPrice: '0',
-      volumeBV: '0',
-      stock: 0,
-      status: 'Pending Pricing',
-      servingSize: '',
-      selectedPresetImg: PRESET_IMAGES[0].src,
-      customImgUrl: '',
-      uploadedGalleryImg: '',
-      shortDesc: '',
-      benefits: '',
-      usage: '',
-    });
-    setGalleryImage(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
+    const sku = `KV-${Date.now().toString().slice(-6)}`;
+
+    const payload = {
+      sku,
+      name: newProduct.name.trim(),
+      category: newProduct.category,
+      categoryId,
+      distributorPrice: distVal,
+      wholesalePrice: distVal,
+      mrp: mrpVal,
+      bv: bvVal,
+      volumeBv: bvVal,
+      volumeBV: bvVal,
+      stock: stockVal,
+      stockQuantity: stockVal,
+      status: newProduct.status === 'In Stock' || newProduct.status === 'Active' ? 'ACTIVE' : 'DRAFT',
+      imageUrl: finalImage || undefined,
+      images: finalImage ? [finalImage] : [],
+      shortDesc: newProduct.shortDesc || undefined,
+      description: newProduct.shortDesc || undefined,
+      servingSize: newProduct.servingSize || undefined,
+      sizeSpec: newProduct.servingSize || undefined,
+      benefits: benefitsArray,
+      usageInstructions: newProduct.usage || undefined,
+      usage: newProduct.usage || undefined,
+    };
+
+    setIsSubmitting(true);
+    try {
+      const createdItem = await api.addProduct(payload);
+      const itemToDisplay = createdItem || {
+        ...payload,
+        id: sku,
+        image: finalImage,
+      };
+
+      const updated = [itemToDisplay, ...productsList.filter((p) => p.id !== itemToDisplay.id)];
+      setProductsList(updated);
+      if (onUpdateCatalog) {
+        onUpdateCatalog(updated);
+      }
+
+      showToast(`Product "${payload.name}" saved to database successfully!`);
+      setActiveTab('table');
+
+      // Reset Form
+      setNewProduct({
+        name: '',
+        category: 'Clothes & Hosiery (Hozri)',
+        mrp: '0',
+        distributorPrice: '0',
+        volumeBV: '0',
+        stock: 0,
+        status: 'In Stock',
+        servingSize: '',
+        selectedPresetImg: PRESET_IMAGES[0].src,
+        customImgUrl: '',
+        uploadedGalleryImg: '',
+        shortDesc: '',
+        benefits: '',
+        usage: '',
+      });
+      setGalleryImage(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+
+      await fetchProductsFromDb();
+    } catch (err) {
+      console.error('[ProductManager] Failed to add product to backend:', err);
+      showToast(`Error adding product: ${err.message || 'Server error'}`);
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -461,11 +460,11 @@ function ProductManagerView({ user, catalog, onUpdateCatalog, onNavigate }) {
     }));
   };
 
-  const handleSaveInlineUpdate = (productId, overrideChanges = null) => {
+  const handleSaveInlineUpdate = async (productId, overrideChanges = null) => {
     const changes = overrideChanges || inlinePrices[productId];
     if (!changes || Object.keys(changes).length === 0) return;
 
-    const updatedCatalog = catalog.map((p) => {
+    const updatedCatalog = productsList.map((p) => {
       if (p.id === productId) {
         return {
           ...p,
@@ -479,6 +478,7 @@ function ProductManagerView({ user, catalog, onUpdateCatalog, onNavigate }) {
               : (p.wholesalePrice || p.distributorPrice),
           mrp: changes.mrp !== undefined ? parseFloat(changes.mrp) : p.mrp,
           volumeBV: changes.volumeBV !== undefined ? parseFloat(changes.volumeBV) : p.volumeBV,
+          bv: changes.volumeBV !== undefined ? parseFloat(changes.volumeBV) : (p.bv || p.volumeBV),
           stock: changes.stock !== undefined ? parseInt(changes.stock, 10) : p.stock,
           status: changes.status !== undefined ? changes.status : p.status,
         };
@@ -486,11 +486,13 @@ function ProductManagerView({ user, catalog, onUpdateCatalog, onNavigate }) {
       return p;
     });
 
-    onUpdateCatalog(updatedCatalog);
-    saveStoredCatalog(updatedCatalog);
+    setProductsList(updatedCatalog);
+    if (onUpdateCatalog) {
+      onUpdateCatalog(updatedCatalog);
+    }
 
     try {
-      api.updateProduct(productId, {
+      await api.updateProduct(productId, {
         distributorPrice: changes.distributorPrice !== undefined ? parseFloat(changes.distributorPrice) : undefined,
         wholesalePrice: changes.distributorPrice !== undefined ? parseFloat(changes.distributorPrice) : undefined,
         mrp: changes.mrp !== undefined ? parseFloat(changes.mrp) : undefined,
@@ -499,8 +501,10 @@ function ProductManagerView({ user, catalog, onUpdateCatalog, onNavigate }) {
         stock: changes.stock !== undefined ? parseInt(changes.stock, 10) : undefined,
         status: changes.status !== undefined ? changes.status : undefined,
       });
+      showToast(`Updated product in database!`);
     } catch (err) {
       console.warn('[ProductManager] Remote updateProduct error:', err);
+      showToast(`Failed to update product in database.`);
     }
 
     // Clear inline tracking for this row
@@ -509,21 +513,22 @@ function ProductManagerView({ user, catalog, onUpdateCatalog, onNavigate }) {
       delete copy[productId];
       return copy;
     });
-
-    showToast(`Updated product everywhere across all IDs!`);
   };
 
-  // Delete product
-  const handleDeleteProduct = (productId, productName) => {
-    if (confirm(`Are you sure you want to remove "${productName}" from the store?`)) {
-      const updatedCatalog = catalog.filter((p) => p.id !== productId);
-      onUpdateCatalog(updatedCatalog);
-      saveStoredCatalog(updatedCatalog);
-      showToast(`Removed "${productName}" from catalog.`);
+  // Delete product from database table
+  const handleDeleteProduct = async (productId, productName) => {
+    if (confirm(`Are you sure you want to remove "${productName}" from the database table?`)) {
+      const updatedCatalog = productsList.filter((p) => p.id !== productId);
+      setProductsList(updatedCatalog);
+      if (onUpdateCatalog) {
+        onUpdateCatalog(updatedCatalog);
+      }
       try {
-        api.deleteProduct(productId);
+        await api.deleteProduct(productId);
+        showToast(`Removed "${productName}" from database.`);
       } catch (err) {
         console.warn('[ProductManager] Remote deleteProduct error:', err);
+        showToast(`Failed to delete product from database.`);
       }
     }
   };
@@ -643,7 +648,7 @@ function ProductManagerView({ user, catalog, onUpdateCatalog, onNavigate }) {
           onClick={() => setActiveTab('table')}
         >
           <Sliders size={16} />
-          <span>Catalog &amp; Price Controller ({catalog.length})</span>
+          <span>Catalog &amp; Price Controller ({productsList.length})</span>
         </button>
 
         <button
@@ -652,7 +657,7 @@ function ProductManagerView({ user, catalog, onUpdateCatalog, onNavigate }) {
           onClick={() => setActiveTab('add')}
         >
           <Plus size={16} />
-          <span>Add New Product &amp; Price</span>
+          <span>Add New Product</span>
         </button>
       </div>
 
@@ -662,44 +667,11 @@ function ProductManagerView({ user, catalog, onUpdateCatalog, onNavigate }) {
           <div className="pm-card-header">
             <PackagePlus size={22} className="card-header-icon" />
             <div>
-              <h3 className="card-title">Add Product, Set Price &amp; Volume Details</h3>
+              <h3 className="card-title">Add Product to Database Table</h3>
               <p className="card-subtitle">
-                Publish a new product item into the KASHVIMLM catalog. Set wholesale distributor price,
+                Fill the form below to publish a new product directly into the database tables. Set wholesale distributor price,
                 MRP, and binary commission volume (BV).
               </p>
-            </div>
-          </div>
-
-          {/* Quick-fill Placeholders Bar */}
-          <div className="pm-quick-template-bar">
-            <span className="quick-template-label">
-              <Sparkles size={14} /> Quick Template Fill (Data = 0):
-            </span>
-            <div className="quick-template-buttons">
-              <button
-                type="button"
-                className="btn-quick-template"
-                onClick={() => handleQuickFill('hozri_tshirt')}
-                title="Fill Hozri T-Shirt with data set to 0"
-              >
-                👕 Hozri T-Shirt (0 Data)
-              </button>
-              <button
-                type="button"
-                className="btn-quick-template"
-                onClick={() => handleQuickFill('elec_headphones')}
-                title="Fill Electronic Device with data set to 0"
-              >
-                🎧 Electronic Device (0 Data)
-              </button>
-              <button
-                type="button"
-                className="btn-quick-template reset"
-                onClick={() => handleQuickFill('reset_zero')}
-                title="Reset all form fields to 0"
-              >
-                <RotateCcw size={12} /> Reset Form to 0
-              </button>
             </div>
           </div>
 
@@ -960,11 +932,10 @@ function ProductManagerView({ user, catalog, onUpdateCatalog, onNavigate }) {
                   {PRESET_IMAGES.map((img, idx) => (
                     <div
                       key={idx}
-                      className={`preset-thumb-card ${
-                        newProduct.selectedPresetImg === img.src && !newProduct.uploadedGalleryImg && !newProduct.customImgUrl
+                      className={`preset-thumb-card ${newProduct.selectedPresetImg === img.src && !newProduct.uploadedGalleryImg && !newProduct.customImgUrl
                           ? 'selected'
                           : ''
-                      }`}
+                        }`}
                       onClick={() =>
                         setNewProduct({
                           ...newProduct,
@@ -1050,9 +1021,10 @@ function ProductManagerView({ user, catalog, onUpdateCatalog, onNavigate }) {
               <button
                 type="submit"
                 className="btn-pm-publish"
+                disabled={isSubmitting}
               >
                 <PackagePlus size={18} />
-                <span>Publish Product to Live Store</span>
+                <span>{isSubmitting ? 'Saving to Database...' : 'Save Product to Database'}</span>
               </button>
             </div>
           </form>
@@ -1077,22 +1049,12 @@ function ProductManagerView({ user, catalog, onUpdateCatalog, onNavigate }) {
             <div className="pm-top-action-buttons">
               <button
                 type="button"
-                className="btn-pm-load-placeholders"
-                onClick={handleLoadHozriAndElectronics}
-                title="Populate catalog with Hozri and Electronic placeholders (all data = 0)"
-              >
-                <Sparkles size={15} />
-                <span>Load Hozri &amp; Electronics (0 Data)</span>
-              </button>
-
-              <button
-                type="button"
                 className="btn-pm-delete-all"
                 onClick={handleDeleteAll}
-                title="Delete all catalog items at one click (make data 0)"
+                title="Delete all catalog items from database tables"
               >
                 <Trash2 size={15} />
-                <span>Delete All (Reset to 0)</span>
+                <span>Delete All</span>
               </button>
 
               <button
@@ -1124,8 +1086,8 @@ function ProductManagerView({ user, catalog, onUpdateCatalog, onNavigate }) {
                 >
                   <Trash2 size={15} />
                   <span>
-                    {selectedProductIds.length === catalog.length
-                      ? `Delete All (${catalog.length} items)`
+                    {selectedProductIds.length === productsList.length
+                      ? `Delete All (${productsList.length} items)`
                       : `Delete Selected (${selectedProductIds.length})`}
                   </span>
                 </button>
@@ -1141,31 +1103,33 @@ function ProductManagerView({ user, catalog, onUpdateCatalog, onNavigate }) {
           )}
 
           <div className="pm-table-container">
-            {catalog.length === 0 ? (
+            {isLoading && productsList.length === 0 ? (
               <div className="pm-empty-catalog-state">
                 <div className="empty-icon-circle">
                   <Boxes size={44} />
                 </div>
-                <h3 className="empty-title">Catalog Data is at 0 (No Products)</h3>
+                <h3 className="empty-title">Loading Products from Database...</h3>
                 <p className="empty-desc">
-                  All items have been removed. You can load official Hozri and Electronic placeholder products with all data set to 0, or publish your own custom items.
+                  Connecting to backend database tables and loading live product data.
+                </p>
+              </div>
+            ) : productsList.length === 0 ? (
+              <div className="pm-empty-catalog-state">
+                <div className="empty-icon-circle">
+                  <Boxes size={44} />
+                </div>
+                <h3 className="empty-title">Database Table is Empty (0 Products)</h3>
+                <p className="empty-desc">
+                  No products are currently found in the database. Use the form to add products directly to the database tables.
                 </p>
                 <div className="empty-state-buttons">
-                  <button
-                    type="button"
-                    className="btn-empty-load-placeholders"
-                    onClick={handleLoadHozriAndElectronics}
-                  >
-                    <Sparkles size={16} />
-                    <span>Load Hozri &amp; Electronic Placeholders (Data = 0)</span>
-                  </button>
                   <button
                     type="button"
                     className="btn-empty-add-product"
                     onClick={() => setActiveTab('add')}
                   >
                     <Plus size={16} />
-                    <span>+ Add Custom Product</span>
+                    <span>+ Add Product Using Form</span>
                   </button>
                 </div>
               </div>
@@ -1183,7 +1147,7 @@ function ProductManagerView({ user, catalog, onUpdateCatalog, onNavigate }) {
                         onChange={handleToggleSelectAll}
                         title={
                           filteredCatalog.length > 0 &&
-                          filteredCatalog.every((p) => selectedProductIds.includes(p.id))
+                            filteredCatalog.every((p) => selectedProductIds.includes(p.id))
                             ? 'Deselect All Items'
                             : 'Select All Items'
                         }
@@ -1208,9 +1172,8 @@ function ProductManagerView({ user, catalog, onUpdateCatalog, onNavigate }) {
                     return (
                       <tr
                         key={product.id}
-                        className={`${isModified ? 'row-modified' : ''} ${
-                          isSelected ? 'row-selected' : ''
-                        }`}
+                        className={`${isModified ? 'row-modified' : ''} ${isSelected ? 'row-selected' : ''
+                          }`}
                       >
                         {/* Checkbox */}
                         <td className="td-checkbox">

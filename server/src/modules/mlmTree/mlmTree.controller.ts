@@ -16,8 +16,17 @@ export class MlmTreeController {
 
   static async getMemberNetworkTree(req: Request, res: Response): Promise<void> {
     const memberId = req.params.distributorId;
+    const requestingUser = (req as any).user;
+    const isAdmin = requestingUser?.role === 'ADMIN' || requestingUser?.role === 'SUPER_ADMIN';
+    if (requestingUser && !isAdmin) {
+      const isSelf = (requestingUser.distributorId === memberId) || (requestingUser.memberId === memberId) || (requestingUser.id === memberId);
+      if (!isSelf) {
+        res.status(403).json({ success: false, message: 'Forbidden: Distributors can see their own tree only.' });
+        return;
+      }
+    }
     const rawDepth = parseInt(req.query.depth as string, 10);
-    const depth = isNaN(rawDepth) ? 3 : Math.min(Math.max(1, rawDepth), 6);
+    const depth = isNaN(rawDepth) ? 2 : Math.min(Math.max(1, rawDepth), 6);
     const tree = await MlmTreeService.getNetworkTree(memberId, depth);
     res.status(200).json({ success: true, data: tree });
   }

@@ -27,11 +27,12 @@ export function NetworkPage() {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.role === 'SUPER_ADMIN' || Boolean(currentUser?.isOwner);
 
   const userRootId = currentUser?.memberId || currentUser?.distributorId || 'KV-1001';
   const urlMemberParam = searchParams.get('root') || searchParams.get('member');
-  const [currentRootId, setCurrentRootId] = useState(urlMemberParam || userRootId);
-  const [depth, setDepth] = useState(3);
+  const [currentRootId, setCurrentRootId] = useState((isAdmin && urlMemberParam) ? urlMemberParam : userRootId);
+  const [depth, setDepth] = useState(2);
 
   // Tree & volume data
   const [treeData, setTreeData] = useState(null);
@@ -509,13 +510,15 @@ export function NetworkPage() {
             </div>
 
             <div className="drawer-actions">
-              <button
-                className="drawer-primary-btn"
-                onClick={() => handleReRoot(selectedNode)}
-              >
-                <ExternalLink size={16} />
-                <span>Re-Root & View Subtree</span>
-              </button>
+              {isAdmin && (
+                <button
+                  className="drawer-primary-btn"
+                  onClick={() => handleReRoot(selectedNode)}
+                >
+                  <ExternalLink size={16} />
+                  <span>Re-Root & View Subtree</span>
+                </button>
+              )}
               <button
                 className="drawer-secondary-btn"
                 onClick={() => setSelectedNode(null)}

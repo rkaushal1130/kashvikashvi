@@ -112,11 +112,11 @@ export class ProductService {
 
       sql += ` ORDER BY created_at ASC`;
       const res = await query(sql, params);
-      if (res && res.rows.length > 0) {
+      if (res && Array.isArray(res.rows)) {
         return res.rows;
       }
     } catch (e) {
-      // Fallback to demo products
+      // Fallback if database table is unreachable
     }
 
     let list = [...this.demoProducts];

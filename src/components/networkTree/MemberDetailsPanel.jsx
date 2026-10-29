@@ -44,6 +44,7 @@ function MemberDetailsPanel({
   onMoveDistributor,
   onViewAuditLogs,
   adminMode = false,
+  isAdmin = false,
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -378,18 +379,20 @@ function MemberDetailsPanel({
 
         {/* Panel Action Buttons */}
         <div className="panel-actions-col">
-          <button
-            type="button"
-            className="panel-action-btn primary-btn view-network-action-btn"
-            onClick={() => {
-              if (onViewNetwork) onViewNetwork(member);
-              onClose();
-            }}
-            title="Make this distributor the root of the tree"
-          >
-            <Network size={16} />
-            <span>{adminMode ? 'Inspect Subtree' : 'View Network'}</span>
-          </button>
+          {(isAdmin || adminMode) && onViewNetwork && (
+            <button
+              type="button"
+              className="panel-action-btn primary-btn view-network-action-btn"
+              onClick={() => {
+                if (onViewNetwork) onViewNetwork(member);
+                onClose();
+              }}
+              title="Make this distributor the root of the tree"
+            >
+              <Network size={16} />
+              <span>{adminMode ? 'Inspect Subtree' : 'View Network'}</span>
+            </button>
+          )}
 
           {!adminMode && onMoveDistributor && (
             <button

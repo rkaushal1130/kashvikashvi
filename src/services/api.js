@@ -83,6 +83,60 @@ function getAuthHeaders() {
   return { 'Content-Type': 'application/json' };
 }
 
+export function normalizeProduct(p) {
+  if (!p) return p;
+  const image =
+    p.image ||
+    p.imageUrl ||
+    p.image_url ||
+    (Array.isArray(p.images) && p.images[0]?.url) ||
+    '';
+  const categoryName =
+    typeof p.category === 'object' && p.category?.name
+      ? p.category.name
+      : (typeof p.category === 'string' ? p.category : (p.categoryCode || 'General'));
+  const categoryId =
+    typeof p.category === 'object' && p.category?.id
+      ? p.category.id
+      : (p.categoryId || categoryName);
+  const distributorPrice = Number(
+    p.distributorPrice ?? p.distributor_price ?? p.wholesalePrice ?? p.wholesale_price ?? 0
+  );
+  const mrp = Number(p.mrp ?? p.retailPrice ?? p.retail_price ?? 0);
+  const volumeBV = Number(p.volumeBV ?? p.volume_bv ?? p.bv ?? 0);
+  const stock = Number(
+    p.stock ?? p.stock_quantity ?? p.inventory?.quantityOnHand ?? 0
+  );
+
+  return {
+    ...p,
+    id: p.id || p.sku || `PROD-${Date.now()}`,
+    sku: p.sku || p.id || '',
+    name: p.name || 'Untitled Product',
+    category: categoryName,
+    categoryId,
+    distributorPrice,
+    wholesalePrice: distributorPrice,
+    mrp,
+    volumeBV,
+    bv: volumeBV,
+    stock,
+    stockQuantity: stock,
+    status: p.status || 'Active',
+    image,
+    imageUrl: image,
+    shortDesc: p.shortDesc || p.short_desc || p.description || '',
+    description: p.description || p.shortDesc || p.short_desc || '',
+    servingSize: p.servingSize || p.size_spec || '',
+    benefits: Array.isArray(p.benefits)
+      ? p.benefits
+      : (typeof p.benefits === 'string'
+        ? (() => { try { return JSON.parse(p.benefits); } catch { return [p.benefits]; } })()
+        : []),
+    usage: p.usage || p.usage_instructions || '',
+  };
+}
+
 export const api = {
   // 1. Authentication
   async login(username, password, sponsorId) {
@@ -121,7 +175,7 @@ export const api = {
     }
   },
 
-  // 2. Products & Wholesale Catalog
+  // 2. Products & Wholesale Catalog (Connected to Backend Database Tables)
   async getProducts(category, search) {
     try {
       const params = new URLSearchParams();
@@ -131,30 +185,12 @@ export const api = {
       const res = await fetch(`${API_BASE_URL}/products?${params.toString()}`);
       const data = await res.json();
       if (res.ok && data.success && Array.isArray(data.data)) {
-        return data.data;
+        return data.data.map(normalizeProduct);
       }
     } catch (err) {
-      console.warn('[API] Fetch products offline:', err.message);
+      console.warn('[API] Fetch products failed:', err.message);
     }
-
-    // Resilient fallback: return persistent local catalog shared across all accounts & IDs
-    try {
-      const raw = localStorage.getItem('kashvi_catalog_products');
-      if (raw) {
-        let list = JSON.parse(raw);
-        if (category && category !== 'All Categories') {
-          list = list.filter((p) => p.category === category);
-        }
-        if (search && search.trim()) {
-          const q = search.trim().toLowerCase();
-          list = list.filter((p) => (p.name && p.name.toLowerCase().includes(q)) || (p.id && p.id.toLowerCase().includes(q)));
-        }
-        return list;
-      }
-    } catch {
-      // ignore
-    }
-    return null;
+    return [];
   },
 
   async addProduct(productData) {
@@ -166,42 +202,19 @@ export const api = {
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        return data.data;
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new Event('kashvi_catalog_update'));
+        }
+        return normalizeProduct(data.data);
       }
+      throw new Error(data?.message || 'Failed to create product in database');
     } catch (err) {
       console.warn('[API] Add product failed:', err.message);
+      throw err;
     }
-    return null;
   },
 
   async updateProduct(id, productData) {
-    // Keep local catalog perfectly in sync across IDs
-    try {
-      const raw = localStorage.getItem('kashvi_catalog_products');
-      if (raw) {
-        const catalog = JSON.parse(raw);
-        const idx = catalog.findIndex((p) => p.id === id || p.sku === id);
-        if (idx >= 0) {
-          catalog[idx] = {
-            ...catalog[idx],
-            distributorPrice: productData.distributorPrice !== undefined ? productData.distributorPrice : catalog[idx].distributorPrice,
-            wholesalePrice: productData.distributorPrice !== undefined ? productData.distributorPrice : catalog[idx].wholesalePrice,
-            mrp: productData.mrp !== undefined ? productData.mrp : catalog[idx].mrp,
-            volumeBV: productData.bv !== undefined ? productData.bv : (productData.volumeBV !== undefined ? productData.volumeBV : catalog[idx].volumeBV),
-            stock: productData.stock !== undefined ? productData.stock : catalog[idx].stock,
-            status: productData.status !== undefined ? productData.status : catalog[idx].status,
-          };
-          localStorage.setItem('kashvi_catalog_products', JSON.stringify(catalog));
-          if (typeof window !== 'undefined') {
-            window.dispatchEvent(new Event('kashvi_catalog_update'));
-            window.dispatchEvent(new CustomEvent('kashvi_catalog_updated', { detail: catalog }));
-          }
-        }
-      }
-    } catch {
-      // ignore
-    }
-
     try {
       const res = await fetch(`${API_BASE_URL}/products/${id}`, {
         method: 'PUT',
@@ -209,8 +222,11 @@ export const api = {
         body: JSON.stringify(productData),
       });
       const data = await res.json();
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('kashvi_catalog_update'));
+      }
       if (res.ok && data.success) {
-        return data.data;
+        return normalizeProduct(data.data);
       }
     } catch (err) {
       console.warn('[API] Update product failed:', err.message);
@@ -224,6 +240,9 @@ export const api = {
         method: 'DELETE',
         headers: getAuthHeaders(),
       });
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('kashvi_catalog_update'));
+      }
     } catch (err) {
       console.warn('[API] Delete product failed:', err.message);
     }
@@ -236,6 +255,9 @@ export const api = {
         headers: getAuthHeaders(),
         body: JSON.stringify({ ids }),
       });
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('kashvi_catalog_update'));
+      }
     } catch (err) {
       console.warn('[API] Bulk delete failed:', err.message);
     }
@@ -247,6 +269,9 @@ export const api = {
         method: 'POST',
         headers: getAuthHeaders(),
       });
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('kashvi_catalog_update'));
+      }
     } catch (err) {
       console.warn('[API] Reset zero failed:', err.message);
     }
@@ -260,12 +285,15 @@ export const api = {
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        return data.data;
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new Event('kashvi_catalog_update'));
+        }
+        return Array.isArray(data.data) ? data.data.map(normalizeProduct) : [];
       }
     } catch (err) {
       console.warn('[API] Load placeholders failed:', err.message);
     }
-    return null;
+    return [];
   },
 
   // 3. Orders & Cart Checkout
@@ -1465,7 +1493,7 @@ export const api = {
     };
   },
 
-  getModeledTree(distributorId = 'KV-1001', maxDepth = 3, currentDepth = 1) {
+  getModeledTree(distributorId = 'KV-1001', maxDepth = 2, currentDepth = 1) {
     const rawId = distributorId || this.getCurrentDistributorId() || 'KV-1001';
     const normId = safeId(rawId) || 'KV-1001';
     const directory = this.getDirectory();
@@ -1502,7 +1530,7 @@ export const api = {
       return result;
     };
 
-    // Recursive helper to build subtrees
+    // Recursive helper to build subtrees (maxDepth = 2 to show only leaf of parent, not leaf of leaf)
     const buildSubtree = (parentId, depth) => {
       if (depth >= maxDepth) return { left: null, right: null };
       const children = directory.filter(
@@ -1515,7 +1543,6 @@ export const api = {
 
       const mapChild = (mem, pos) => {
         if (!mem) return null;
-        const sub = buildSubtree(mem.distributorId, depth + 1);
         const memBV = Number(mem.bv) || 100;
         const pStatus = mem.paymentStatus || (mem.status === 'ACTIVE' ? 'PAID' : 'PENDING');
 
@@ -1555,12 +1582,12 @@ export const api = {
           rightBV,
           personalBV: memBV,
           totalBV: memBV + leftBV + rightBV,
-          hasChildren: Boolean(sub.left || sub.right),
-          hasDeeperMembers: Boolean(leftCount > 1 || rightCount > 1),
-          isExpanded: true,
-          left: sub.left,
-          right: sub.right,
-          children: [sub.left, sub.right].filter(Boolean),
+          hasChildren: false,
+          hasDeeperMembers: false,
+          isExpanded: false,
+          left: null,
+          right: null,
+          children: [],
         };
       };
 
@@ -1808,7 +1835,7 @@ export const api = {
     return list;
   },
 
-  async getMemberNetworkTree(distributorId, depth = 3) {
+  async getMemberNetworkTree(distributorId, depth = 2) {
     try {
       const res = await fetch(
         `${API_BASE_URL}/network-tree/member/${encodeURIComponent(distributorId)}?depth=${depth}`,

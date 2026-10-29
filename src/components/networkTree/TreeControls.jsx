@@ -41,6 +41,7 @@ function TreeControls({
   breadcrumbs = [],
   onBreadcrumbClick,
   selectedMemberName = null,
+  isAdmin = false,
 }) {
   const handleZoomIn = () => {
     onZoomChange(Math.min(2.0, Number((zoomLevel + 0.1).toFixed(2))));
@@ -116,28 +117,32 @@ function TreeControls({
         </button>
 
         {/* Expand Button */}
-        <button
-          type="button"
-          className="control-action-btn expand-btn"
-          onClick={onExpand}
-          disabled={depth >= 5}
-          title="Expand tree levels to show more downline members"
-        >
-          <ChevronsDown size={15} />
-          <span>Expand</span>
-        </button>
+        {onExpand && (
+          <button
+            type="button"
+            className="control-action-btn expand-btn"
+            onClick={onExpand}
+            disabled={depth >= 5}
+            title="Expand tree levels to show more downline members"
+          >
+            <ChevronsDown size={15} />
+            <span>Expand</span>
+          </button>
+        )}
 
         {/* Collapse Button */}
-        <button
-          type="button"
-          className="control-action-btn collapse-btn"
-          onClick={onCollapse}
-          disabled={depth <= 2}
-          title="Collapse tree to compact view"
-        >
-          <ChevronsUp size={15} />
-          <span>Collapse</span>
-        </button>
+        {onCollapse && (
+          <button
+            type="button"
+            className="control-action-btn collapse-btn"
+            onClick={onCollapse}
+            disabled={depth <= 2}
+            title="Collapse tree to compact view"
+          >
+            <ChevronsUp size={15} />
+            <span>Collapse</span>
+          </button>
+        )}
 
         {/* Refresh Tree Button */}
         <button
