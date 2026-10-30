@@ -136,4 +136,45 @@ test.describe('Admin Commission Distribution & Funding Portal Distributor Tables
     expect(commMetrics).toMatch(/Paid \/ Disbursed/);
     expect(commMetrics).toMatch(/distributors/);
   });
+
+  test('TC-DIST-COMM-04: Eligible members table renders 5 distributors and Distribute All button completes 100% payout', async ({ page }) => {
+    test.setTimeout(60000);
+    await loginAsAdmin(page);
+
+    await page.goto('/admin/commission-distribution');
+    await expect(page.locator('h1, .comm-dist-title')).toContainText('Commission Distribution', { timeout: 15000 });
+
+    // 1. Verify summary card & tab badge show 5 eligible members
+    const eligibleTabBadge = page.locator('.comm-tab-btn.active .comm-tab-badge');
+    await expect(eligibleTabBadge).toHaveText('5', { timeout: 10000 });
+
+    // 2. Verify all 5 distributor rows are visible in the table
+    const commTable = page.locator('.comm-table');
+    await expect(commTable).toBeVisible({ timeout: 10000 });
+    const rows = commTable.locator('tbody tr');
+    await expect(rows).toHaveCount(5);
+
+    // Verify distributor IDs and names
+    await expect(commTable).toContainText('DST-10001');
+    await expect(commTable).toContainText('Vikram Malhotra');
+    await expect(commTable).toContainText('Anita Roy');
+    await expect(commTable).toContainText('Rahul Kaushal');
+
+    // 3. Verify total disbursable verified amount shows ₹3,92,500.00
+    const footerText = await page.locator('.comm-action-footer').textContent();
+    expect(footerText).toContain('3,92,500.00');
+
+    // 4. Verify "Distribute All Eligible Commissions" button is visible in header
+    const distributeBtn = page.locator('.comm-distribute-all-btn').first();
+    await expect(distributeBtn).toBeVisible({ timeout: 10000 });
+    await expect(distributeBtn).toContainText('Distribute All Eligible Commissions');
+
+    // 5. Click the button to disburse
+    await distributeBtn.click();
+
+    // 6. Verify success banner and progress reaches 100%
+    await expect(page.locator('.security-box.success')).toBeVisible({ timeout: 15000 });
+    const progressPill = page.locator('.comm-progress-pill');
+    await expect(progressPill).toHaveText('100% Distributed');
+  });
 });
