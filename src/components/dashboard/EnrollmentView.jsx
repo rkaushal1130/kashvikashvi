@@ -26,12 +26,13 @@ import {
 import { api } from '../../services/api';
 import './EnrollmentView.css';
 
+// NOTE: Enrollment pricing temporarily reduced to ₹1 for testing purposes.
 export const ENROLLMENT_PACKS = {
   kit_basic: {
     id: 'kit_basic',
     name: 'Associate Welcome Pack',
     badge: 'Basic Launch',
-    price: 1499,
+    price: 1,
     bv: 50,
     desc: 'Official product guides, distributor agreement, and digital KASHVIMLM Connect license.',
   },
@@ -39,7 +40,7 @@ export const ENROLLMENT_PACKS = {
     id: 'kit_standard',
     name: 'Associate Welcome Pack',
     badge: 'Basic Launch',
-    price: 1499,
+    price: 1,
     bv: 50,
     desc: 'Official product guides, distributor agreement, and digital KASHVIMLM Connect license.',
   },
@@ -47,7 +48,7 @@ export const ENROLLMENT_PACKS = {
     id: 'kit_pro',
     name: 'Fast-Track Pro Pack',
     badge: 'Most Popular',
-    price: 2999,
+    price: 1,
     bv: 100,
     desc: 'Includes 3 best-selling nutritional products, 3 Business Centers, and marketing collateral.',
   },
@@ -55,7 +56,7 @@ export const ENROLLMENT_PACKS = {
     id: 'kit_elite',
     name: 'Elite Leadership Pack',
     badge: 'Executive',
-    price: 4999,
+    price: 1,
     bv: 200,
     desc: 'Full cellular nutrition line, skincare samples, active shaker bottles, and personal mentoring pass.',
   },
@@ -63,7 +64,7 @@ export const ENROLLMENT_PACKS = {
     id: 'customer_preferred',
     name: 'Preferred Customer Membership',
     badge: 'Customer Direct',
-    price: 499,
+    price: 1,
     bv: 0,
     desc: 'Enjoys 10% wholesale discount on all products without selling obligations or minimum BV requirements.',
   },
