@@ -20,7 +20,6 @@ function isDbConnectionError(error: any): boolean {
   if (error instanceof AppError) return false;
   const msg = ((error.message || '') + ' ' + (error.stack || '') + ' ' + String(error)).toLowerCase();
   return (
-    !(error instanceof AppError) ||
     error.name === 'PrismaClientInitializationError' ||
     error.name === 'PrismaClientRustPanicError' ||
     error.name === 'PrismaClientUnknownRequestError' ||
@@ -33,7 +32,6 @@ function isDbConnectionError(error: any): boolean {
     msg.includes('connection refused') ||
     msg.includes('econnrefused') ||
     msg.includes('etimedout') ||
-    msg.includes('timeout') ||
     msg.includes('socket has been closed') ||
     msg.includes('database') ||
     msg.includes('relation') ||
@@ -853,8 +851,9 @@ export class AuthService {
     const displayName = `${firstName} ${lastName}`.trim();
 
     // 9. Atomic Registration Transaction
-    return await prisma.$transaction(async (tx) => {
-      // Pick role strictly from the database roles table (always DISTRIBUTOR on public registration)
+    return await prisma.$transaction(
+      async (tx) => {
+        // Pick role strictly from the database roles table (always DISTRIBUTOR on public registration)
       const targetRoleName: UserRole = 'DISTRIBUTOR';
       let dbRole = await tx.role.findUnique({
         where: { name: targetRoleName },
@@ -1124,7 +1123,7 @@ export class AuthService {
         accessToken: tokens.accessToken,
         token: tokens.accessToken,
       };
-    });
+    }, { timeout: 30000, maxWait: 10000 });
   }
 
   /**

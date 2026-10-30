@@ -1,6 +1,7 @@
 import { PrismaClient, Prisma } from '@prisma/client';
 import argon2 from 'argon2';
 
+
 const prisma = new PrismaClient();
 
 export async function hashPassword(password: string): Promise<string> {
@@ -2138,7 +2139,17 @@ export async function seedDatabase(): Promise<void> {
 }
 
 if (process.env.NODE_ENV !== 'test' && require.main === module) {
-  seedDatabase()
+  const isSuperAdminOnly =
+    process.argv.includes('--admin-only') ||
+    process.argv.includes('--super-admin-only') ||
+    process.argv.includes('--admin') ||
+    process.argv.includes('--super-admin');
+
+  const runner = isSuperAdminOnly
+    ? import('./seedAdmin').then((m) => m.seedSuperAdmin())
+    : seedDatabase();
+
+  runner
     .catch((error) => {
       console.error('❌ Error during database seeding:', error);
       process.exit(1);
