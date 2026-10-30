@@ -53,13 +53,20 @@ export function Login() {
 
   const validateForm = () => {
     const errors = {};
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    const cleanEmail = formData.email.trim();
+    const cleanId = formData.email.trim();
 
-    if (!cleanEmail) {
-      errors.email = 'Please enter your email address.';
-    } else if (!emailRegex.test(cleanEmail)) {
-      errors.email = 'Please enter a valid email address.';
+    if (!cleanId) {
+      errors.email = 'Please enter your mobile number or email.';
+    } else if (cleanId.includes('@')) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(cleanId)) {
+        errors.email = 'Please enter a valid email address.';
+      }
+    } else {
+      const digits = cleanId.replace(/\D/g, '');
+      if (digits.length > 0 && digits.length < 7) {
+        errors.email = 'Please enter a valid mobile number or email.';
+      }
     }
 
     if (!formData.password) {
@@ -83,7 +90,7 @@ export function Login() {
     const errors = validateForm();
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
-      setGeneralError('Please enter a valid email address and password.');
+      setGeneralError('Please enter your mobile number or email and password.');
       return;
     }
 
@@ -91,9 +98,11 @@ export function Login() {
     setLoading(true);
 
     try {
-      const cleanEmail = formData.email.trim().toLowerCase();
+      const cleanId = formData.email.trim();
       const credentials = {
-        email: cleanEmail,
+        email: cleanId.toLowerCase(),
+        identifier: cleanId,
+        phone: cleanId,
         password: formData.password,
       };
 
@@ -113,8 +122,8 @@ export function Login() {
       const message = err.message || err.response?.data?.message || '';
 
       if (status === 401) {
-        // Generic credentials error to prevent email/account enumeration
-        setGeneralError('Invalid email or password.');
+        // Generic credentials error to prevent account enumeration
+        setGeneralError('Invalid mobile number, email, or password.');
       } else if (status === 403) {
         setIsBlocked(true);
         setGeneralError(
@@ -174,18 +183,18 @@ export function Login() {
         )}
 
         <form onSubmit={handleSubmit} className="auth-form" noValidate>
-          {/* Email */}
+          {/* Mobile Number or Email */}
           <div className="form-group">
-            <label htmlFor="email">Email</label>
+            <label htmlFor="email">Mobile Number or Email</label>
             <div className={`input-wrapper ${fieldErrors.email ? 'has-error' : ''}`}>
               <Mail size={18} className="input-icon" />
               <input
                 id="email"
                 name="email"
-                type="email"
-                autoComplete="email"
+                type="text"
+                autoComplete="username"
                 required
-                placeholder="name@example.com"
+                placeholder="Enter mobile number or email"
                 value={formData.email}
                 onChange={handleChange}
                 disabled={loading || Boolean(successMsg)}

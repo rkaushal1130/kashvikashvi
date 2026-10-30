@@ -27,6 +27,9 @@ router.get('/history', authenticate, LevelController.getMyHistory);
 // GET /api/v1/levels/config - Public configuration of all 6 ordered levels (Starter to Ruby)
 router.get('/config', optionalAuth, LevelController.getLevelsConfig);
 
+// POST /api/v1/levels/evaluate - Evaluation & simulation of level progression
+router.post('/evaluate', optionalAuth, LevelController.evaluateLevel);
+
 // GET /api/v1/levels/member/:idOrCode - Lookup level & qualification status for any team member
 router.get('/member/:idOrCode', authenticate, LevelController.getMemberLevel);
 

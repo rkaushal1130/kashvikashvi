@@ -3,6 +3,7 @@ export interface MlmLevelConfig {
   level: number;
   code: string;
   name: string;
+  commissionPercent?: number;
   requiredBB: number;
   requiredLeftMatching: number;
   requiredRightMatching: number;

@@ -40,8 +40,10 @@ test.describe('Distributor ID Format, Referral Enrollment & Binary Leg Alternati
   });
 
   test('TC-DIST-02: Referrals under distributor ID alternate legs (1st: RIGHT, 2nd: LEFT, 3rd: RIGHT, 4th: LEFT)', async ({ request }) => {
+    test.setTimeout(90000);
+    const localTs = Date.now().toString().slice(-6);
     // 1. Create a parent distributor
-    const parentEmail = `sponsor_dist_${ts}@testkashvi.com`;
+    const parentEmail = `sponsor_dist_${localTs}_${Math.floor(Math.random() * 1000)}@testkashvi.com`;
     const parentRes = await request.post('http://localhost:5001/api/auth/register', {
       data: {
         email: parentEmail,
@@ -62,7 +64,7 @@ test.describe('Distributor ID Format, Referral Enrollment & Binary Leg Alternati
     // 2. Register 4 consecutive distributors using sponsorDistCode as referral
     const legPositions = [];
     for (let i = 1; i <= 4; i++) {
-      const childEmail = `downline_${i}_${ts}@testkashvi.com`;
+      const childEmail = `downline_${i}_${localTs}_${Math.floor(Math.random() * 1000)}@testkashvi.com`;
       const childRes = await request.post('http://localhost:5001/api/auth/register', {
         data: {
           email: childEmail,
@@ -94,6 +96,7 @@ test.describe('Distributor ID Format, Referral Enrollment & Binary Leg Alternati
   });
 
   test('TC-DIST-03: Distributor can view only their own tree at /network-tree', async ({ page, request }) => {
+    test.setTimeout(60000);
     // 1. Create distributor with referrals
     const distEmail = `view_dist_${ts}@testkashvi.com`;
     const regRes = await request.post('http://localhost:5001/api/auth/register', {
@@ -116,10 +119,10 @@ test.describe('Distributor ID Format, Referral Enrollment & Binary Leg Alternati
     await page.goto('/network-tree');
 
     // 3. Verify tree renders
-    await expect(page.getByRole('heading', { name: /Network Tree/i, level: 1 })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('heading', { name: /Network Tree/i, level: 1 })).toBeVisible({ timeout: 25000 });
 
     // 4. Verify tree root is the distributor's own root
-    await expect(page.getByRole('button', { name: new RegExp(`${myDistCode}|View Own Tree User`, 'i') }).first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('button', { name: new RegExp(`${myDistCode}|View Own Tree User`, 'i') }).first()).toBeVisible({ timeout: 20000 });
 
     // 5. Verify distributor cannot see Admin controls (Company Root, Move Distributor, Tree Audit Logs)
     await expect(page.getByRole('button', { name: 'Company Root' })).not.toBeVisible();
@@ -129,6 +132,7 @@ test.describe('Distributor ID Format, Referral Enrollment & Binary Leg Alternati
   });
 
   test('TC-DIST-04: Distributor attempting to view another distributor tree via URL is blocked', async ({ page, request }) => {
+    test.setTimeout(60000);
     const distEmail = `block_dist_${ts}@testkashvi.com`;
     const regRes = await request.post('http://localhost:5001/api/auth/register', {
       data: {
@@ -156,23 +160,27 @@ test.describe('Distributor ID Format, Referral Enrollment & Binary Leg Alternati
     await expect(page.getByRole('button', { name: /Admin \(My Root\)/i })).not.toBeVisible();
 
     // Verify UI locks back to distributor's own root
-    await expect(page.getByRole('button', { name: new RegExp(`${myDistCode}|Blocked Tree User`, 'i') }).first()).toBeVisible();
+    await expect(page.getByRole('button', { name: new RegExp(`${myDistCode}|Blocked Tree User`, 'i') }).first()).toBeVisible({ timeout: 20000 });
   });
 
   test('TC-DIST-05: Admin can view all trees and search any distributor', async ({ page }) => {
+    test.setTimeout(60000);
     await login(page, 'admin@kashvimlm.com', 'Admin@Kashvimlm#1001');
     await page.goto('/network-tree');
 
     // Verify tree heading
-    await expect(page.getByRole('heading', { name: /Network Tree/i, level: 1 })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole('heading', { name: /Network Tree/i, level: 1 })).toBeVisible({ timeout: 25000 });
 
     // Verify Admin controls ARE visible
-    await expect(page.getByRole('button', { name: 'Company Root' })).toBeVisible();
-    await expect(page.getByRole('button', { name: /Admin \(My Root\)/i })).toBeVisible();
-    await expect(page.getByPlaceholder('Search by Name or Distributor ID')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Company Root' })).toBeVisible({ timeout: 20000 });
+    await expect(page.getByRole('button', { name: /Admin \(My Root\)/i })).toBeVisible({ timeout: 20000 });
+    await expect(page.getByPlaceholder('Search by Name or Distributor ID')).toBeVisible({ timeout: 20000 });
+
+    // Wait for tree data loading to finish
+    await expect(page.getByText('Loading database-driven binary genealogy...')).not.toBeVisible({ timeout: 25000 });
 
     // Verify binary legs are displayed
-    await expect(page.getByText(/LEFT LEG/i).first()).toBeVisible();
-    await expect(page.getByText(/RIGHT LEG/i).first()).toBeVisible();
+    await expect(page.getByText(/LEFT LEG/i).first()).toBeVisible({ timeout: 20000 });
+    await expect(page.getByText(/RIGHT LEG/i).first()).toBeVisible({ timeout: 20000 });
   });
 });

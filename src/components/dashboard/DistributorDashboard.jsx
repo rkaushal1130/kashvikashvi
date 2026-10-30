@@ -19,10 +19,12 @@ import {
   BookOpen,
   LogOut,
   Shield,
+  ShieldCheck,
   ShieldAlert,
   TrendingUp,
   Globe,
   Network,
+  ShoppingBag,
   Landmark,
   Wallet,
   AlertTriangle,
@@ -551,6 +553,20 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
 
 
         <div className="kashvimlm-top-navbar-right">
+          {/* Back to Admin Dashboard Button (Only visible to admin role) */}
+          {isAuthorizedAdmin && (
+            <button
+              type="button"
+              className="admin-dashboard-return-btn"
+              onClick={() => navigate('/admin/dashboard')}
+              title="Back to Admin Dashboard"
+              aria-label="Back to Admin Dashboard"
+            >
+              <ShieldCheck size={16} />
+              <span>Back to Admin Dashboard</span>
+            </button>
+          )}
+
           {/* Select Market Button */}
           <button
             type="button"
@@ -753,26 +769,7 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
             <span className="rail-tooltip">Shop</span>
           </button>
 
-          {/* 4. Product Management (Admin / Authorized Owner Only) */}
-          {canManageProducts && (
-            <button
-              type="button"
-              className={`rail-icon-btn ${activeNavIcon === 'manage_products' ? 'active' : ''}`}
-              onClick={() => {
-                setActiveNavIcon('manage_products');
-                if (location.pathname !== '/dashboard' && location.pathname !== '/profile') {
-                  navigate('/dashboard');
-                }
-              }}
-              title="Product Management"
-              aria-label="Product Management"
-            >
-              <PackagePlus size={20} />
-              <span className="rail-tooltip">Product Management</span>
-            </button>
-          )}
-
-          {/* 5. Network Tree */}
+          {/* 4. Network Tree */}
           <button
             type="button"
             className={`rail-icon-btn ${activeNavIcon === 'network_tree' ? 'active' : ''}`}
@@ -787,7 +784,7 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
             <span className="rail-tooltip">Network Tree</span>
           </button>
 
-          {/* 6. Client Funding & Bank Account Portal (Only for registered members, removed from Admin) */}
+          {/* 5. Client Funding & Bank Account Portal (Only for registered members) */}
           {!isAuthorizedAdmin && (
             <button
               type="button"
@@ -803,20 +800,6 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
             >
               <Wallet size={20} />
               <span className="rail-tooltip">Funding & Bank Portal</span>
-            </button>
-          )}
-
-          {/* 7. Admin Corporate Funding Portal */}
-          {isAuthorizedAdmin && (
-            <button
-              type="button"
-              className="rail-icon-btn admin-funding-rail-btn"
-              onClick={() => navigate('/admin/funding-portal')}
-              title="Admin Funding Portal"
-              aria-label="Admin Funding Portal"
-            >
-              <Landmark size={20} />
-              <span className="rail-tooltip">Funding Portal</span>
             </button>
           )}
         </aside>

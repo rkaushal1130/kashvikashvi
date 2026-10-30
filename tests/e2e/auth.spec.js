@@ -26,7 +26,7 @@ test.describe('Authentication & Access Control E2E Suite', () => {
     // Should display validation errors
     const alert = page.locator('.auth-alert.error-alert');
     await expect(alert).toBeVisible();
-    await expect(alert).toContainText('Please enter a valid email address and password');
+    await expect(alert).toContainText(/Please enter your mobile number or email/i);
   });
 
   test('TC-AUTH-03: Invalid credentials trigger 401 error message without crashing', async ({ page }) => {
@@ -37,7 +37,7 @@ test.describe('Authentication & Access Control E2E Suite', () => {
 
     const alert = page.locator('.auth-alert.error-alert');
     await expect(alert).toBeVisible({ timeout: 10000 });
-    await expect(alert).toContainText('Invalid email or password');
+    await expect(alert).toContainText(/Invalid (mobile number, email|credentials)/i);
   });
 
   test('TC-AUTH-04: Super Admin login succeeds and redirects to dashboard', async ({ page }) => {

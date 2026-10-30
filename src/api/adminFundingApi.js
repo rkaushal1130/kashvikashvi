@@ -902,14 +902,20 @@ export const adminFundingApi = {
 
     const isDistributed = mockDailySummaryState.totalApprovedCommissions === 0;
     const records = mockRecords.map((r) => {
+      const base = {
+        ...r,
+        distributorId: r.employeeId,
+        distributorCode: r.employeeId,
+        distributorName: r.employeeName,
+      };
       if (isDistributed) {
         return {
-          ...r,
+          ...base,
           approvedCommission: 0.0,
           paidCommission: r.commissionAmount,
         };
       }
-      return r;
+      return base;
     });
 
     return {

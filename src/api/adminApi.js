@@ -134,6 +134,32 @@ export const adminApi = {
   },
 
   /**
+   * Order Management API (Admin Only)
+   */
+  async getOrders(params = {}) {
+    const cleanParams = Object.fromEntries(
+      Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '')
+    );
+    const query = new URLSearchParams(cleanParams).toString();
+    return apiClient.get(`/orders${query ? `?${query}` : ''}`);
+  },
+
+  async getOrder(id) {
+    return apiClient.get(`/orders/${encodeURIComponent(id)}`);
+  },
+
+  async updateOrderStatus(id, status, notes = '') {
+    return apiClient.put(`/orders/${encodeURIComponent(id)}/status`, { status, notes });
+  },
+
+  async adjustOrderBV(id, commissionableBusinessVolume, reason = '') {
+    return apiClient.put(`/orders/${encodeURIComponent(id)}/bv`, {
+      commissionableBusinessVolume,
+      reason,
+    });
+  },
+
+  /**
    * Update commission rules with administrative audit logging
    */
   async updateSettings(data) {

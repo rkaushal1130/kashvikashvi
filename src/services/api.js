@@ -314,6 +314,58 @@ export const api = {
     return null;
   },
 
+  async getOrders(params = {}) {
+    try {
+      const cleanParams = Object.fromEntries(
+        Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '')
+      );
+      const query = new URLSearchParams(cleanParams).toString();
+      const res = await fetch(`${API_BASE_URL}/orders${query ? `?${query}` : ''}`, {
+        headers: getAuthHeaders(),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        return data.data;
+      }
+    } catch (err) {
+      console.warn('[API] Get orders failed:', err.message);
+    }
+    return [];
+  },
+
+  async getOrder(id) {
+    try {
+      const res = await fetch(`${API_BASE_URL}/orders/${encodeURIComponent(id)}`, {
+        headers: getAuthHeaders(),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        return data.data;
+      }
+    } catch (err) {
+      console.warn('[API] Get order failed:', err.message);
+    }
+    return null;
+  },
+
+  async updateOrderStatus(id, status, notes = '') {
+    try {
+      const res = await fetch(`${API_BASE_URL}/orders/${encodeURIComponent(id)}/status`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ status, notes }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        return data.data;
+      }
+      throw new Error(data?.message || 'Failed to update order status');
+    } catch (err) {
+      console.warn('[API] Update order status failed:', err.message);
+      throw err;
+    }
+  },
+
   // Commission Wallet & Live Balance
   async getWalletBalance() {
     try {
@@ -2783,4 +2835,7 @@ export const api = {
 if (typeof window !== 'undefined') {
   window.clearTreeData = () => api.clearTreeData();
 }
+
+export default api;
+
 

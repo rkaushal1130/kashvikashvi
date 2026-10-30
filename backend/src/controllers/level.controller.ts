@@ -227,4 +227,54 @@ export class LevelController {
       next(error);
     }
   }
+
+  /**
+   * POST /api/v1/levels/evaluate
+   * Evaluates eligible level and qualification for a member profile or simulation parameters.
+   */
+  public static async evaluateLevel(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> {
+    try {
+      const {
+        memberId = 'usr-test',
+        distributorCode = 'KV-1001',
+        role = 'DISTRIBUTOR',
+        roleName,
+        currentBB = 0,
+        leftMatching = 0,
+        rightMatching = 0,
+        matching,
+        joinings = 0,
+      } = req.body;
+
+      const { LevelService } = await import('../services/level.service');
+      const profile = {
+        id: memberId,
+        distributorCode,
+        distributorId: distributorCode,
+        roleName: roleName || role,
+        role: roleName || role,
+        currentBB: Number(currentBB),
+        lifetimePV: Number(currentBB),
+      };
+
+      const result = await LevelService.calculateEligibleLevel(profile, {
+        bb: Number(currentBB),
+        leftMatching: Number(leftMatching),
+        rightMatching: Number(rightMatching),
+        matching: matching !== undefined ? Number(matching) : undefined,
+        joinings: Number(joinings),
+      });
+
+      sendSuccess(res, {
+        message: 'Level evaluation computed successfully',
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }

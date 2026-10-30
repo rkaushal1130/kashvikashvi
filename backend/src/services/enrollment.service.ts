@@ -1134,7 +1134,7 @@ export class EnrollmentService {
           // Fallback if raw query lock not supported by test adapter
         }
 
-        const occupiedPosition = await tx.mLMNode.findFirst({
+        let occupiedPosition = await tx.mLMNode.findFirst({
           where: {
             placementParentId: parentNode.id,
             placementPosition: position,
@@ -1142,10 +1142,21 @@ export class EnrollmentService {
         });
 
         if (occupiedPosition) {
-          throw AppError.conflict(
-            `The ${position} position under placement parent (${parentProfile.distributorId || parentProfile.distributorCode}) is already occupied.`,
-            'POSITION_ALREADY_OCCUPIED'
-          );
+          // If immediate position is occupied, traverse down along the preferred leg to find the open leaf node (spillover)
+          let curr = occupiedPosition;
+          while (curr) {
+            const nextChild = await tx.mLMNode.findFirst({
+              where: {
+                placementParentId: curr.id,
+                placementPosition: position,
+              },
+            });
+            if (!nextChild) {
+              parentNode = curr;
+              break;
+            }
+            curr = nextChild;
+          }
         }
       }
 
@@ -1638,7 +1649,7 @@ export class EnrollmentService {
           // Fallback if raw query lock not supported by test adapter
         }
 
-        const occupiedPosition = await tx.mLMNode.findFirst({
+        let occupiedPosition = await tx.mLMNode.findFirst({
           where: {
             placementParentId: parentNode.id,
             placementPosition: position,
@@ -1646,10 +1657,21 @@ export class EnrollmentService {
         });
 
         if (occupiedPosition) {
-          throw AppError.conflict(
-            `The ${position} position under placement parent (${parentProfile.distributorId || parentProfile.distributorCode}) is already occupied.`,
-            'POSITION_ALREADY_OCCUPIED'
-          );
+          // If immediate position is occupied, traverse down along the preferred leg to find the open leaf node (spillover)
+          let curr = occupiedPosition;
+          while (curr) {
+            const nextChild = await tx.mLMNode.findFirst({
+              where: {
+                placementParentId: curr.id,
+                placementPosition: position,
+              },
+            });
+            if (!nextChild) {
+              parentNode = curr;
+              break;
+            }
+            curr = nextChild;
+          }
         }
 
         // 7. Create user linked to DISTRIBUTOR role from roles table

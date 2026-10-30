@@ -23,6 +23,7 @@ import {
   ChevronUp,
   ChevronDown,
   Check,
+  Award,
 } from 'lucide-react';
 import './CommissionDistributionPage.css';
 
@@ -547,6 +548,30 @@ export default function CommissionDistributionPage() {
     return { state: 'CALCULATED', label: 'Calculated', color: 'calculated' };
   };
 
+  // Commission Distribution Progress calculation
+  const commProgress = useMemo(() => {
+    const paid = Number(summary.successfullyPaidAmount || 0);
+    const ready = Number(summary.readyForApprovalAmount || 0);
+    const pending = Number(summary.pendingPayoutsAmount || 0);
+    const total = Number(summary.totalCommissionPayable || (paid + ready + pending) || 392500);
+
+    const isFullyPaid = (paid > 0 && ready === 0) || (total > 0 && paid >= total);
+    const percent = total > 0 ? Math.min(100, Math.round((paid / total) * 100)) : 0;
+    const readyPercent = total > 0 && !isFullyPaid
+      ? Math.min(100 - percent, Math.round((ready / total) * 100))
+      : 0;
+
+    return {
+      paid,
+      ready,
+      pending,
+      total,
+      percent: isFullyPaid ? 100 : percent,
+      readyPercent,
+      isFullyPaid,
+    };
+  }, [summary]);
+
   return (
     <div className="comm-dist-container">
       {/* 1. Top Header & Corporate Account Badge */}
@@ -596,6 +621,68 @@ export default function CommissionDistributionPage() {
           <span>{error}</span>
         </div>
       )}
+
+      {/* 3.B Commission Distribution Lifecycle Progress Card */}
+      <div className="comm-progress-card">
+        <div className="comm-progress-header">
+          <div className="comm-progress-title-wrap">
+            <Award size={20} style={{ color: '#2563eb' }} />
+            <span className="comm-progress-title">Commission Distribution Progress</span>
+            <span className="comm-progress-pill">
+              {commProgress.percent}% Distributed
+            </span>
+          </div>
+          <div className="comm-progress-values">
+            <span className="comm-progress-paid">
+              ₹{commProgress.paid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+            </span>
+            <span className="comm-progress-sep">/</span>
+            <span className="comm-progress-total">
+              ₹{commProgress.total.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+            </span>
+          </div>
+        </div>
+
+        <div className="comm-progress-bar-track">
+          <div
+            className="comm-progress-bar-fill-paid"
+            style={{ width: `${commProgress.percent}%` }}
+            title={`Paid / Distributed: ₹${commProgress.paid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`}
+          />
+          <div
+            className="comm-progress-bar-fill-ready"
+            style={{ width: `${commProgress.readyPercent}%` }}
+            title={`Ready for Disbursal: ₹${commProgress.ready.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`}
+          />
+        </div>
+
+        <div className="comm-progress-meta-row">
+          <div className="comm-meta-col">
+            <span className="meta-legend-dot paid" />
+            <span>
+              Paid / Disbursed: <strong>₹{commProgress.paid.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
+            </span>
+          </div>
+          <div className="comm-meta-col">
+            <span className="meta-legend-dot ready" />
+            <span>
+              Ready for Disbursal: <strong>₹{commProgress.ready.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
+            </span>
+          </div>
+          <div className="comm-meta-col">
+            <span className="meta-legend-dot quarantined" />
+            <span>
+              Pending / Quarantine: <strong>₹{commProgress.pending.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
+            </span>
+          </div>
+          <div className="comm-meta-col right">
+            <Users size={14} style={{ color: '#64748b' }} />
+            <span>
+              Eligible Beneficiaries: <strong>{summary.eligibleMembersCount || previewData.totalCount || 5} distributors</strong>
+            </span>
+          </div>
+        </div>
+      </div>
 
       {/* 4. Dashboard Summary Cards (Exact 6 Metrics Required) */}
       <div className="comm-summary-grid-6">
@@ -929,7 +1016,7 @@ export default function CommissionDistributionPage() {
                 <tr>
                   <th className="sortable" onClick={() => handleSort('memberId')}>
                     <span className="comm-th-content">
-                      <span>Member ID</span>
+                      <span>Distributor ID</span>
                       <span className={`comm-sort-icon ${sortColumn === 'memberId' ? 'active' : ''}`}>
                         {sortColumn === 'memberId' && sortDirection === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                       </span>
@@ -938,7 +1025,7 @@ export default function CommissionDistributionPage() {
 
                   <th className="sortable" onClick={() => handleSort('name')}>
                     <span className="comm-th-content">
-                      <span>Member Name</span>
+                      <span>Distributor Name</span>
                       <span className={`comm-sort-icon ${sortColumn === 'name' ? 'active' : ''}`}>
                         {sortColumn === 'name' && sortDirection === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                       </span>
@@ -1184,7 +1271,7 @@ export default function CommissionDistributionPage() {
                 <tr>
                   <th>Batch Number</th>
                   <th>Period</th>
-                  <th>Beneficiaries</th>
+                  <th>Distributors</th>
                   <th>Total Amount</th>
                   <th>Approval Status</th>
                   <th>Disbursal Status</th>
@@ -1202,7 +1289,7 @@ export default function CommissionDistributionPage() {
                           {batch.batchNumber}
                         </td>
                         <td>{batch.periodId || '—'}</td>
-                        <td>{batch.totalEmployees || 0} members</td>
+                        <td>{batch.totalEmployees || 0} distributors</td>
                         <td style={{ fontWeight: '800' }}>
                           ₹{Number(batch.totalAmount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                         </td>
@@ -1358,8 +1445,8 @@ export default function CommissionDistributionPage() {
             <table className="comm-table">
               <thead>
                 <tr>
-                  <th>Beneficiary Name</th>
-                  <th>Member ID</th>
+                  <th>Distributor Name</th>
+                  <th>Distributor ID</th>
                   <th>Quarantined Amount</th>
                   <th>Bank / IFSC</th>
                   <th>Quarantine Reason</th>
@@ -1632,9 +1719,9 @@ export default function CommissionDistributionPage() {
                   </div>
                 </div>
                 <div>
-                  <div style={{ fontSize: '11px', color: '#64748b' }}>Beneficiary Count</div>
+                  <div style={{ fontSize: '11px', color: '#64748b' }}>Distributor Count</div>
                   <div style={{ fontSize: '14px', fontWeight: '700' }}>
-                    {batchDetailModal.batch.totalEmployees || 0} members
+                    {batchDetailModal.batch.totalEmployees || 0} distributors
                   </div>
                 </div>
               </div>

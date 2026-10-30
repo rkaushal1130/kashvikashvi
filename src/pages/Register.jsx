@@ -175,32 +175,25 @@ export function Register() {
       errors.fullName = 'Full Name must be at least 2 characters.';
     }
 
-    // Email
+    // Mobile Number (Mandatory)
+    const cleanPhoneDigits = formData.phone.replace(/\D/g, '');
+    if (!formData.phone.trim()) {
+      errors.phone = 'Mobile number is required.';
+    } else if (cleanPhoneDigits.length < 10) {
+      errors.phone = 'Please enter a valid 10-digit mobile number.';
+    }
+
+    // Email (Optional fallback)
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!formData.email.trim()) {
-      errors.email = 'Email address is required.';
-    } else if (!emailRegex.test(formData.email.trim())) {
+    if (formData.email.trim() && !emailRegex.test(formData.email.trim())) {
       errors.email = 'Please provide a valid email address.';
     }
 
-    // Phone (optional or valid length)
-    if (formData.phone.trim() && formData.phone.trim().length < 7) {
-      errors.phone = 'Please enter a valid phone number (at least 7 digits).';
-    }
-
-    // Password
+    // Password (Min 8 chars/digits, no strict format)
     if (!formData.password) {
       errors.password = 'Password is required.';
     } else if (formData.password.length < 8) {
-      errors.password = 'Password must be at least 8 characters long.';
-    } else if (
-      !/[A-Z]/.test(formData.password) ||
-      !/[a-z]/.test(formData.password) ||
-      !/[0-9]/.test(formData.password) ||
-      !/[^A-Za-z0-9]/.test(formData.password)
-    ) {
-      errors.password =
-        'Password must include uppercase, lowercase, number, and special character (e.g. Password@123).';
+      errors.password = 'Password must be at least 8 characters/digits long.';
     }
 
     // Confirm Password
@@ -409,40 +402,17 @@ export function Register() {
             )}
           </div>
 
-          {/* Email Address */}
+          {/* Mobile Number (Mandatory) */}
           <div className="form-group">
-            <label htmlFor="email">Email Address *</label>
-            <div className="input-wrapper">
-              <Mail size={18} className="input-icon" />
-              <input
-                id="email"
-                name="email"
-                type="email"
-                required
-                placeholder="name@example.com"
-                value={formData.email}
-                onChange={handleChange}
-                disabled={loading || Boolean(successData)}
-                style={fieldErrors.email ? { borderColor: '#ef4444' } : {}}
-              />
-            </div>
-            {fieldErrors.email && (
-              <span style={{ color: '#ef4444', fontSize: '12px', marginTop: '2px' }}>
-                {fieldErrors.email}
-              </span>
-            )}
-          </div>
-
-          {/* Phone Number */}
-          <div className="form-group">
-            <label htmlFor="phone">Phone Number</label>
+            <label htmlFor="phone">Mobile Number *</label>
             <div className="input-wrapper">
               <Phone size={18} className="input-icon" />
               <input
                 id="phone"
                 name="phone"
                 type="tel"
-                placeholder="+91 9876543210"
+                required
+                placeholder="10-digit mobile number"
                 value={formData.phone}
                 onChange={handleChange}
                 disabled={loading || Boolean(successData)}
@@ -452,6 +422,29 @@ export function Register() {
             {fieldErrors.phone && (
               <span style={{ color: '#ef4444', fontSize: '12px', marginTop: '2px' }}>
                 {fieldErrors.phone}
+              </span>
+            )}
+          </div>
+
+          {/* Email Address (Optional Fallback) */}
+          <div className="form-group">
+            <label htmlFor="email">Email Address (Optional)</label>
+            <div className="input-wrapper">
+              <Mail size={18} className="input-icon" />
+              <input
+                id="email"
+                name="email"
+                type="email"
+                placeholder="name@example.com (optional)"
+                value={formData.email}
+                onChange={handleChange}
+                disabled={loading || Boolean(successData)}
+                style={fieldErrors.email ? { borderColor: '#ef4444' } : {}}
+              />
+            </div>
+            {fieldErrors.email && (
+              <span style={{ color: '#ef4444', fontSize: '12px', marginTop: '2px' }}>
+                {fieldErrors.email}
               </span>
             )}
           </div>

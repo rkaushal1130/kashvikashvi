@@ -520,6 +520,33 @@ export class OrderService {
             },
           },
           payments: true,
+          shippingAddress: true,
+          user: {
+            select: {
+              id: true,
+              email: true,
+              phone: true,
+              fullName: true,
+            },
+          },
+          distributor: {
+            select: {
+              id: true,
+              distributorId: true,
+              distributorCode: true,
+              firstName: true,
+              lastName: true,
+              displayName: true,
+              user: {
+                select: {
+                  id: true,
+                  email: true,
+                  phone: true,
+                  fullName: true,
+                },
+              },
+            },
+          },
         },
       }),
     ]);
@@ -861,13 +888,38 @@ export class OrderService {
    * Formats order output with numeric conversions.
    */
   private static formatOrder(order: any) {
+    const payment = (order.payments || [])[0];
+    const customerName =
+      order.distributor?.displayName ||
+      `${order.distributor?.firstName || ''} ${order.distributor?.lastName || ''}`.trim() ||
+      order.user?.fullName ||
+      order.user?.name ||
+      order.shippingAddress?.recipientName ||
+      'Valued Distributor';
+    const customerEmail = order.distributor?.user?.email || order.user?.email || '';
+    const customerPhone =
+      order.shippingAddress?.phone ||
+      order.distributor?.user?.phone ||
+      order.user?.phone ||
+      '';
+    const distributorCode =
+      order.distributor?.distributorCode ||
+      order.distributor?.distributorId ||
+      'KV-1001';
+
     return {
       id: order.id,
       orderNumber: order.orderNumber,
       userId: order.userId,
       distributorId: order.distributorId,
       customerId: order.customerId,
+      customerName,
+      customerEmail,
+      customerPhone,
+      distributorCode,
       status: order.status,
+      paymentStatus: payment?.status || (order.paidAt ? 'PAID' : 'PENDING'),
+      paymentMethod: payment?.method || (order.paidAt ? 'WALLET' : 'N/A'),
       subtotal: Number(order.subtotal),
       taxAmount: Number(order.taxAmount),
       shippingAmount: Number(order.shippingAmount),
@@ -880,6 +932,8 @@ export class OrderService {
       trackingNumber: order.trackingNumber,
       paidAt: order.paidAt,
       cancelledAt: order.cancelledAt,
+      user: order.user || null,
+      distributor: order.distributor || null,
       items: (order.items || []).map((i: any) => ({
         id: i.id,
         productId: i.productId,

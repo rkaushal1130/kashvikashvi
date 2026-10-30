@@ -11,6 +11,7 @@ export const DEFAULT_MLM_LEVELS: MlmLevelConfig[] = [
     level: 0,
     code: 'RANK_STARTER',
     name: 'Starter',
+    commissionPercent: 0,
     requiredBB: 0,
     requiredLeftMatching: 0,
     requiredRightMatching: 0,
@@ -23,61 +24,66 @@ export const DEFAULT_MLM_LEVELS: MlmLevelConfig[] = [
     level: 1,
     code: 'RANK_SILVER',
     name: 'Silver',
+    commissionPercent: 24,
     requiredBB: 250,
     requiredLeftMatching: 2000,
     requiredRightMatching: 2000,
     requiredMatching: 2000,
     binaryWeeklyCap: 3000,
     oneTimeBonus: 150,
-    description: 'Silver tier requiring BB >= 250, Left Matching >= 2,000, Right Matching >= 2,000.',
+    description: 'Silver - 24%: 250 BV with min 2000 matching at left or 2000 matching at right.',
   },
   {
     level: 2,
     code: 'RANK_GOLD',
     name: 'Gold',
+    commissionPercent: 8,
     requiredBB: 250,
     requiredLeftMatching: 5000,
     requiredRightMatching: 5000,
     requiredMatching: 5000,
     binaryWeeklyCap: 10000,
     oneTimeBonus: 500,
-    description: 'Gold tier requiring BB >= 250, Left Matching >= 5,000, Right Matching >= 5,000.',
+    description: 'Gold - 8%: 250 BV with min 5000 matching at left or 5000 matching at right.',
   },
   {
     level: 3,
     code: 'RANK_PLATINUM',
     name: 'Platinum',
+    commissionPercent: 13,
     requiredBB: 500,
     requiredLeftMatching: 50000,
     requiredRightMatching: 50000,
     requiredMatching: 50000,
     binaryWeeklyCap: 25000,
     oneTimeBonus: 1500,
-    description: 'Platinum tier requiring BB >= 500, Left Matching >= 50,000, Right Matching >= 50,000.',
+    description: 'Platinum - 13%: 500 BV with min 50000 matching at left or 50000 matching at right.',
   },
   {
     level: 4,
     code: 'RANK_DIAMOND',
     name: 'Diamond',
+    commissionPercent: 5,
     requiredBB: 1000,
     requiredLeftMatching: 60000,
     requiredRightMatching: 60000,
     requiredMatching: 60000,
     binaryWeeklyCap: 50000,
     oneTimeBonus: 3000,
-    description: 'Diamond executive tier requiring BB >= 1,000, Left Matching >= 60,000, Right Matching >= 60,000.',
+    description: 'Diamond - 5%: 1000 BV with min 60000 matching at left or 60000 matching at right.',
   },
   {
     level: 5,
     code: 'RANK_RUBY',
     name: 'Ruby',
+    commissionPercent: 4,
     requiredBB: 1000,
     requiredLeftMatching: 100000,
     requiredRightMatching: 100000,
     requiredMatching: 100000,
     binaryWeeklyCap: 100000,
     oneTimeBonus: 5000,
-    description: 'Ruby executive tier requiring BB >= 1,000, Left Matching >= 100,000, Right Matching >= 100,000.',
+    description: 'Ruby - 4%: 1000 BV with min 100000 matching at left or 100000 matching at right.',
   },
 ];
 
@@ -139,24 +145,26 @@ export class LevelQualificationService {
       });
 
       if (dbLevels && dbLevels.length > 0) {
-        const mapped = dbLevels.map((l: any) => ({
-          id: l.id,
-          level: l.order,
-          code: l.code,
-          name: l.name,
-          requiredBB: Number(l.requiredBB),
-          requiredLeftMatching: Number(l.requiredLeftMatching ?? l.requiredMatching ?? 0),
-          requiredRightMatching: Number(l.requiredRightMatching ?? l.requiredMatching ?? 0),
-          requiredMatching: Number(l.requiredMatching ?? l.requiredLeftMatching ?? 0),
-          isActive: l.isActive,
-          description: `${l.name} level`,
-        }));
-
-        // Include Starter (order 0) if not in Level table
-        if (!mapped.some((m: any) => m.level === 0)) {
-          return [DEFAULT_MLM_LEVELS[0], ...mapped];
-        }
-        return mapped;
+        const merged: MlmLevelConfig[] = DEFAULT_MLM_LEVELS.map((defLvl) => {
+          const dbMatch = dbLevels.find((l: any) => l.order === defLvl.level || l.code?.toUpperCase() === defLvl.code?.toUpperCase());
+          if (!dbMatch) return defLvl;
+          return {
+            id: dbMatch.id,
+            level: dbMatch.order,
+            code: dbMatch.code,
+            name: dbMatch.name,
+            commissionPercent: defLvl.commissionPercent ?? (dbMatch.commissionPercent !== undefined ? Number(dbMatch.commissionPercent) : 0),
+            requiredBB: Number(dbMatch.requiredBB ?? defLvl.requiredBB),
+            requiredLeftMatching: Number(dbMatch.requiredLeftMatching ?? dbMatch.requiredMatching ?? defLvl.requiredLeftMatching),
+            requiredRightMatching: Number(dbMatch.requiredRightMatching ?? dbMatch.requiredMatching ?? defLvl.requiredRightMatching),
+            requiredMatching: Number(dbMatch.requiredMatching ?? dbMatch.requiredLeftMatching ?? defLvl.requiredMatching),
+            binaryWeeklyCap: defLvl.binaryWeeklyCap,
+            oneTimeBonus: defLvl.oneTimeBonus,
+            isActive: dbMatch.isActive,
+            description: defLvl.description || `${dbMatch.name} level`,
+          };
+        });
+        return merged;
       }
 
       // 2. Secondary: Check Rank table
@@ -172,6 +180,7 @@ export class LevelQualificationService {
             level: r.level,
             code: r.rankCode,
             name: r.name,
+            commissionPercent: matched?.commissionPercent ?? 0,
             requiredBB: Number(r.minPersonalBV),
             requiredLeftMatching: matched?.requiredLeftMatching ?? Number(r.minGroupBV),
             requiredRightMatching: matched?.requiredRightMatching ?? Number(r.minGroupBV),
@@ -271,23 +280,32 @@ export class LevelQualificationService {
     currentBB: number,
     leftMatchingOrTotal: number,
     rightMatchingOrLevel?: number | MlmLevelConfig,
-    levelParam?: MlmLevelConfig
+    levelParam?: MlmLevelConfig,
+    isAdmin: boolean = false,
+    joiningsCount: number = 0
   ): boolean {
     const level = levelParam || (typeof rightMatchingOrLevel === 'object' && rightMatchingOrLevel !== null ? rightMatchingOrLevel : undefined);
     if (!level) return false;
 
-    const meetsBB = currentBB >= level.requiredBB;
     const reqLeft = level.requiredLeftMatching ?? level.requiredMatching ?? 0;
     const reqRight = level.requiredRightMatching ?? level.requiredMatching ?? 0;
 
-    if (typeof rightMatchingOrLevel === 'number' && levelParam) {
-      const leftMatching = leftMatchingOrTotal ?? 0;
-      const rightMatching = rightMatchingOrLevel;
-      return meetsBB && leftMatching >= reqLeft && rightMatching >= reqRight;
-    } else {
-      const totalMatching = leftMatchingOrTotal ?? 0;
-      return meetsBB && totalMatching >= reqLeft && totalMatching >= reqRight;
+    let leftMatching = leftMatchingOrTotal ?? 0;
+    let rightMatching = typeof rightMatchingOrLevel === 'number' ? rightMatchingOrLevel : leftMatchingOrTotal;
+
+    if (isAdmin) {
+      const minJoinings =
+        level.level === 1 ? 2 :
+        level.level === 2 ? 5 :
+        level.level === 3 ? 10 :
+        level.level === 4 ? 20 :
+        level.level === 5 ? 50 : 0;
+      return leftMatching >= reqLeft || rightMatching >= reqRight || joiningsCount >= minJoinings;
     }
+
+    const meetsBB = currentBB >= level.requiredBB;
+    const meetsMatching = leftMatching >= reqLeft || rightMatching >= reqRight;
+    return meetsBB && meetsMatching;
   }
 
   /**

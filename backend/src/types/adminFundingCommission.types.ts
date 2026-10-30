@@ -28,6 +28,9 @@ export interface DailyFinancialSummary {
 
 export interface EmployeeDailyCommissionRecord {
   id: string;
+  distributorId?: string;
+  distributorCode?: string;
+  distributorName?: string;
   employeeId: string;
   employeeName: string;
   sponsorId: string;
