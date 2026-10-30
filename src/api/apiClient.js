@@ -91,7 +91,10 @@ class ApiClient {
   }
 
   async request(endpoint, options = {}) {
-    const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+    let cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+    if (this.baseUrl.endsWith('/api') && cleanEndpoint.startsWith('/api/')) {
+      cleanEndpoint = cleanEndpoint.slice(4);
+    }
     const url = `${this.baseUrl}${cleanEndpoint}`;
 
     const headers = this.getHeaders(options.headers);

@@ -1,7 +1,7 @@
 import { apiClient } from './apiClient.js';
 import { sanitizeErrorMessage } from './adminFundingApi.js';
 
-const BASE_URL = '/api/v1/admin/commission-distribution';
+const BASE_URL = '/v1/admin/commission-distribution';
 
 export const adminCommissionDistributionApi = {
   /**
