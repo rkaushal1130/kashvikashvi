@@ -859,18 +859,20 @@ export class PaymentService {
     const { keyId, keySecret } = this.getRazorpayCredentials();
     const isConfigured = Boolean(keyId && keySecret && !keyId.includes('your_key_id'));
 
+    // NOTE: Enrollment pricing temporarily set to ₹1 for testing purposes.
     const kitPricing: Record<string, { amount: number; bv: number; name: string }> = {
-      kit_standard: { amount: 1499, bv: 50, name: 'Associate Welcome Pack' },
-      kit_basic: { amount: 1499, bv: 50, name: 'Associate Welcome Pack' },
-      kit_pro: { amount: 2999, bv: 100, name: 'Fast-Track Pro Pack' },
-      kit_elite: { amount: 4999, bv: 200, name: 'Elite Leadership Pack' },
-      customer_preferred: { amount: 499, bv: 0, name: 'Preferred Customer Membership' },
-      customer_basic: { amount: 499, bv: 0, name: 'Preferred Customer Membership' },
-      customer_standard: { amount: 499, bv: 0, name: 'Preferred Customer Membership' },
+      kit_standard: { amount: 1, bv: 50, name: 'Associate Welcome Pack' },
+      kit_basic: { amount: 1, bv: 50, name: 'Associate Welcome Pack' },
+      kit_pro: { amount: 1, bv: 100, name: 'Fast-Track Pro Pack' },
+      kit_elite: { amount: 1, bv: 200, name: 'Elite Leadership Pack' },
+      customer_preferred: { amount: 1, bv: 0, name: 'Preferred Customer Membership' },
+      customer_basic: { amount: 1, bv: 0, name: 'Preferred Customer Membership' },
+      customer_standard: { amount: 1, bv: 0, name: 'Preferred Customer Membership' },
     };
 
     const selectedKit = kitPricing[input.starterKitId || 'kit_pro'] || kitPricing.kit_pro;
-    const amount = input.amount && input.amount > 0 ? input.amount : selectedKit.amount;
+    // Enrollment price is fixed at ₹1 for testing — ignore any passed-in amount override.
+    const amount = selectedKit.amount; // always 1 (testing mode)
     const currency = input.currency || 'INR';
     const amountInPaise = Math.round(amount * 100);
 
