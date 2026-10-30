@@ -2,23 +2,34 @@ import { z } from 'zod';
 
 export const registerSchema = z
   .object({
+    phone: z.preprocess(
+      (val) => (typeof val === 'string' ? val.trim() : val),
+      z.string({ required_error: 'Mobile number is required' })
+        .min(10, 'Valid mobile number with at least 10 digits is required')
+    ),
     email: z.preprocess(
-      (val) => (typeof val === 'string' ? val.trim().toLowerCase() : val),
-      z.string().email('Please enter a valid email address')
-    ) as z.ZodType<string>,
-    password: z.string().min(8, 'Password must be at least 8 characters'),
+      (val) => {
+        if (typeof val === 'string') {
+          const trimmed = val.trim().toLowerCase();
+          return trimmed === '' ? undefined : trimmed;
+        }
+        return val;
+      },
+      z.string().email('Please enter a valid email address').optional()
+    ),
+    password: z.string().min(8, 'Password must be at least 8 characters/digits'),
     role: z.enum(['DISTRIBUTOR', 'CUSTOMER_CARE', 'ADMIN']).default('DISTRIBUTOR').optional(),
     firstName: z.string().trim().optional(),
     lastName: z.string().trim().optional(),
     fullName: z.string().trim().optional(),
     name: z.string().trim().optional(),
-    phone: z.string().trim().optional(),
     username: z.string().trim().optional(),
     referralCode: z.string().trim().optional(),
     sponsorCode: z.string().trim().optional(),
     sponsorId: z.string().trim().optional(),
     placementPosition: z.string().trim().optional(),
     confirmPassword: z.string().trim().optional(),
+    acceptTerms: z.boolean().optional(),
   })
   .refine(
     (data) => {
@@ -38,13 +49,14 @@ export const loginSchema = z.object({
     (val) => (typeof val === 'string' ? val.trim().toLowerCase() : val),
     z.string().optional()
   ),
+  phone: z.string().trim().optional(),
   username: z.string().trim().optional(),
   identifier: z.string().trim().optional(),
   password: z.string().min(1, 'Password is required'),
   rememberMe: z.boolean().optional(),
   sponsorId: z.string().optional(),
-}).refine((data) => Boolean(data.email || data.username || data.identifier), {
-  message: 'Please provide your email or username',
+}).refine((data) => Boolean(data.email || data.phone || data.username || data.identifier), {
+  message: 'Please provide your mobile number or email',
   path: ['identifier'],
 });
 
@@ -62,12 +74,7 @@ export const forgotPasswordSchema = z.object({
 
 export const resetPasswordSchema = z.object({
   token: z.string().min(1, 'Reset token is required').trim(),
-  newPassword: z
-    .string()
-    .min(8, 'Password must be at least 8 characters')
-    .regex(/[A-Z]/, 'Password must contain at least one uppercase letter')
-    .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
-    .regex(/[0-9]/, 'Password must contain at least one number'),
+  newPassword: z.string().min(8, 'Password must be at least 8 characters'),
 });
 
 export type RegisterInput = z.infer<typeof registerSchema>;

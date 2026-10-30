@@ -257,4 +257,106 @@ export class AdminFundingCommissionController {
       next(error);
     }
   }
+
+  /**
+   * GET /api/v1/admin/funding/commissions/queue/stats
+   * Returns live message queue metrics (queued, processing, completed, failedDLQ, retried)
+   */
+  public static async getQueueStats(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { CommissionQueueService } = await import('../services/commissionQueue.service');
+      const stats = CommissionQueueService.getStats();
+      sendSuccess(res, {
+        statusCode: 200,
+        message: 'Commission queue statistics retrieved successfully',
+        data: stats,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/v1/admin/funding/commissions/queue/failed
+   * Retrieves all failed / dead-letter queue (DLQ) jobs with diagnostics
+   */
+  public static async getQueueFailedJobs(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { batchId } = req.query as { batchId?: string };
+      const { CommissionQueueService } = await import('../services/commissionQueue.service');
+      const failed = CommissionQueueService.getFailedJobs(batchId);
+      sendSuccess(res, {
+        statusCode: 200,
+        message: 'Failed commission queue jobs retrieved successfully',
+        data: {
+          totalFailed: failed.length,
+          failedJobs: failed,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/v1/admin/funding/commissions/queue/retry-failed
+   * Bulk or single retry of dead-letter jobs
+   */
+  public static async retryQueueFailed(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const adminUserId = (req as any).user?.id || 'admin-system';
+      const { batchId, jobId } = req.body || {};
+      const { CommissionQueueService } = await import('../services/commissionQueue.service');
+
+      if (jobId) {
+        const retried = await CommissionQueueService.retrySingleJob(jobId, adminUserId);
+        sendSuccess(res, {
+          statusCode: 200,
+          message: `Job ${jobId} re-enqueued for execution`,
+          data: retried,
+        });
+      } else {
+        const bulk = await CommissionQueueService.retryAllFailed(batchId, adminUserId);
+        sendSuccess(res, {
+          statusCode: 200,
+          message: `${bulk.retriedCount} dead-letter jobs re-enqueued for execution`,
+          data: bulk,
+        });
+      }
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/v1/admin/funding/commissions/queue/enqueue-test
+   * Enqueues test commission jobs for verification of queue workers, retries, and DLQ
+   */
+  public static async enqueueTestJob(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { distributorId = 'usr-test', distributorCode = 'DST-001', amount = 100, simulateFailure = false } = req.body || {};
+      const { CommissionQueueService } = await import('../services/commissionQueue.service');
+      const batchNumber = `PB-TEST-${Date.now().toString().slice(-4)}`;
+      const result = await CommissionQueueService.enqueueBatch(
+        `batch-${Date.now()}`,
+        batchNumber,
+        [
+          {
+            distributorId,
+            distributorCode,
+            distributorName: 'Test Distributor',
+            amount: Number(amount),
+            payoutMethod: simulateFailure ? 'INVALID_RAIL_FAIL' : 'WALLET_CREDIT',
+          },
+        ]
+      );
+      sendSuccess(res, {
+        statusCode: 201,
+        message: 'Test commission job enqueued',
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }

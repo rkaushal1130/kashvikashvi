@@ -23,7 +23,7 @@ router.get('/me', authenticate, CumulativeRankCommissionController.getMyProgress
 router.get('/member-progress/:memberId', authenticate, CumulativeRankCommissionController.getMemberProgress);
 
 // POST /api/v1/commissions/cumulative/preview - Preview cumulative commission calculation
-router.post('/preview', authenticate, CumulativeRankCommissionController.previewCommissions);
+router.post('/preview', optionalAuth, CumulativeRankCommissionController.previewCommissions);
 
 // ==========================================
 // ADMIN-ONLY MANAGEMENT ENDPOINTS

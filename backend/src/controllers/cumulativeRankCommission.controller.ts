@@ -124,12 +124,40 @@ export class CumulativeRankCommissionController {
    */
   public static async previewCommissions(req: Request, res: Response, next: NextFunction) {
     try {
-      const { memberId, periodId = `CYCLE-${new Date().toISOString().slice(0, 10)}`, baseAmount, baseType } = req.body;
+      const { memberId, rank, periodId = `CYCLE-${new Date().toISOString().slice(0, 10)}`, baseAmount, baseType } = req.body;
       const user = req.user;
+
+      if (rank) {
+        const configs = await CumulativeRankCommissionService.getRankConfigs();
+        const tiers = CumulativeRankCommissionService.getEligibleCommissionTiers(rank.toUpperCase(), configs);
+        const effectiveBase = baseAmount !== undefined ? Number(baseAmount) : 1000;
+        const tierCalculations = tiers.map((t) => ({
+          tierOrder: t.tierOrder,
+          rankCode: t.rankCode,
+          rankName: t.rankName,
+          percentage: t.percentage,
+          cumulativePercentage: t.cumulativePercentage,
+          eligibleBaseAmount: effectiveBase,
+          calculatedAmount: Number(((effectiveBase * t.percentage) / 100).toFixed(2)),
+        }));
+        const totalPreview = tierCalculations.reduce((sum, c) => sum + c.calculatedAmount, 0);
+
+        return res.json({
+          success: true,
+          data: {
+            rank: rank.toUpperCase(),
+            periodId,
+            baseAmount: effectiveBase,
+            totalPreview,
+            cumulativePercentage: tiers.length > 0 ? tiers[tiers.length - 1].cumulativePercentage : 0,
+            tiers: tierCalculations,
+          },
+        });
+      }
 
       const targetMemberId = memberId || user?.distributorProfileId || user?.id;
       if (!targetMemberId) {
-        throw AppError.badRequest('Member ID or authenticated distributor profile required');
+        throw AppError.badRequest('Member ID, rank, or authenticated distributor profile required');
       }
 
       const calculations = await CumulativeRankCommissionService.calculateMemberCumulativeCommissions(

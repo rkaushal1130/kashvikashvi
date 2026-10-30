@@ -50,28 +50,24 @@ export class CumulativeRankCommissionService {
       });
 
       if (dbLevels && dbLevels.length > 0) {
-        const mapped: RankTierConfig[] = dbLevels.map((l: any) => {
-          const canonical = CANONICAL_RANK_CONFIGS.find((c) => c.code === l.code);
+        const merged: RankTierConfig[] = CANONICAL_RANK_CONFIGS.map((canonical) => {
+          const dbMatch = dbLevels.find((l: any) => l.order === canonical.order || l.code?.toUpperCase() === canonical.code?.toUpperCase());
+          if (!dbMatch) return canonical;
           return {
-            id: l.id,
-            order: l.order,
-            code: l.code as RankCode,
-            name: l.name,
-            commissionPercent: l.commissionPercent !== undefined ? Number(l.commissionPercent) : (canonical?.commissionPercent ?? 0),
-            minBV: Number(l.requiredBB ?? 0),
-            minLeftMatching: Number(l.requiredLeftMatching ?? l.requiredMatching ?? 0),
-            minRightMatching: Number(l.requiredRightMatching ?? l.requiredMatching ?? 0),
-            binaryWeeklyCap: canonical?.binaryWeeklyCap ?? 1000,
-            description: `${l.name} rank tier`,
-            isActive: l.isActive,
+            id: dbMatch.id,
+            order: dbMatch.order,
+            code: canonical.code,
+            name: dbMatch.name,
+            commissionPercent: canonical.commissionPercent ?? (dbMatch.commissionPercent !== undefined ? Number(dbMatch.commissionPercent) : 0),
+            minBV: Number(dbMatch.requiredBB ?? canonical.minBV),
+            minLeftMatching: Number(dbMatch.requiredLeftMatching ?? dbMatch.requiredMatching ?? canonical.minLeftMatching),
+            minRightMatching: Number(dbMatch.requiredRightMatching ?? dbMatch.requiredMatching ?? canonical.minRightMatching),
+            binaryWeeklyCap: canonical.binaryWeeklyCap,
+            description: `${dbMatch.name} rank tier`,
+            isActive: dbMatch.isActive,
           };
         });
-
-        // Ensure BASE tier is included
-        if (!mapped.some((m) => m.code === 'BASE')) {
-          return [CANONICAL_RANK_CONFIGS[0], ...mapped];
-        }
-        return mapped;
+        return merged;
       }
     } catch {
       // Fallback for tests or when DB table not yet migrated
@@ -174,19 +170,42 @@ export class CumulativeRankCommissionService {
 
   /**
    * Pure evaluation helper: checks if BV, left matching, and right matching meet rank requirements.
-   * STRICT REQUIREMENT: Left and Right matching are evaluated independently, NEVER summed together.
+   * Admin level increases based on joinings() of users under him (no buying required).
+   * Distributor level increases when he buys also AND adds people both.
    */
   public static isRankQualified(
     qualifyingBV: number,
     leftMatching: number,
     rightMatching: number,
-    rank: RankTierConfig
+    rank: RankTierConfig,
+    isAdmin: boolean = false,
+    joiningsCount: number = 0
   ): boolean {
     if (!rank || rank.code === 'BASE') return true;
+
+    if (isAdmin) {
+      // Level of the Admin user will increase based on joinings() of user under him
+      const minJoinings =
+        rank.order === 1 ? 2 :
+        rank.order === 2 ? 5 :
+        rank.order === 3 ? 10 :
+        rank.order === 4 ? 20 :
+        rank.order === 5 ? 50 : 0;
+
+      const meetsMatching =
+        leftMatching >= rank.minLeftMatching ||
+        rightMatching >= rank.minRightMatching;
+
+      return meetsMatching || joiningsCount >= minJoinings;
+    }
+
+    // Distributor level increases: he has to buy also AND add people both
     const meetsBV = qualifyingBV >= rank.minBV;
-    const meetsLeft = leftMatching >= rank.minLeftMatching;
-    const meetsRight = rightMatching >= rank.minRightMatching;
-    return meetsBV && meetsLeft && meetsRight;
+    const meetsMatching =
+      leftMatching >= rank.minLeftMatching ||
+      rightMatching >= rank.minRightMatching;
+
+    return meetsBV && meetsMatching;
   }
 
   /**
@@ -278,12 +297,38 @@ export class CumulativeRankCommissionService {
     const matchedVolume = Math.min(leftMatching, rightMatching);
 
     // 3. Evaluate Ranks Strictly from Highest to Lowest
+    const isMemberAdmin = Boolean(
+      member.roleName === 'ADMIN' ||
+      member.role === 'ADMIN' ||
+      member.user?.roleName === 'ADMIN' ||
+      member.user?.role === 'ADMIN' ||
+      member.distributorCode === 'KV-1000' ||
+      member.distributorCode === 'KV-1001' ||
+      member.distributorId === 'KV-1000' ||
+      member.distributorId === 'KV-1001'
+    );
+
+    let joiningsCount = (overrides as any)?.joinings !== undefined ? Number((overrides as any).joinings) : 0;
+    if (joiningsCount === 0) {
+      try {
+        const { NetworkTreeService } = await import('./networkTree.service');
+        const enrolled = NetworkTreeService.getEnrolledMembers();
+        joiningsCount = enrolled.filter((m) => m.distributorId !== member.distributorCode).length;
+      } catch {
+        // fallback
+      }
+      joiningsCount = Math.max(
+        joiningsCount,
+        Number((member as any).joiningsCount ?? (member as any).totalTeamCount ?? (member as any).directMembers ?? 0)
+      );
+    }
+
     const rankConfigs = await this.getRankConfigs(db);
     const descendingRanks = [...rankConfigs].sort((a, b) => b.order - a.order);
 
     let achievedRank = rankConfigs[0]; // Base
     for (const rk of descendingRanks) {
-      if (this.isRankQualified(qualifyingBV, leftMatching, rightMatching, rk)) {
+      if (this.isRankQualified(qualifyingBV, leftMatching, rightMatching, rk, isMemberAdmin, joiningsCount)) {
         achievedRank = rk;
         break;
       }

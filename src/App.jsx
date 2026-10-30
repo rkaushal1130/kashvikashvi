@@ -34,6 +34,8 @@ import AuditLogsPage from './pages/admin/AuditLogsPage';
 import CommissionSettingsPage from './pages/admin/CommissionSettingsPage';
 import AdminFundingPortalPage from './pages/admin/AdminFundingPortalPage';
 import CommissionDistributionPage from './pages/admin/CommissionDistributionPage';
+import AdminOrdersPage from './pages/admin/AdminOrdersPage';
+import AdminProductsPage from './pages/admin/AdminProductsPage';
 
 function AppContent() {
   const location = useLocation();
@@ -75,11 +77,7 @@ function AppContent() {
           />
           <Route
             path="/manage-products"
-            element={
-              <ProtectedRoute requireProductManagement>
-                <Dashboard defaultNav="manage_products" />
-              </ProtectedRoute>
-            }
+            element={<Navigate to="/admin/products" replace />}
           />
           <Route
             path="/network"
@@ -147,6 +145,30 @@ function AppContent() {
                 </AdminLayout>
               </ProtectedRoute>
             }
+          />
+          <Route
+            path="/admin/orders"
+            element={
+              <ProtectedRoute adminOnly>
+                <AdminLayout>
+                  <AdminOrdersPage />
+                </AdminLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/products"
+            element={
+              <ProtectedRoute adminOnly>
+                <AdminLayout>
+                  <AdminProductsPage />
+                </AdminLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/manage-products"
+            element={<Navigate to="/admin/products" replace />}
           />
           <Route
             path="/admin/funding-portal"

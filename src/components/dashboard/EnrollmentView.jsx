@@ -26,6 +26,56 @@ import {
 import { api } from '../../services/api';
 import './EnrollmentView.css';
 
+export const ENROLLMENT_PACKS = {
+  kit_basic: {
+    id: 'kit_basic',
+    name: 'Associate Welcome Pack',
+    badge: 'Basic Launch',
+    price: 1499,
+    bv: 50,
+    desc: 'Official product guides, distributor agreement, and digital KASHVIMLM Connect license.',
+  },
+  kit_standard: {
+    id: 'kit_standard',
+    name: 'Associate Welcome Pack',
+    badge: 'Basic Launch',
+    price: 1499,
+    bv: 50,
+    desc: 'Official product guides, distributor agreement, and digital KASHVIMLM Connect license.',
+  },
+  kit_pro: {
+    id: 'kit_pro',
+    name: 'Fast-Track Pro Pack',
+    badge: 'Most Popular',
+    price: 2999,
+    bv: 100,
+    desc: 'Includes 3 best-selling nutritional products, 3 Business Centers, and marketing collateral.',
+  },
+  kit_elite: {
+    id: 'kit_elite',
+    name: 'Elite Leadership Pack',
+    badge: 'Executive',
+    price: 4999,
+    bv: 200,
+    desc: 'Full cellular nutrition line, skincare samples, active shaker bottles, and personal mentoring pass.',
+  },
+  customer_preferred: {
+    id: 'customer_preferred',
+    name: 'Preferred Customer Membership',
+    badge: 'Customer Direct',
+    price: 499,
+    bv: 0,
+    desc: 'Enjoys 10% wholesale discount on all products without selling obligations or minimum BV requirements.',
+  },
+};
+
+export const getSelectedEnrollmentPack = (enrollType, starterKitId) => {
+  if (enrollType === 'customer') {
+    return ENROLLMENT_PACKS.customer_preferred;
+  }
+  return ENROLLMENT_PACKS[starterKitId] || ENROLLMENT_PACKS.kit_pro;
+};
+
 /**
  * Professional Distributor & Customer Enrollment Portal
  * Binary MLM Enrollment with Step 3 Sponsor ID lookup & Leg availability.
@@ -176,21 +226,11 @@ function EnrollmentView({ user, onNavigate }) {
     setPaymentError(null);
     setPaymentProcessing(true);
 
-    const kitBV =
-      formData.starterKitId === 'kit_pro'
-        ? 100
-        : formData.starterKitId === 'kit_elite'
-        ? 200
-        : 50;
-
-    const kitPrice = 1;
-
-    const kitName =
-      formData.starterKitId === 'kit_pro'
-        ? 'Fast-Track Pro Pack'
-        : formData.starterKitId === 'kit_elite'
-        ? 'Elite Leadership Pack'
-        : 'Associate Welcome Pack';
+    const selectedPack = getSelectedEnrollmentPack(enrollType, formData.starterKitId);
+    const kitPrice = selectedPack.price;
+    const kitBV = selectedPack.bv;
+    const kitName = selectedPack.name;
+    const kitId = selectedPack.id;
 
     try {
       // Step 1: Submit enrollment as PENDING to generate unique KV ID and assign parent
@@ -214,7 +254,6 @@ function EnrollmentView({ user, onNavigate }) {
         starterKitId: formData.starterKitId,
         productPackage: kitName,
         price: kitPrice,
-        bv: kitBV,
         bankName: formData.bankName,
         accountNumber: formData.accountNumber,
         ifscCode: formData.ifscCode,
@@ -227,13 +266,20 @@ function EnrollmentView({ user, onNavigate }) {
 
       // Step 2: Create payment order with backend
       let serverOrderId = '';
+      let serverAmount = kitPrice;
       try {
         const orderRes = await api.createEnrollmentOrder({
           memberId: assignedMemberId,
-          starterKitId: formData.starterKitId,
+          starterKitId: kitId,
+          amount: kitPrice,
+          currency: 'INR',
+          enrollmentType: enrollType === 'distributor' ? 'DISTRIBUTOR' : 'CUSTOMER',
         });
         if (orderRes?.success && orderRes?.data?.razorpayOrderId) {
           serverOrderId = orderRes.data.razorpayOrderId;
+        }
+        if (orderRes?.data?.amount) {
+          serverAmount = Number(orderRes.data.amount);
         }
       } catch (e) {
         console.warn('Backend order generation:', e);
@@ -247,12 +293,13 @@ function EnrollmentView({ user, onNavigate }) {
             throw new Error('Razorpay SDK could not load.');
           }
 
+          const finalAmount = serverAmount || kitPrice;
           const options = {
             key: rzpKey,
-            amount: kitPrice * 100, // 100 paise = ₹1
+            amount: Math.round(finalAmount * 100), // 100 paise per ₹1
             currency: 'INR',
             name: 'KASHVIMLM Platform',
-            description: `Starter Kit Activation: ${kitName} (₹${kitPrice})`,
+            description: `Starter Kit Activation: ${kitName} (₹${finalAmount.toLocaleString('en-IN')})`,
             order_id: serverOrderId || undefined,
             image: '/logo.png',
             prefill: {
@@ -262,10 +309,11 @@ function EnrollmentView({ user, onNavigate }) {
             },
             notes: {
               memberId: assignedMemberId,
-              starterKitId: formData.starterKitId,
+              starterKitId: kitId,
               sponsorId: sponsorInput.trim(),
               placementLeg: selectedPlacementPosition || 'AUTO',
               bv: String(kitBV),
+              amount: String(finalAmount),
             },
             theme: {
               color: '#005086',
@@ -278,9 +326,9 @@ function EnrollmentView({ user, onNavigate }) {
                   razorpayOrderId: response.razorpay_order_id || serverOrderId,
                   razorpayPaymentId: response.razorpay_payment_id,
                   razorpaySignature: response.razorpay_signature,
-                  starterKitId: formData.starterKitId,
-                  amount: kitPrice,
-                  bv: kitBV,
+                  starterKitId: kitId,
+                  amount: finalAmount,
+                  enrollmentType: enrollType === 'distributor' ? 'DISTRIBUTOR' : 'CUSTOMER',
                 });
 
                 if (verifyRes?.success || verifyRes?.paymentStatus === 'PAID') {
@@ -353,6 +401,12 @@ function EnrollmentView({ user, onNavigate }) {
   const handleTestVerifiedPayment = async () => {
     setPaymentError(null);
     setPaymentProcessing(true);
+
+    const selectedPack = getSelectedEnrollmentPack(enrollType, formData.starterKitId);
+    const kitPrice = selectedPack.price;
+    const kitBV = selectedPack.bv;
+    const kitName = selectedPack.name;
+    const kitId = selectedPack.id;
     const testPaymentId = `pay_test_${Date.now()}`;
     const testSig = `test_sig_${Date.now()}`;
 
@@ -375,10 +429,9 @@ function EnrollmentView({ user, onNavigate }) {
         placementPosition: selectedPlacementPosition || 'AUTO',
         placementLeg: (selectedPlacementPosition || 'AUTO').toLowerCase(),
         enrollmentType: enrollType === 'distributor' ? 'DISTRIBUTOR' : 'CUSTOMER',
-        starterKitId: formData.starterKitId,
-        productPackage: 'Fast-Track Pro Pack',
-        price: 1,
-        bv: 100,
+        starterKitId: kitId,
+        productPackage: kitName,
+        price: kitPrice,
         bankName: formData.bankName,
         accountNumber: formData.accountNumber,
         ifscCode: formData.ifscCode,
@@ -395,9 +448,9 @@ function EnrollmentView({ user, onNavigate }) {
         razorpayOrderId: `order_test_${Date.now()}`,
         razorpayPaymentId: testPaymentId,
         razorpaySignature: testSig,
-        starterKitId: formData.starterKitId,
-        amount: 1,
-        bv: 100,
+        starterKitId: kitId,
+        amount: kitPrice,
+        enrollmentType: enrollType === 'distributor' ? 'DISTRIBUTOR' : 'CUSTOMER',
       });
 
       if (verifyRes?.success || verifyRes?.paymentStatus === 'PAID') {
@@ -443,21 +496,11 @@ function EnrollmentView({ user, onNavigate }) {
     const accountStatus = options.accountStatus || (isVerified ? 'ACTIVE' : 'PENDING_PAYMENT');
     const razorpayPaymentId = options.paymentId || (isVerified ? `pay_rzp_${Date.now()}` : 'PENDING');
 
-    const kitBV =
-      formData.starterKitId === 'kit_pro'
-        ? 100
-        : formData.starterKitId === 'kit_elite'
-        ? 200
-        : 50;
-
-    const kitPrice = 1;
-
-    const kitName =
-      formData.starterKitId === 'kit_pro'
-        ? 'Fast-Track Pro Pack'
-        : formData.starterKitId === 'kit_elite'
-        ? 'Elite Leadership Pack'
-        : 'Associate Welcome Pack';
+    const selectedPack = getSelectedEnrollmentPack(enrollType, formData.starterKitId);
+    const kitPrice = selectedPack.price;
+    const kitBV = selectedPack.bv;
+    const kitName = selectedPack.name;
+    const kitId = selectedPack.id;
 
     const enrollPayload = {
       fullName: formData.fullName,
@@ -476,10 +519,9 @@ function EnrollmentView({ user, onNavigate }) {
       placementPosition: selectedPlacementPosition || 'AUTO',
       placementLeg: (selectedPlacementPosition || 'AUTO').toLowerCase(),
       enrollmentType: enrollType === 'distributor' ? 'DISTRIBUTOR' : 'CUSTOMER',
-      starterKitId: formData.starterKitId,
+      starterKitId: kitId,
       productPackage: kitName,
       price: kitPrice,
-      bv: kitBV,
       bankName: formData.bankName,
       accountNumber: formData.accountNumber,
       ifscCode: formData.ifscCode,
@@ -671,7 +713,7 @@ function EnrollmentView({ user, onNavigate }) {
             <div className="credential-row">
               <span className="cred-label">Activated Starter Pack:</span>
               <span className="cred-val">
-                {enrollmentResult.kitName || 'Associate Welcome Pack'} (₹{enrollmentResult.kitPrice ?? 1})
+                {enrollmentResult.kitName || 'Associate Welcome Pack'} (₹{(enrollmentResult.kitPrice ?? 1499).toLocaleString('en-IN')})
               </span>
             </div>
 
@@ -1304,7 +1346,7 @@ function EnrollmentView({ user, onNavigate }) {
                   <div className="kit-card-inner">
                     <div className="kit-badge-tag">Basic Launch</div>
                     <h4 className="kit-title">Associate Welcome Pack</h4>
-                    <div className="kit-price">₹1</div>
+                    <div className="kit-price">₹1,499</div>
                     <div className="kit-bv-pill">+50 BV Points</div>
                     <p className="kit-desc">
                       Official product guides, distributor agreement, and digital KASHVIMLM Connect license.
@@ -1323,7 +1365,7 @@ function EnrollmentView({ user, onNavigate }) {
                   <div className="kit-card-inner">
                     <div className="kit-badge-tag popular-tag">Most Popular</div>
                     <h4 className="kit-title">Fast-Track Pro Pack</h4>
-                    <div className="kit-price">₹1</div>
+                    <div className="kit-price">₹2,999</div>
                     <div className="kit-bv-pill text-teal">+100 BV Points</div>
                     <p className="kit-desc">
                       Includes 3 best-selling nutritional products, 3 Business Centers, and marketing collateral.
@@ -1342,7 +1384,7 @@ function EnrollmentView({ user, onNavigate }) {
                   <div className="kit-card-inner">
                     <div className="kit-badge-tag">Executive</div>
                     <h4 className="kit-title">Elite Leadership Pack</h4>
-                    <div className="kit-price">₹1</div>
+                    <div className="kit-price">₹4,999</div>
                     <div className="kit-bv-pill">+200 BV Points</div>
                     <p className="kit-desc">
                       Full cellular nutrition line, skincare samples, active shaker bottles, and personal mentoring pass.
@@ -1534,45 +1576,46 @@ function EnrollmentView({ user, onNavigate }) {
 
               <div className="enroll-payment-body">
                 {/* Kit Summary Card */}
-                <div className="payment-summary-box">
-                  <div className="summary-top-row">
-                    <div>
-                      <span className="summary-kit-label">Selected Business Kit</span>
-                      <h4 className="summary-kit-title">
-                        {formData.starterKitId === 'kit_pro'
-                          ? 'Fast-Track Pro Pack'
-                          : formData.starterKitId === 'kit_elite'
-                          ? 'Elite Leadership Pack'
-                          : 'Associate Welcome Pack'}
-                      </h4>
-                    </div>
-                    <div className="summary-kit-price-tag">
-                      <span className="currency-symbol">₹</span>
-                      <span className="price-num">1</span>
-                    </div>
-                  </div>
+                {(() => {
+                  const activePack = getSelectedEnrollmentPack(enrollType, formData.starterKitId);
+                  return (
+                    <div className="payment-summary-box">
+                      <div className="summary-top-row">
+                        <div>
+                          <span className="summary-kit-label">
+                            {enrollType === 'customer' ? 'Customer Membership' : 'Selected Business Kit'}
+                          </span>
+                          <h4 className="summary-kit-title">{activePack.name}</h4>
+                        </div>
+                        <div className="summary-kit-price-tag">
+                          <span className="currency-symbol">₹</span>
+                          <span className="price-num">{activePack.price.toLocaleString('en-IN')}</span>
+                        </div>
+                      </div>
 
-                  <div className="summary-details-grid">
-                    <div className="summary-detail-item">
-                      <span className="detail-label">Enrollee Name:</span>
-                      <span className="detail-value">{formData.fullName || 'New Enrollee'}</span>
+                      <div className="summary-details-grid">
+                        <div className="summary-detail-item">
+                          <span className="detail-label">Enrollee Name:</span>
+                          <span className="detail-value">{formData.fullName || 'New Enrollee'}</span>
+                        </div>
+                        <div className="summary-detail-item">
+                          <span className="detail-label">Mobile Number:</span>
+                          <span className="detail-value">{formData.phone || '—'}</span>
+                        </div>
+                        <div className="summary-detail-item">
+                          <span className="detail-label">Volume Credited:</span>
+                          <span className="detail-value text-teal font-bold">
+                            +{activePack.bv} BV Points
+                          </span>
+                        </div>
+                        <div className="summary-detail-item">
+                          <span className="detail-label">Binary Placement:</span>
+                          <span className="detail-value">{selectedPlacementPosition || 'RIGHT'} Leg (Sponsor: {sponsorInput})</span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="summary-detail-item">
-                      <span className="detail-label">Mobile Number:</span>
-                      <span className="detail-value">{formData.phone || '—'}</span>
-                    </div>
-                    <div className="summary-detail-item">
-                      <span className="detail-label">Volume Credited:</span>
-                      <span className="detail-value text-teal font-bold">
-                        +{formData.starterKitId === 'kit_pro' ? 100 : formData.starterKitId === 'kit_elite' ? 200 : 50} BV Points
-                      </span>
-                    </div>
-                    <div className="summary-detail-item">
-                      <span className="detail-label">Binary Placement:</span>
-                      <span className="detail-value">RIGHT Leg (Sponsor: {sponsorInput})</span>
-                    </div>
-                  </div>
-                </div>
+                  );
+                })()}
 
                 {/* Razorpay Gateway Card */}
                 <div className="gateway-select-card selected">

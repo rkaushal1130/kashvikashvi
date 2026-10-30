@@ -3,7 +3,8 @@
     "argv": [
       "/Users/amanansari/.nvm/versions/node/v20.19.5/bin/node",
       "/Users/amanansari/Personal/Misc/kashvikashvi/node_modules/.bin/playwright",
-      "test"
+      "test",
+      "tests/e2e/admin-commission-distribution-tables.spec.js"
     ],
     "configFile": "/Users/amanansari/Personal/Misc/kashvikashvi/playwright.config.js",
     "rootDir": "/Users/amanansari/Personal/Misc/kashvikashvi/tests/e2e",
@@ -105,25 +106,25 @@
   },
   "suites": [
     {
-      "title": "auth.spec.js",
-      "file": "auth.spec.js",
+      "title": "admin-commission-distribution-tables.spec.js",
+      "file": "admin-commission-distribution-tables.spec.js",
       "column": 0,
       "line": 0,
       "specs": [],
       "suites": [
         {
-          "title": "Authentication & Access Control E2E Suite",
-          "file": "auth.spec.js",
+          "title": "Admin Commission Distribution & Funding Portal Distributor Tables E2E Suite",
+          "file": "admin-commission-distribution-tables.spec.js",
           "line": 3,
           "column": 6,
           "specs": [
             {
-              "title": "TC-AUTH-01: Login page renders with proper elements",
+              "title": "TC-DIST-COMM-01: Admin Funding Portal table lists distributed commissions for distributors (not employees)",
               "ok": true,
               "tags": [],
               "tests": [
                 {
-                  "timeout": 30000,
+                  "timeout": 60000,
                   "annotations": [],
                   "expectedStatus": "passed",
                   "projectId": "chromium",
@@ -133,12 +134,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 2201,
+                      "duration": 7312,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-10-30T12:24:45.955Z",
+                      "startTime": "2026-10-30T19:00:10.902Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -146,18 +147,18 @@
                   "status": "expected"
                 }
               ],
-              "id": "d5ed79a6b333c2ba7209-71dabe8257620993bdde",
-              "file": "auth.spec.js",
-              "line": 13,
+              "id": "971a9257ca0254a7ab65-d61cc14056571a60327b",
+              "file": "admin-commission-distribution-tables.spec.js",
+              "line": 16,
               "column": 3
             },
             {
-              "title": "TC-AUTH-02: Client-side validation blocks empty submission",
+              "title": "TC-DIST-COMM-02: Commission Distribution Page table shows Distributor ID, Distributor Name, and distributor counts",
               "ok": true,
               "tags": [],
               "tests": [
                 {
-                  "timeout": 30000,
+                  "timeout": 60000,
                   "annotations": [],
                   "expectedStatus": "passed",
                   "projectId": "chromium",
@@ -167,12 +168,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 1704,
+                      "duration": 6201,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-10-30T12:24:49.267Z",
+                      "startTime": "2026-10-30T19:00:19.010Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -180,18 +181,18 @@
                   "status": "expected"
                 }
               ],
-              "id": "d5ed79a6b333c2ba7209-80b3167ab936e6de7f16",
-              "file": "auth.spec.js",
-              "line": 22,
+              "id": "971a9257ca0254a7ab65-c8064b946b123424b3e6",
+              "file": "admin-commission-distribution-tables.spec.js",
+              "line": 61,
               "column": 3
             },
             {
-              "title": "TC-AUTH-03: Invalid credentials trigger 401 error message without crashing",
+              "title": "TC-DIST-COMM-03: Commission Distribution Progress Bar renders with visual track and metrics",
               "ok": true,
               "tags": [],
               "tests": [
                 {
-                  "timeout": 30000,
+                  "timeout": 60000,
                   "annotations": [],
                   "expectedStatus": "passed",
                   "projectId": "chromium",
@@ -201,12 +202,12 @@
                       "workerIndex": 0,
                       "parallelIndex": 0,
                       "status": "passed",
-                      "duration": 2532,
+                      "duration": 7503,
                       "errors": [],
                       "stdout": [],
                       "stderr": [],
                       "retry": 0,
-                      "startTime": "2026-10-30T12:24:50.978Z",
+                      "startTime": "2026-10-30T19:00:25.223Z",
                       "annotations": [],
                       "attachments": []
                     }
@@ -214,767 +215,9 @@
                   "status": "expected"
                 }
               ],
-              "id": "d5ed79a6b333c2ba7209-54d86c8324bcbae438e4",
-              "file": "auth.spec.js",
-              "line": 32,
-              "column": 3
-            },
-            {
-              "title": "TC-AUTH-04: Super Admin login succeeds and redirects to dashboard",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 4272,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-10-30T12:24:53.518Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "d5ed79a6b333c2ba7209-c43feb73ebbc4755c6dc",
-              "file": "auth.spec.js",
-              "line": 43,
-              "column": 3
-            },
-            {
-              "title": "TC-AUTH-05: Demo Admin login succeeds with AdminPassword@2026",
-              "ok": true,
-              "tags": [
-                "2026"
-              ],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 4650,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-10-30T12:24:57.805Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "d5ed79a6b333c2ba7209-36ce5577bfec4cb6fec4",
-              "file": "auth.spec.js",
-              "line": 57,
-              "column": 3
-            },
-            {
-              "title": "TC-AUTH-06: Unauthenticated user accessing protected route is redirected to /login",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 2345,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-10-30T12:25:02.478Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "d5ed79a6b333c2ba7209-c0faa16f0e6a7f03f1b7",
-              "file": "auth.spec.js",
-              "line": 66,
-              "column": 3
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "title": "dashboard-navigation.spec.js",
-      "file": "dashboard-navigation.spec.js",
-      "column": 0,
-      "line": 0,
-      "specs": [],
-      "suites": [
-        {
-          "title": "Dashboard & Operations Navigation E2E Suite",
-          "file": "dashboard-navigation.spec.js",
-          "line": 3,
-          "column": 6,
-          "specs": [
-            {
-              "title": "TC-NAV-01: Admin can access dashboard and view key elements",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 4421,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-10-30T12:25:04.857Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "636f4ed29453469acd0f-bb99d8b036d6980c105b",
-              "file": "dashboard-navigation.spec.js",
-              "line": 17,
-              "column": 3
-            },
-            {
-              "title": "TC-NAV-02: Admin can navigate to Network Tree",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 4760,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-10-30T12:25:09.287Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "636f4ed29453469acd0f-f26e75f6da903b913d5c",
-              "file": "dashboard-navigation.spec.js",
-              "line": 26,
-              "column": 3
-            },
-            {
-              "title": "TC-NAV-03: Admin can access Admin Funding Portal",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 4933,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-10-30T12:25:14.065Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "636f4ed29453469acd0f-b86e88ba121d640707f6",
-              "file": "dashboard-navigation.spec.js",
-              "line": 32,
-              "column": 3
-            },
-            {
-              "title": "TC-NAV-04: Admin can access Product Management",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 5429,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-10-30T12:25:19.017Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "636f4ed29453469acd0f-cc0a5f3105e12b77b8f8",
-              "file": "dashboard-navigation.spec.js",
-              "line": 37,
-              "column": 3
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "title": "funding-and-payments.spec.js",
-      "file": "funding-and-payments.spec.js",
-      "column": 0,
-      "line": 0,
-      "specs": [],
-      "suites": [
-        {
-          "title": "Payment, Treasury Funding & Commission Distribution E2E Suite",
-          "file": "funding-and-payments.spec.js",
-          "line": 3,
-          "column": 6,
-          "specs": [
-            {
-              "title": "TC-PAY-01: Admin Funding Portal renders Treasury Overview & Core Cards",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 6141,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-10-30T12:25:24.517Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "83e80692d8fd746d85a7-dc8fc0244f75d241ef3f",
-              "file": "funding-and-payments.spec.js",
-              "line": 30,
-              "column": 3
-            },
-            {
-              "title": "TC-PAY-02: Connect Corporate Bank Account Modal & Form Validation",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 6849,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-10-30T12:25:30.703Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "83e80692d8fd746d85a7-4231bc5d6ca80a534c73",
-              "file": "funding-and-payments.spec.js",
-              "line": 48,
-              "column": 3
-            },
-            {
-              "title": "TC-PAY-03: Add Corporate Funds Flow (Treasury Top-Up Form)",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 5573,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-10-30T12:25:37.563Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "83e80692d8fd746d85a7-39144cd2e2316750e8c4",
-              "file": "funding-and-payments.spec.js",
-              "line": 91,
-              "column": 3
-            },
-            {
-              "title": "TC-PAY-04: Disconnect Corporate Bank Account Dialog",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 5592,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-10-30T12:25:43.144Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "83e80692d8fd746d85a7-1ce6228e224ff8c0212e",
-              "file": "funding-and-payments.spec.js",
-              "line": 120,
-              "column": 3
-            },
-            {
-              "title": "TC-PAY-05: Commission Distribution by Level/Rank & Batch Creation",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 5724,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-10-30T12:25:48.749Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "83e80692d8fd746d85a7-ca40d5e668d3bc261214",
-              "file": "funding-and-payments.spec.js",
-              "line": 140,
-              "column": 3
-            },
-            {
-              "title": "TC-PAY-06: Distributor Bank Account Addition, Penny-Drop Verification & Deletion",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 6684,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-10-30T12:25:54.482Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "83e80692d8fd746d85a7-4731deaaa3af9e8820a4",
-              "file": "funding-and-payments.spec.js",
-              "line": 192,
-              "column": 3
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "title": "network-tree-and-placement.spec.js",
-      "file": "network-tree-and-placement.spec.js",
-      "column": 0,
-      "line": 0,
-      "specs": [],
-      "suites": [
-        {
-          "title": "Distributor ID Format, Referral Enrollment & Binary Leg Alternation Suite",
-          "file": "network-tree-and-placement.spec.js",
-          "line": 3,
-          "column": 6,
-          "specs": [
-            {
-              "title": "TC-DIST-01: New distributor creation generates sequential ID in DST-000 format",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 5620,
-                      "errors": [],
-                      "stdout": [
-                        {
-                          "text": "✅ Generated Distributor ID: DST-0025\n"
-                        }
-                      ],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-10-30T12:26:01.197Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "3b7165515fbed5379447-1249d90b667acfa3799d",
-              "file": "network-tree-and-placement.spec.js",
-              "line": 19,
-              "column": 3
-            },
-            {
-              "title": "TC-DIST-02: Referrals under distributor ID alternate legs (1st: RIGHT, 2nd: LEFT, 3rd: RIGHT, 4th: LEFT)",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 16409,
-                      "errors": [],
-                      "stdout": [
-                        {
-                          "text": "✅ Downlines registered under DST-0026 with alternating positions: [ \u001b[32m'RIGHT'\u001b[39m, \u001b[32m'LEFT'\u001b[39m, \u001b[32m'RIGHT'\u001b[39m, \u001b[32m'LEFT'\u001b[39m ]\n"
-                        }
-                      ],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-10-30T12:26:06.833Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "3b7165515fbed5379447-cf73d7556b62a1ac75c3",
-              "file": "network-tree-and-placement.spec.js",
-              "line": 42,
-              "column": 3
-            },
-            {
-              "title": "TC-DIST-03: Distributor can view only their own tree at /network-tree",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 10528,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-10-30T12:26:23.276Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "3b7165515fbed5379447-b050d69c197785ecc2ba",
-              "file": "network-tree-and-placement.spec.js",
-              "line": 96,
-              "column": 3
-            },
-            {
-              "title": "TC-DIST-04: Distributor attempting to view another distributor tree via URL is blocked",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 11660,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-10-30T12:26:33.843Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "3b7165515fbed5379447-dab19137c54fa144b759",
-              "file": "network-tree-and-placement.spec.js",
-              "line": 131,
-              "column": 3
-            },
-            {
-              "title": "TC-DIST-05: Admin can view all trees and search any distributor",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 9225,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-10-30T12:26:45.515Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "3b7165515fbed5379447-d70b36b94c369888f79c",
-              "file": "network-tree-and-placement.spec.js",
-              "line": 162,
-              "column": 3
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "title": "registration.spec.js",
-      "file": "registration.spec.js",
-      "column": 0,
-      "line": 0,
-      "specs": [],
-      "suites": [
-        {
-          "title": "Enrollment & Registration E2E Suite",
-          "file": "registration.spec.js",
-          "line": 3,
-          "column": 6,
-          "specs": [
-            {
-              "title": "TC-REG-01: Registration page renders required input fields",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 2028,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-10-30T12:26:54.784Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "1551a940dbfbf0872387-57d5bf434859de495698",
-              "file": "registration.spec.js",
-              "line": 4,
-              "column": 3
-            },
-            {
-              "title": "TC-REG-02: Join page with referral code prepopulates sponsor or links to register",
-              "ok": true,
-              "tags": [],
-              "tests": [
-                {
-                  "timeout": 30000,
-                  "annotations": [],
-                  "expectedStatus": "passed",
-                  "projectId": "chromium",
-                  "projectName": "chromium",
-                  "results": [
-                    {
-                      "workerIndex": 0,
-                      "parallelIndex": 0,
-                      "status": "passed",
-                      "duration": 2640,
-                      "errors": [],
-                      "stdout": [],
-                      "stderr": [],
-                      "retry": 0,
-                      "startTime": "2026-10-30T12:26:56.820Z",
-                      "annotations": [],
-                      "attachments": []
-                    }
-                  ],
-                  "status": "expected"
-                }
-              ],
-              "id": "1551a940dbfbf0872387-0b0986dd912533396a6c",
-              "file": "registration.spec.js",
-              "line": 13,
+              "id": "971a9257ca0254a7ab65-ae6216952b07b513809c",
+              "file": "admin-commission-distribution-tables.spec.js",
+              "line": 99,
               "column": 3
             }
           ]
@@ -984,9 +227,9 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-10-30T12:24:45.564Z",
-    "duration": 134092.35400000002,
-    "expected": 23,
+    "startTime": "2026-10-30T19:00:10.479Z",
+    "duration": 22348.569,
+    "expected": 3,
     "skipped": 0,
     "unexpected": 0,
     "flaky": 0

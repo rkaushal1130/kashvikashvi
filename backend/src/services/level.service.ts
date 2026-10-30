@@ -22,6 +22,7 @@ export interface LevelDefinition {
   order: number;
   code: string;
   name: string;
+  commissionPercent?: number;
   requiredBB: number;
   requiredLeftMatching: number;
   requiredRightMatching: number;
@@ -36,6 +37,7 @@ export const CANONICAL_LEVELS: LevelDefinition[] = [
     order: 0,
     code: 'BASE',
     name: 'Base',
+    commissionPercent: 0,
     requiredBB: 0,
     requiredLeftMatching: 0,
     requiredRightMatching: 0,
@@ -47,56 +49,61 @@ export const CANONICAL_LEVELS: LevelDefinition[] = [
     order: 1,
     code: 'SILVER',
     name: 'Silver',
+    commissionPercent: 24,
     requiredBB: 250,
     requiredLeftMatching: 2000,
     requiredRightMatching: 2000,
     requiredMatching: 2000,
     binaryWeeklyCap: 3000,
-    description: 'Silver tier requiring BB >= 250, Left Matching >= 2,000, Right Matching >= 2,000.',
+    description: 'Silver - 24%: 250 BV with min 2000 matching at left or 2000 matching at right.',
   },
   {
     order: 2,
     code: 'GOLD',
     name: 'Gold',
+    commissionPercent: 8,
     requiredBB: 250,
     requiredLeftMatching: 5000,
     requiredRightMatching: 5000,
     requiredMatching: 5000,
     binaryWeeklyCap: 10000,
-    description: 'Gold tier requiring BB >= 250, Left Matching >= 5,000, Right Matching >= 5,000.',
+    description: 'Gold - 8%: 250 BV with min 5000 matching at left or 5000 matching at right.',
   },
   {
     order: 3,
     code: 'PLATINUM',
     name: 'Platinum',
+    commissionPercent: 13,
     requiredBB: 500,
     requiredLeftMatching: 50000,
     requiredRightMatching: 50000,
     requiredMatching: 50000,
     binaryWeeklyCap: 25000,
-    description: 'Platinum tier requiring BB >= 500, Left Matching >= 50,000, Right Matching >= 50,000.',
+    description: 'Platinum - 13%: 500 BV with min 50000 matching at left or 50000 matching at right.',
   },
   {
     order: 4,
     code: 'DIAMOND',
     name: 'Diamond',
+    commissionPercent: 5,
     requiredBB: 1000,
     requiredLeftMatching: 60000,
     requiredRightMatching: 60000,
     requiredMatching: 60000,
     binaryWeeklyCap: 50000,
-    description: 'Diamond executive tier requiring BB >= 1,000, Left Matching >= 60,000, Right Matching >= 60,000.',
+    description: 'Diamond - 5%: 1000 BV with min 60000 matching at left or 60000 matching at right.',
   },
   {
     order: 5,
     code: 'RUBY',
     name: 'Ruby',
+    commissionPercent: 4,
     requiredBB: 1000,
     requiredLeftMatching: 100000,
     requiredRightMatching: 100000,
     requiredMatching: 100000,
     binaryWeeklyCap: 100000,
-    description: 'Ruby executive tier requiring BB >= 1,000, Left Matching >= 100,000, Right Matching >= 100,000.',
+    description: 'Ruby - 4%: 1000 BV with min 100000 matching at left or 100000 matching at right.',
   },
 ];
 
@@ -344,23 +351,25 @@ export class LevelService {
       });
 
       if (dbLevels && dbLevels.length > 0) {
-        const mapped: LevelDefinition[] = dbLevels.map((l: any) => ({
-          id: l.id,
-          order: l.order,
-          code: l.code,
-          name: l.name,
-          requiredBB: Number(l.requiredBB),
-          requiredLeftMatching: Number(l.requiredLeftMatching ?? l.requiredMatching ?? 0),
-          requiredRightMatching: Number(l.requiredRightMatching ?? l.requiredMatching ?? 0),
-          requiredMatching: Number(l.requiredMatching ?? l.requiredLeftMatching ?? 0),
-          isActive: l.isActive,
-          description: `${l.name} tier`,
-        }));
-
-        if (!mapped.some((m) => m.order === 0)) {
-          return [CANONICAL_LEVELS[0], ...mapped];
-        }
-        return mapped;
+        const merged: LevelDefinition[] = CANONICAL_LEVELS.map((canonical) => {
+          const dbMatch = dbLevels.find((l: any) => l.order === canonical.order || l.code?.toUpperCase() === canonical.code?.toUpperCase());
+          if (!dbMatch) return canonical;
+          return {
+            id: dbMatch.id,
+            order: dbMatch.order,
+            code: dbMatch.code,
+            name: dbMatch.name,
+            commissionPercent: canonical.commissionPercent ?? (dbMatch.commissionPercent !== undefined ? Number(dbMatch.commissionPercent) : 0),
+            requiredBB: Number(dbMatch.requiredBB ?? canonical.requiredBB),
+            requiredLeftMatching: Number(dbMatch.requiredLeftMatching ?? dbMatch.requiredMatching ?? canonical.requiredLeftMatching),
+            requiredRightMatching: Number(dbMatch.requiredRightMatching ?? dbMatch.requiredMatching ?? canonical.requiredRightMatching),
+            requiredMatching: Number(dbMatch.requiredMatching ?? dbMatch.requiredLeftMatching ?? canonical.requiredMatching),
+            binaryWeeklyCap: canonical.binaryWeeklyCap,
+            isActive: dbMatch.isActive,
+            description: canonical.description,
+          };
+        });
+        return merged;
       }
     } catch (err: any) {
       logger.warn({ error: err.message }, 'Failed to fetch levels from database, falling back to canonical levels');
@@ -692,7 +701,7 @@ export class LevelService {
   public static async checkLevelQualification(
     memberId: string,
     levelCodeOrOrder: string | number,
-    overrides?: { bb?: number; leftMatching?: number; rightMatching?: number; matching?: number },
+    overrides?: { bb?: number; leftMatching?: number; rightMatching?: number; matching?: number; joinings?: number },
     tx?: Prisma.TransactionClient
   ): Promise<LevelQualificationCheckResult> {
     const db = tx || prisma;
@@ -776,11 +785,46 @@ export class LevelService {
 
     const currentMatching = Math.min(currentLeftMatching, currentRightMatching);
 
-    const bbSatisfied = currentBB >= targetLevel.requiredBB;
+    const isMemberAdmin = Boolean(
+      member.roleName === 'ADMIN' ||
+      member.role === 'ADMIN' ||
+      member.user?.roleName === 'ADMIN' ||
+      member.user?.role === 'ADMIN' ||
+      member.distributorCode === 'KV-1000' ||
+      member.distributorCode === 'KV-1001' ||
+      member.distributorId === 'KV-1000' ||
+      member.distributorId === 'KV-1001'
+    );
+
+    let joiningsCount = (overrides as any)?.joinings !== undefined ? Number((overrides as any).joinings) : 0;
+    if (joiningsCount === 0) {
+      try {
+        const { NetworkTreeService } = await import('./networkTree.service');
+        const enrolled = NetworkTreeService.getEnrolledMembers();
+        joiningsCount = enrolled.filter((m) => m.distributorId !== member.distributorCode).length;
+      } catch {
+        // fallback
+      }
+      joiningsCount = Math.max(
+        joiningsCount,
+        Number((member as any).joiningsCount ?? (member as any).totalTeamCount ?? (member as any).directMembers ?? 0)
+      );
+    }
+
+    const minJoiningsForAdmin =
+      targetLevel.order === 1 ? 2 :
+      targetLevel.order === 2 ? 5 :
+      targetLevel.order === 3 ? 10 :
+      targetLevel.order === 4 ? 20 :
+      targetLevel.order === 5 ? 50 : 0;
+
+    const bbSatisfied = isMemberAdmin ? true : currentBB >= targetLevel.requiredBB;
     const leftMatchingSatisfied = currentLeftMatching >= targetLevel.requiredLeftMatching;
     const rightMatchingSatisfied = currentRightMatching >= targetLevel.requiredRightMatching;
-    const matchingSatisfied = leftMatchingSatisfied && rightMatchingSatisfied;
-    const isQualified = bbSatisfied && leftMatchingSatisfied && rightMatchingSatisfied;
+    const matchingSatisfied = isMemberAdmin
+      ? (leftMatchingSatisfied || rightMatchingSatisfied || joiningsCount >= minJoiningsForAdmin)
+      : (leftMatchingSatisfied || rightMatchingSatisfied || (currentMatching >= (targetLevel.requiredMatching ?? targetLevel.requiredLeftMatching)));
+    const isQualified = bbSatisfied && matchingSatisfied;
 
     const bbGap = Math.max(0, targetLevel.requiredBB - currentBB);
     const leftMatchingGap = Math.max(0, targetLevel.requiredLeftMatching - currentLeftMatching);
@@ -819,7 +863,7 @@ export class LevelService {
    */
   public static async calculateEligibleLevel(
     memberIdOrProfile: string | any,
-    overrides?: { bb?: number; leftMatching?: number; rightMatching?: number; matching?: number },
+    overrides?: { bb?: number; leftMatching?: number; rightMatching?: number; matching?: number; joinings?: number },
     tx?: Prisma.TransactionClient
   ): Promise<EligibleLevelResult> {
     const db = tx || prisma;
@@ -907,6 +951,33 @@ export class LevelService {
       if (matched) currentLevel = matched;
     }
 
+    // Check if member is Admin
+    const isMemberAdmin = Boolean(
+      member.roleName === 'ADMIN' ||
+      member.role === 'ADMIN' ||
+      member.user?.roleName === 'ADMIN' ||
+      member.user?.role === 'ADMIN' ||
+      member.distributorCode === 'KV-1000' ||
+      member.distributorCode === 'KV-1001' ||
+      member.distributorId === 'KV-1000' ||
+      member.distributorId === 'KV-1001'
+    );
+
+    let joiningsCount = (overrides as any)?.joinings !== undefined ? Number((overrides as any).joinings) : 0;
+    if (joiningsCount === 0) {
+      try {
+        const { NetworkTreeService } = await import('./networkTree.service');
+        const enrolled = NetworkTreeService.getEnrolledMembers();
+        joiningsCount = enrolled.filter((m) => m.distributorId !== member.distributorCode).length;
+      } catch {
+        // fallback
+      }
+      joiningsCount = Math.max(
+        joiningsCount,
+        Number((member as any).joiningsCount ?? (member as any).totalTeamCount ?? (member as any).directMembers ?? 0)
+      );
+    }
+
     // HIGHEST-TO-LOWEST EVALUATION:
     // Sort descending by order: Ruby (5), Diamond (4), Platinum (3), Gold (2), Silver (1), Base (0)
     const descendingLevels = [...levels].sort((a, b) => b.order - a.order);
@@ -914,12 +985,47 @@ export class LevelService {
     let eligibleLevel = levels[0]; // defaults to BASE
 
     for (const lvl of descendingLevels) {
-      // All THREE conditions are mandatory independently
-      const meetsBB = currentBB >= lvl.requiredBB;
-      const meetsLeft = currentLeftMatching >= lvl.requiredLeftMatching;
-      const meetsRight = currentRightMatching >= lvl.requiredRightMatching;
+      if (lvl.order === 0) {
+        eligibleLevel = lvl;
+        break;
+      }
 
-      if (meetsBB && meetsLeft && meetsRight) {
+      let meetsQualification = false;
+
+      if (isMemberAdmin) {
+        // Level of the Admin user will increase based on joinings() of user under him
+        // Admin does NOT have personal buying requirement (no required BV needed)
+        const meetsMatchingFromJoinings =
+          currentLeftMatching >= lvl.requiredLeftMatching ||
+          currentRightMatching >= lvl.requiredRightMatching;
+
+        const minJoiningsForAdmin =
+          lvl.order === 1 ? 2 :
+          lvl.order === 2 ? 5 :
+          lvl.order === 3 ? 10 :
+          lvl.order === 4 ? 20 :
+          lvl.order === 5 ? 50 : 0;
+
+        if (meetsMatchingFromJoinings || joiningsCount >= minJoiningsForAdmin) {
+          meetsQualification = true;
+        }
+      } else {
+        // Distributor level increases: he has to buy also AND add people both
+        // 1. Buy also: currentBB >= lvl.requiredBB
+        const meetsBB = currentBB >= lvl.requiredBB;
+
+        // 2. Add people both: min matching at left OR min matching at right
+        const meetsMatching =
+          currentLeftMatching >= lvl.requiredLeftMatching ||
+          currentRightMatching >= lvl.requiredRightMatching ||
+          (currentMatching >= (lvl.requiredMatching ?? lvl.requiredLeftMatching));
+
+        if (meetsBB && meetsMatching) {
+          meetsQualification = true;
+        }
+      }
+
+      if (meetsQualification) {
         eligibleLevel = lvl;
         break; // Found highest qualified level!
       }
@@ -1559,6 +1665,52 @@ export class LevelService {
       },
       tx
     );
+  }
+
+  // =========================================================================
+  // 7C. PROCESS LEVEL AFTER JOININGS
+  // =========================================================================
+
+  /**
+   * Event hook invoked when a member or downline joins.
+   * Promotes Admin users automatically based on joinings() of users under them,
+   * and promotes distributors if both buying (personal BV) and adding people (matching) criteria are met.
+   */
+  public static async processJoiningsAndEvaluateLevels(
+    uplineCode: string = 'KV-1001',
+    tx?: Prisma.TransactionClient
+  ): Promise<PromoteMemberResult | null> {
+    try {
+      const result = await this.recalculateMemberLevel(
+        uplineCode,
+        {
+          source: 'DOWNLINE_JOININGS',
+          reason: 'Member level recalculated after new user joined under tree',
+        },
+        tx
+      );
+
+      // If upline is not Admin, also evaluate company root/admin
+      if (uplineCode !== 'KV-1001' && uplineCode !== 'KV-1000') {
+        try {
+          await this.recalculateMemberLevel(
+            'KV-1001',
+            {
+              source: 'DOWNLINE_JOININGS',
+              reason: 'Company Root Admin level recalculated after new user joined under tree',
+            },
+            tx
+          );
+        } catch {
+          // ignore
+        }
+      }
+
+      return result.promotionResult ?? null;
+    } catch (e: any) {
+      logger.warn({ uplineCode, err: e.message }, 'Resilient level evaluation after joinings');
+      return null;
+    }
   }
 
   // =========================================================================

@@ -91,6 +91,10 @@ export class SponsorService {
       if (!occupiedPositions.has('RIGHT')) {
         availablePositions.push('RIGHT');
       }
+      // If immediate direct positions are occupied, spillover placement into LEFT or RIGHT downline leg is available
+      if (availablePositions.length === 0) {
+        availablePositions.push('LEFT', 'RIGHT');
+      }
       return availablePositions;
     }
 

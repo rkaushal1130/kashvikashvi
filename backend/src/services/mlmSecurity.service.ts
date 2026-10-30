@@ -123,10 +123,13 @@ export class MLMSecurityService {
   ): void {
     if (!payload || typeof payload !== 'object') return;
 
-    // Allow administrator level and system configuration operations
+    // Allow administrator level and system configuration operations or level simulation/evaluation
     if (
       context?.path?.includes('/admin/config') ||
       context?.path?.includes('/admin/levels') ||
+      context?.path?.includes('/levels/evaluate') ||
+      context?.path?.includes('/levels/simulate') ||
+      context?.path?.includes('/commissions/cumulative/preview') ||
       context?.userRole === 'ADMIN' ||
       context?.userRole === 'SUPER_ADMIN'
     ) {

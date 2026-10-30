@@ -19,6 +19,8 @@ import {
   Sparkles,
   Landmark,
   CreditCard,
+  ShoppingBag,
+  PackagePlus,
 } from 'lucide-react';
 import './AdminLayout.css';
 
@@ -35,6 +37,8 @@ export function AdminLayout({ children }) {
 
   const navItems = [
     { label: 'Admin Dashboard', path: '/admin/dashboard', icon: LayoutDashboard },
+    { label: 'Orders', path: '/admin/orders', icon: ShoppingBag },
+    { label: 'Product Management', path: '/admin/products', icon: PackagePlus },
     { label: 'Funding Portal', path: '/admin/funding-portal', icon: Landmark },
     { label: 'Commission Distribution', path: '/admin/commission-distribution', icon: CreditCard },
     { label: 'Distributor Directory', path: '/admin/distributors', icon: Users },
@@ -114,6 +118,7 @@ export function AdminLayout({ children }) {
                 const isActive =
                   location.pathname === item.path ||
                   (item.path === '/admin/dashboard' && location.pathname === '/admin') ||
+                  (item.path === '/admin/orders' && location.pathname.startsWith('/admin/orders')) ||
                   (item.path === '/admin/funding-portal' &&
                     (location.pathname === '/admin/funding-portal' || location.pathname === '/admin/funding')) ||
                   (item.path === '/admin/network' &&

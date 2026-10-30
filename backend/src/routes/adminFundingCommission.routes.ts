@@ -33,3 +33,9 @@ adminFundingCommissionRouter.get('/batches/:batchId', AdminFundingCommissionCont
 
 // 8. Retry Failed Payouts for a Specific Batch
 adminFundingCommissionRouter.post('/batches/:batchId/retry', AdminFundingCommissionController.retryFailed);
+
+// 9. Commission Queue Management & Dead-Letter Queue (DLQ)
+adminFundingCommissionRouter.get('/queue/stats', AdminFundingCommissionController.getQueueStats);
+adminFundingCommissionRouter.get('/queue/failed', AdminFundingCommissionController.getQueueFailedJobs);
+adminFundingCommissionRouter.post('/queue/retry-failed', AdminFundingCommissionController.retryQueueFailed);
+adminFundingCommissionRouter.post('/queue/enqueue-test', AdminFundingCommissionController.enqueueTestJob);

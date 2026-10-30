@@ -773,10 +773,14 @@ export class PaymentService {
     const targetId = memberId || enrollmentId || '';
     const kitBVMap: Record<string, number> = {
       kit_standard: 50,
+      kit_basic: 50,
       kit_pro: 100,
       kit_elite: 200,
+      customer_preferred: 0,
+      customer_basic: 0,
+      customer_standard: 0,
     };
-    const resolvedBv = input.starterKitId ? (kitBVMap[input.starterKitId] || 100) : (input.bv || 100);
+    const resolvedBv = input.starterKitId ? (kitBVMap[input.starterKitId] ?? 100) : (input.bv || 100);
 
     const { AuthService } = await import('./auth.service');
     const activationResult = await AuthService.activateDistributorAndPlace(targetId, {
@@ -857,8 +861,12 @@ export class PaymentService {
 
     const kitPricing: Record<string, { amount: number; bv: number; name: string }> = {
       kit_standard: { amount: 1499, bv: 50, name: 'Associate Welcome Pack' },
+      kit_basic: { amount: 1499, bv: 50, name: 'Associate Welcome Pack' },
       kit_pro: { amount: 2999, bv: 100, name: 'Fast-Track Pro Pack' },
       kit_elite: { amount: 4999, bv: 200, name: 'Elite Leadership Pack' },
+      customer_preferred: { amount: 499, bv: 0, name: 'Preferred Customer Membership' },
+      customer_basic: { amount: 499, bv: 0, name: 'Preferred Customer Membership' },
+      customer_standard: { amount: 499, bv: 0, name: 'Preferred Customer Membership' },
     };
 
     const selectedKit = kitPricing[input.starterKitId || 'kit_pro'] || kitPricing.kit_pro;
@@ -904,6 +912,7 @@ export class PaymentService {
       orderId: razorpayOrderId,
       razorpayOrderId,
       amount,
+      amountInPaise,
       currency,
       memberId: cleanMemberId,
       keyId: isConfigured ? keyId : null,

@@ -372,6 +372,13 @@ export class AuthService {
     }
     if (user.phone) {
       this.inMemoryUsers.set(user.phone, user);
+      const digits = user.phone.replace(/\D/g, '');
+      if (digits) {
+        this.inMemoryUsers.set(digits, user);
+        if (digits.length >= 10) {
+          this.inMemoryUsers.set(digits.slice(-10), user);
+        }
+      }
     }
   }
 
@@ -407,23 +414,38 @@ export class AuthService {
       );
     }
 
-    // 3. Normalize email
-    const email = input.email.trim().toLowerCase();
+    // 3. Mobile Number is mandatory
+    const rawPhone = (input.phone || '').trim();
+    if (!rawPhone) {
+      throw AppError.badRequest('Mobile number is required.', 'AUTH_PHONE_REQUIRED');
+    }
+    const cleanDigits = rawPhone.replace(/\D/g, '');
+    if (cleanDigits.length < 10) {
+      throw AppError.badRequest('Mobile number must have at least 10 digits.', 'AUTH_PHONE_INVALID');
+    }
 
-    // 4. Duplicate email check
-    if (this.inMemoryUsers.has(email)) {
+    // 4. Duplicate phone check
+    if (
+      this.inMemoryUsers.has(rawPhone) ||
+      this.inMemoryUsers.has(cleanDigits) ||
+      (cleanDigits.length >= 10 && this.inMemoryUsers.has(cleanDigits.slice(-10)))
+    ) {
       throw AppError.conflict(
-        'An account with this email address already exists.',
-        'AUTH_EMAIL_ALREADY_EXISTS'
+        'An account with this mobile number already exists.',
+        'AUTH_PHONE_ALREADY_EXISTS'
       );
     }
 
-    // 5. Duplicate phone check if provided
-    const phone = input.phone?.trim() || undefined;
-    if (phone && this.inMemoryUsers.has(phone)) {
+    // 5. Email handling (optional / fallback for backward compatibility)
+    const rawEmail = (input.email || '').trim().toLowerCase();
+    const email = rawEmail || `${cleanDigits}@user.kashvimlm.com`;
+    const phone = rawPhone;
+
+    // 6. Duplicate email check if provided
+    if (rawEmail && this.inMemoryUsers.has(rawEmail)) {
       throw AppError.conflict(
-        'An account with this phone number already exists.',
-        'AUTH_PHONE_ALREADY_EXISTS'
+        'An account with this email address already exists.',
+        'AUTH_EMAIL_ALREADY_EXISTS'
       );
     }
 
@@ -658,6 +680,16 @@ export class AuthService {
 
     this.saveInMemoryUser(userObj);
 
+    // Re-evaluate Admin / upline levels based on new joining asynchronously
+    setImmediate(async () => {
+      try {
+        const { LevelService } = await import('./level.service');
+        await LevelService.processJoiningsAndEvaluateLevels(sponsorDistCode);
+      } catch (e: any) {
+        logger.warn({ err: e.message }, 'Resilient level evaluation notification on joining');
+      }
+    });
+
     const accessToken = signAccessToken({
       sub: userId,
       email,
@@ -730,36 +762,53 @@ export class AuthService {
       );
     }
 
-    // 3. Normalize email
-    const email = input.email.trim().toLowerCase();
+    // 3. Mobile Number is mandatory
+    const rawPhone = (input.phone || '').trim();
+    if (!rawPhone) {
+      throw AppError.badRequest('Mobile number is required.', 'AUTH_PHONE_REQUIRED');
+    }
+    const cleanDigits = rawPhone.replace(/\D/g, '');
+    if (cleanDigits.length < 10) {
+      throw AppError.badRequest('Mobile number must have at least 10 digits.', 'AUTH_PHONE_INVALID');
+    }
+
+    // 4. Check duplicate mobile number
+    const existingPhone = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { phone: rawPhone },
+          { phone: cleanDigits },
+          ...(cleanDigits.length >= 10 ? [{ phone: { contains: cleanDigits.slice(-10) } }] : []),
+        ],
+      },
+    });
+    if (existingPhone) {
+      throw AppError.conflict(
+        'An account with this mobile number already exists.',
+        'AUTH_PHONE_ALREADY_EXISTS'
+      );
+    }
+
+    // 5. Email handling (optional / fallback for backward compatibility)
+    const rawEmail = (input.email || '').trim().toLowerCase();
+    const email = rawEmail || `${cleanDigits}@user.kashvimlm.com`;
     const password = input.password;
     const role = input.role || 'DISTRIBUTOR';
     const fullNameStr = (input.fullName || input.name || '').trim();
     const parts = fullNameStr ? fullNameStr.split(/\s+/) : [];
     const firstName = input.firstName?.trim() || parts[0] || 'Distributor';
     const lastName = input.lastName?.trim() || (parts.length > 1 ? parts.slice(1).join(' ') : 'Member');
-    const phone = input.phone?.trim() || undefined;
+    const phone = rawPhone;
 
-    // 4. Check duplicate email
-    const existingUser = await prisma.user.findUnique({
-      where: { email },
-    });
-    if (existingUser) {
-      throw AppError.conflict(
-        'An account with this email address already exists.',
-        'AUTH_EMAIL_ALREADY_EXISTS'
-      );
-    }
-
-    // 5. Check duplicate phone if provided
-    if (phone) {
-      const existingPhone = await prisma.user.findFirst({
-        where: { phone },
+    // 6. Check duplicate email if explicitly provided
+    if (rawEmail) {
+      const existingUser = await prisma.user.findUnique({
+        where: { email },
       });
-      if (existingPhone) {
+      if (existingUser) {
         throw AppError.conflict(
-          'An account with this phone number already exists.',
-          'AUTH_PHONE_ALREADY_EXISTS'
+          'An account with this email address already exists.',
+          'AUTH_EMAIL_ALREADY_EXISTS'
         );
       }
     }
@@ -1087,6 +1136,17 @@ export class AuthService {
         logger.warn({ err: e.message }, 'Resilient tree sync notification');
       }
 
+      // Re-evaluate Admin / upline levels asynchronously without blocking the registration transaction
+      const uplineCodeToEvaluate = resolvedSponsor?.distributorCode || 'KV-1001';
+      setImmediate(async () => {
+        try {
+          const { LevelService } = await import('./level.service');
+          await LevelService.processJoiningsAndEvaluateLevels(uplineCodeToEvaluate);
+        } catch (e: any) {
+          logger.warn({ err: e.message }, 'Resilient level evaluation notification on joining');
+        }
+      });
+
       return {
         user: {
           id: user.id,
@@ -1144,25 +1204,34 @@ export class AuthService {
   private static async loginInMemory(input: LoginInput, metadata: RequestMetadata = {}) {
     await this.initSeedUsers();
     // 1. Validate input
-    const rawId = (input.email || input.username || input.identifier || '').trim();
+    const rawId = (input.identifier || input.phone || input.email || input.username || '').trim();
     if (!rawId) {
-      throw AppError.badRequest('Please enter your email or username.', 'AUTH_MISSING_IDENTIFIER');
+      throw AppError.badRequest('Please enter your mobile number or email.', 'AUTH_MISSING_IDENTIFIER');
     }
     const password = input.password;
     if (!password) {
       throw AppError.badRequest('Password is required.', 'AUTH_MISSING_PASSWORD');
     }
 
-    // 2. Normalize email / identifier
+    // 2. Normalize email / identifier / phone
     const cleanId = rawId.toLowerCase();
+    const cleanDigits = rawId.replace(/\D/g, '');
 
-    // 3. Find user (generic message if not found to avoid account enumeration)
-    const user =
+    // 3. Find user (by email, phone, clean digits, username, or code)
+    let user =
       this.inMemoryUsers.get(cleanId) ||
       this.inMemoryUsers.get(rawId) ||
       this.inMemoryUsers.get(rawId.toUpperCase());
+
+    if (!user && cleanDigits.length >= 7) {
+      user =
+        this.inMemoryUsers.get(cleanDigits) ||
+        this.inMemoryUsers.get(cleanDigits.slice(-10)) ||
+        this.inMemoryUsers.get(`${cleanDigits}@user.kashvimlm.com`);
+    }
+
     if (!user) {
-      throw AppError.invalidCredentials('Invalid email or password.');
+      throw AppError.invalidCredentials('Invalid mobile number, email, or password.');
     }
 
     // 4. Check account status (blocked/suspended accounts must not authenticate)
@@ -1249,9 +1318,9 @@ export class AuthService {
 
   private static async loginWithDb(input: LoginInput, metadata: RequestMetadata = {}) {
     // 1. Validate input
-    const rawId = (input.email || input.username || input.identifier || '').trim();
+    const rawId = (input.identifier || input.phone || input.email || input.username || '').trim();
     if (!rawId) {
-      throw AppError.badRequest('Please enter your email or username.', 'AUTH_MISSING_IDENTIFIER');
+      throw AppError.badRequest('Please enter your mobile number or email.', 'AUTH_MISSING_IDENTIFIER');
     }
     const password = input.password;
     if (!password) {
@@ -1260,15 +1329,26 @@ export class AuthService {
 
     // 2. Normalize email / identifier
     const cleanId = rawId.toLowerCase();
+    const cleanDigits = rawId.replace(/\D/g, '');
 
     // 3. Fetch user with relational role from roles table, security profile, and domain profiles
+    const orConditions: any[] = [
+      { email: { equals: cleanId, mode: 'insensitive' } },
+      { phone: rawId },
+      { phone: cleanId },
+      { distributorProfile: { distributorCode: { equals: rawId, mode: 'insensitive' } } },
+      { userId: { equals: rawId, mode: 'insensitive' } },
+    ];
+
+    if (cleanDigits.length >= 7) {
+      orConditions.push({ phone: cleanDigits });
+      orConditions.push({ phone: { contains: cleanDigits.slice(-10) } });
+      orConditions.push({ email: `${cleanDigits}@user.kashvimlm.com` });
+    }
+
     const user = await prisma.user.findFirst({
       where: {
-        OR: [
-          { email: { equals: cleanId, mode: 'insensitive' } },
-          { phone: cleanId },
-          { distributorProfile: { distributorCode: { equals: rawId, mode: 'insensitive' } } },
-        ],
+        OR: orConditions,
       },
       include: {
         role: true, // Strictly from roles table
@@ -1279,7 +1359,7 @@ export class AuthService {
     });
 
     if (!user) {
-      throw AppError.invalidCredentials('Invalid email or password.');
+      throw AppError.invalidCredentials('Invalid mobile number, email, or password.');
     }
 
     // 4. Check account status (blocked/suspended accounts must not authenticate)

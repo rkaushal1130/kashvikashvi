@@ -53,13 +53,32 @@ export class AutomaticRankQualificationEngine {
     bb: number,
     leftMatching: number,
     rightMatching: number,
-    level: LevelDefinition
+    level: LevelDefinition,
+    isAdmin: boolean = false,
+    joiningsCount: number = 0
   ): boolean {
-    if (!level) return false;
+    if (!level || level.order === 0) return true;
+
+    if (isAdmin) {
+      // Level of the Admin user will increase based on joinings() of user under him
+      const minJoinings =
+        level.order === 1 ? 2 :
+        level.order === 2 ? 5 :
+        level.order === 3 ? 10 :
+        level.order === 4 ? 20 :
+        level.order === 5 ? 50 : 0;
+      const meetsMatching =
+        leftMatching >= level.requiredLeftMatching ||
+        rightMatching >= level.requiredRightMatching;
+      return meetsMatching || joiningsCount >= minJoinings;
+    }
+
+    // Distributor level increases: he has to buy also AND add people both
     const meetsBB = bb >= level.requiredBB;
-    const meetsLeft = leftMatching >= level.requiredLeftMatching;
-    const meetsRight = rightMatching >= level.requiredRightMatching;
-    return meetsBB && meetsLeft && meetsRight;
+    const meetsMatching =
+      leftMatching >= level.requiredLeftMatching ||
+      rightMatching >= level.requiredRightMatching;
+    return meetsBB && meetsMatching;
   }
 
   /**

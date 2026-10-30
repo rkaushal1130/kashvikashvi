@@ -146,6 +146,35 @@ body:has(.kashvimlm-portal-root) .footer,
   gap: 18px;
 }
 
+.admin-dashboard-return-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 100%);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 2px 6px rgba(30, 58, 138, 0.25);
+  letter-spacing: -0.01em;
+}
+
+.admin-dashboard-return-btn:hover {
+  background: linear-gradient(135deg, #172554 0%, #1e40af 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(30, 58, 138, 0.35);
+  color: #ffffff;
+}
+
+.admin-dashboard-return-btn svg {
+  color: #93c5fd;
+  flex-shrink: 0;
+}
+
 .kashvimlm-market-selector {
   display: flex;
   align-items: center;

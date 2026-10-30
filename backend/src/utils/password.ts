@@ -74,12 +74,9 @@ export async function comparePassword(password: string, passwordHash: string): P
 export const verifyPassword = comparePassword;
 
 /**
- * Validates password strength according to enterprise security standards:
- * - Minimum 8 characters, maximum 128 characters
- * - At least one uppercase letter
- * - At least one lowercase letter
- * - At least one digit
- * - At least one special character
+ * Validates password strength:
+ * - Minimum 8 characters/digits, maximum 128 characters
+ * - Relaxed format: no strict requirement for uppercase, numbers, or symbols
  */
 export function validatePasswordStrength(password: string): { isValid: boolean; message?: string } {
   if (typeof password !== 'string' || password.length === 0) {
@@ -92,19 +89,6 @@ export function validatePasswordStrength(password: string): { isValid: boolean; 
 
   if (password.length > 128) {
     return { isValid: false, message: 'Password cannot exceed 128 characters.' };
-  }
-
-  const hasUpper = /[A-Z]/.test(password);
-  const hasLower = /[a-z]/.test(password);
-  const hasDigit = /[0-9]/.test(password);
-  const hasSpecial = /[^A-Za-z0-9]/.test(password);
-
-  if (!hasUpper || !hasLower || !hasDigit || !hasSpecial) {
-    return {
-      isValid: false,
-      message:
-        'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character.',
-    };
   }
 
   return { isValid: true };
