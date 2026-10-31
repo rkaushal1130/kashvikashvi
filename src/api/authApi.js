@@ -4,10 +4,11 @@ export const authApi = {
   /**
    * Login with email or username + password (+ optional sponsorId)
    */
-  async login({ email, username, identifier, password, sponsorId, rememberMe }) {
+  async login({ email, phone, username, identifier, password, sponsorId, rememberMe }) {
     const payload = {
       password,
       ...(email ? { email } : {}),
+      ...(phone ? { phone } : {}),
       ...(username ? { username } : {}),
       ...(identifier ? { identifier } : {}),
       ...(sponsorId ? { sponsorId } : {}),

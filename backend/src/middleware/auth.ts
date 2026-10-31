@@ -41,12 +41,21 @@ export const authenticate = (req: Request, _res: Response, next: NextFunction): 
       );
     }
 
+    const distCode =
+      (payload as any).distributorCode ||
+      (payload as any).distributorId ||
+      (payload.email === 'distributor@example.com' ? 'DST-0001' : undefined) ||
+      (payload.email === 'admin@kashvimlm.com' ? 'KV-0001' : undefined);
+
     req.user = {
       id: payload.sub,
       email: payload.email,
       role: payload.role,
       status: payload.status,
-    };
+      distributorCode: distCode,
+      distributorId: distCode,
+      memberId: (payload as any).memberId || distCode,
+    } as any;
 
     return next();
   } catch (error) {

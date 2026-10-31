@@ -2,7 +2,9 @@ import { NextFunction, Request, Response } from 'express';
 import { prisma } from '../config/database';
 import { AuditService } from '../services/audit.service';
 import { NetworkTreeService } from '../services/networkTree.service';
+import { MemberIdService } from '../services/memberId.service';
 import { sendSuccess } from '../utils/apiResponse';
+import { AppError } from '../utils/appError';
 
 export class AdminController {
   // 1. Executive Dashboard: /api/v1/admin/dashboard
@@ -317,6 +319,96 @@ export class AdminController {
           total,
           totalPages: Math.ceil(total / limitNum) || 1,
         },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // 3b. Create Distributor: POST /api/v1/admin/distributors
+  public static async createDistributor(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const {
+        name,
+        firstName,
+        lastName,
+        email,
+        phone,
+        sponsorId = 'KV-0001',
+        placementParentId,
+        position = 'LEFT',
+        rank = 'Associate',
+        status = 'ACTIVE',
+        bv = 100,
+      } = req.body || {};
+
+      if (!name && !firstName) {
+        throw AppError.badRequest('Distributor name is required');
+      }
+
+      const fullName = (name || `${firstName || ''} ${lastName || ''}`).trim();
+      const distFirstName = firstName || fullName.split(' ')[0] || 'Distributor';
+      const distLastName = lastName || fullName.split(' ').slice(1).join(' ') || '';
+
+      // Generate dynamic sequential IDs strictly formatted as DST-0001 / KV-0001
+      const distributorCode = await MemberIdService.generateNextDistributorCode();
+      const memberId = await MemberIdService.generateNextMemberId();
+
+      const chosenPosition = (position || 'LEFT').toUpperCase() as 'LEFT' | 'RIGHT';
+      const targetSponsor = sponsorId || 'KV-0001';
+      const targetParent = placementParentId || targetSponsor;
+
+      // Enroll into dynamic tree
+      NetworkTreeService.enrollMember({
+        distributorId: distributorCode,
+        name: fullName,
+        status: status === 'ACTIVE' ? 'ACTIVE' : 'PENDING_PAYMENT',
+        paymentStatus: status === 'ACTIVE' ? 'PAID' : 'PENDING',
+        rank,
+        position: chosenPosition,
+        sponsor: targetSponsor,
+        sponsorName: targetSponsor,
+        placementParent: targetParent,
+        placementParentName: targetParent,
+        email,
+        phone,
+        bv: Number(bv) || 100,
+      });
+
+      const newDistributor = {
+        id: `dist-${distributorCode.toLowerCase()}`,
+        distributorId: distributorCode,
+        memberId,
+        distributorCode,
+        name: fullName,
+        firstName: distFirstName,
+        lastName: distLastName,
+        email: email || `${distributorCode.toLowerCase()}@kashvimlm.com`,
+        phone: phone || '+91 98765 00000',
+        status: status === 'ACTIVE' ? 'ACTIVE' : 'PENDING_PAYMENT',
+        paymentStatus: status === 'ACTIVE' ? 'PAID' : 'PENDING',
+        position: chosenPosition,
+        rank,
+        sponsorId: targetSponsor,
+        parentId: targetParent,
+        placementParentId: targetParent,
+        level: 1,
+        depth: 1,
+        leftBv: 0,
+        rightBv: 0,
+        personalBv: Number(bv) || 100,
+        teamSize: 0,
+        lifetimePV: Number(bv) || 100,
+        lifetimeGV: Number(bv) || 100,
+        joinedAt: new Date().toISOString(),
+      };
+
+      AdminController.distributorsStore.unshift(newDistributor);
+
+      res.status(201).json({
+        success: true,
+        message: `Distributor ${distributorCode} created successfully`,
+        data: newDistributor,
       });
     } catch (error) {
       next(error);

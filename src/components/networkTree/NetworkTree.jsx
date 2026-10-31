@@ -23,7 +23,6 @@ function NetworkTree({
   onNodeClick,
   onNodeHover,
   onNodeLeave,
-  onFocusNode,
   onAvailableClick,
   highlightedId,
   panPosition,
@@ -208,9 +207,8 @@ function NetworkTree({
     const rightChild = node.right || node.rightChild || null;
     const hasChildren = Boolean(leftChild || rightChild);
 
-    // The tree should show only the leaf of parent, never leaf of leaf.
-    // Therefore, only the root (parent) expands to show its direct leaves.
-    const isBranchExpanded = isRoot;
+    // Render every generation returned by the API, up to the selected depth.
+    const isBranchExpanded = currentLevel <= depth && (isRoot || hasChildren);
 
     const nodeId = node.distributorId || node.id || node.distributor?.distributorCode;
     const isMatch =
@@ -234,7 +232,6 @@ function NetworkTree({
             onNodeClick={onNodeClick}
             onNodeHover={onNodeHover}
             onNodeLeave={onNodeLeave}
-            onFocusNode={isAdmin ? onFocusNode : null}
             onAvailableClick={onAvailableClick}
             isHighlighted={isMatch}
             isExpanding={isExpanding}

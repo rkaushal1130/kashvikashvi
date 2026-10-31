@@ -1,6 +1,6 @@
 import React from 'react';
 import { refId } from '../../utils/treeNormalize.js';
-import { Award, PlusCircle, ArrowUpRight, Info } from 'lucide-react';
+import { Award, PlusCircle, Info } from 'lucide-react';
 
 /**
  * TreeNode
@@ -27,7 +27,6 @@ function TreeNode({
   onNodeClick,
   onNodeHover,
   onNodeLeave,
-  onFocusNode,
   onAvailableClick,
   isHighlighted = false,
   isExpanding = false,
@@ -234,20 +233,6 @@ function TreeNode({
             <span>Details</span>
           </button>
 
-          {!isRoot && isAdmin && onFocusNode && (
-            <button
-              type="button"
-              className="node-action-btn focus-subtree-btn"
-              onClick={(e) => {
-                e.stopPropagation();
-                onFocusNode(node);
-              }}
-              title="Focus subtree from this member"
-            >
-              <ArrowUpRight size={12} />
-              <span>Subtree</span>
-            </button>
-          )}
         </div>
       </div>
     </div>

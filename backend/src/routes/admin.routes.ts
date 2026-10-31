@@ -18,6 +18,7 @@ router.get('/users', AdminController.getUsers);
 
 // 3. Distributors: GET /api/v1/admin/distributors
 router.get('/distributors', AdminController.getDistributors);
+router.post('/distributors', AdminController.createDistributor);
 router.get('/distributors/:id', AdminController.getDistributorById);
 router.patch('/distributors/:id/status', AdminController.updateDistributorStatus);
 router.patch('/distributors/:id', AdminController.updateDistributor);

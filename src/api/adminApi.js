@@ -32,6 +32,13 @@ export const adminApi = {
   },
 
   /**
+   * Create a new distributor dynamically via Admin Panel
+   */
+  async createDistributor(payload) {
+    return apiClient.post('/admin/distributors', payload);
+  },
+
+  /**
    * Get distributor by ID with full details, sponsor, parent, children, BV & stats
    */
   async getDistributor(id) {

@@ -1397,7 +1397,6 @@ export const api = {
         distributorCode: newMemberId,
         referralCode: newMemberId,
         email: cleanEmail,
-        password: cleanPayload.password || 'PartnerPass2026!',
         name: newMember.name,
         fullName: newMember.name,
         phone: cleanPayload.phone,
@@ -1513,7 +1512,7 @@ export const api = {
         const parsed = JSON.parse(saved);
         const user = parsed?.user;
         if (user) {
-          return user.distributorId || user.distributorCode || user.memberId || 'KV-1001';
+          return user.distributorId || user.distributorCode || user.memberId || user.id || 'KV-1001';
         }
       }
     } catch {
@@ -1582,7 +1581,7 @@ export const api = {
       return result;
     };
 
-    // Recursive helper to build subtrees (maxDepth = 2 to show only leaf of parent, not leaf of leaf)
+    // Build a complete binary branch to the requested depth for API-offline fallback.
     const buildSubtree = (parentId, depth) => {
       if (depth >= maxDepth) return { left: null, right: null };
       const children = directory.filter(
@@ -1595,6 +1594,8 @@ export const api = {
 
       const mapChild = (mem, pos) => {
         if (!mem) return null;
+        const mDistId = String(mem.distributorId || mem.id || 'KV-0000');
+        const nested = buildSubtree(mDistId, depth + 1);
         const memBV = Number(mem.bv) || 100;
         const pStatus = mem.paymentStatus || (mem.status === 'ACTIVE' ? 'PAID' : 'PENDING');
 
@@ -1607,8 +1608,6 @@ export const api = {
         const directCount = directory.filter(
           (m) => matchesSponsor(m.sponsor, mem.distributorId)
         ).length;
-
-        const mDistId = String(mem.distributorId || mem.id || 'KV-0000');
 
         return {
           id: mem.id || `node-${mDistId.toLowerCase()}`,
@@ -1634,12 +1633,12 @@ export const api = {
           rightBV,
           personalBV: memBV,
           totalBV: memBV + leftBV + rightBV,
-          hasChildren: false,
-          hasDeeperMembers: false,
-          isExpanded: false,
-          left: null,
-          right: null,
-          children: [],
+          hasChildren: Boolean(nested.left || nested.right),
+          hasDeeperMembers: Boolean(nested.left || nested.right),
+          isExpanded: Boolean(nested.left || nested.right),
+          left: nested.left,
+          right: nested.right,
+          children: [nested.left, nested.right].filter(Boolean),
         };
       };
 
@@ -1695,7 +1694,7 @@ export const api = {
 
       if (foundEnrollee) {
         const enrolleeId = String(foundEnrollee.distributorId || foundEnrollee.id || normId);
-        const sub = buildSubtree(enrolleeId, 1);
+        const sub = buildSubtree(enrolleeId, 0);
         const pStatus = foundEnrollee.paymentStatus || (foundEnrollee.status === 'ACTIVE' ? 'PAID' : 'PENDING');
         const memBV = Number(foundEnrollee.bv) || 100;
         const leftDesc = getSubtreeDescendants(enrolleeId, 'LEFT');
@@ -1743,7 +1742,7 @@ export const api = {
     }
 
     // Admin root (Rahul Kaushal)
-    const adminSub = buildSubtree('KV-1001', 1);
+    const adminSub = buildSubtree('KV-1001', 0);
     const leftDesc = getSubtreeDescendants('KV-1001', 'LEFT');
     const rightDesc = getSubtreeDescendants('KV-1001', 'RIGHT');
     const leftCount = leftDesc.length;
