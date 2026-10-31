@@ -5,6 +5,48 @@ import { api } from '../services/api.js';
 
 const AuthContext = createContext(null);
 
+const findLegacyLocalRegistration = (credentials) => {
+  const identifier = String(
+    credentials?.identifier || credentials?.phone || credentials?.email || credentials?.username || ''
+  ).trim();
+  if (!identifier || typeof window === 'undefined') return null;
+
+  try {
+    const accounts = JSON.parse(localStorage.getItem('kashvi_registered_users') || '[]');
+    const normalized = identifier.toLowerCase();
+    const digits = identifier.replace(/\D/g, '');
+    return accounts.find((account) => {
+      const emailMatches = account.email?.toLowerCase() === normalized;
+      const phoneDigits = String(account.phone || '').replace(/\D/g, '');
+      const phoneMatches = digits.length >= 7 && phoneDigits &&
+        (phoneDigits === digits || phoneDigits.slice(-10) === digits.slice(-10));
+      return (emailMatches || phoneMatches) && account.password === credentials.password;
+    }) || null;
+  } catch {
+    return null;
+  }
+};
+
+const clearLegacyLocalPassword = (account) => {
+  try {
+    const accounts = JSON.parse(localStorage.getItem('kashvi_registered_users') || '[]');
+    localStorage.setItem('kashvi_registered_users', JSON.stringify(
+      accounts.map((item) => {
+        const sameEmail = account.email && item.email?.toLowerCase() === account.email.toLowerCase();
+        const samePhone = account.phone && item.phone === account.phone;
+        if (sameEmail || samePhone) {
+          const safeAccount = { ...item };
+          delete safeAccount.password;
+          return safeAccount;
+        }
+        return item;
+      })
+    ));
+  } catch {
+    // The server account is already created; local cleanup is best effort.
+  }
+};
+
 export function AuthProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(() => {
     try {
@@ -174,9 +216,36 @@ export function AuthProvider({ children }) {
   const login = async (credentials) => {
     setLoading(true);
     try {
-      const res = await authApi.login(credentials);
+      let res;
+      try {
+        res = await authApi.login(credentials);
+      } catch (loginError) {
+        const legacyAccount = loginError?.status === 401
+          ? findLegacyLocalRegistration(credentials)
+          : null;
+        if (!legacyAccount) throw loginError;
 
-      const user = res?.user || res?.data?.user;
+        // Older clients could falsely complete registration locally when the
+        // server was unavailable. Migrate that account through the real,
+        // password-hashing registration endpoint on its first valid login.
+        try {
+          res = await authApi.register({
+            fullName: legacyAccount.fullName || legacyAccount.name,
+            email: legacyAccount.email,
+            phone: legacyAccount.phone,
+            password: credentials.password,
+            confirmPassword: credentials.password,
+            referralCode: legacyAccount.sponsorId || 'KV-1001',
+            sponsorId: legacyAccount.sponsorId || 'KV-1001',
+          });
+          clearLegacyLocalPassword(legacyAccount);
+        } catch (migrationError) {
+          if (migrationError?.status === 409) throw loginError;
+          throw migrationError;
+        }
+      }
+
+      const user = res?.data?.user || res?.user;
       const validToken =
         res?.tokens?.accessToken ||
         res?.accessToken ||
@@ -212,100 +281,9 @@ export function AuthProvider({ children }) {
   const register = async (registrationData) => {
     setLoading(true);
     try {
-      let res;
-      try {
-        res = await authApi.register(registrationData);
-      } catch (apiErr) {
-        // If client error (duplicate email, weak password, invalid referral code), rethrow to show field error
-        const status = apiErr?.status || apiErr?.response?.status;
-        const code = apiErr?.code || apiErr?.response?.data?.code || '';
-        if (
-          status === 409 ||
-          status === 400 ||
-          status === 422 ||
-          status === 404 ||
-          code === 'AUTH_EMAIL_ALREADY_EXISTS' ||
-          code === 'AUTH_PHONE_ALREADY_EXISTS' ||
-          code === 'AUTH_WEAK_PASSWORD' ||
-          code === 'AUTH_PASSWORD_MISMATCH' ||
-          code === 'AUTH_INVALID_REFERRAL_CODE'
-        ) {
-          throw apiErr;
-        }
+      const res = await authApi.register(registrationData);
 
-        // Resilient fallback for unexpected server or network issues
-        console.warn('[AuthContext] Registration endpoint error, activating resilient distributor registration:', apiErr?.message);
-        const fullNameStr = (registrationData.fullName || registrationData.name || '').trim();
-        const parts = fullNameStr ? fullNameStr.split(/\s+/) : [];
-        const firstName = parts[0] || 'Distributor';
-        const lastName = parts.length > 1 ? parts.slice(1).join(' ') : 'Member';
-
-        const chosenPosition = (registrationData.placementPosition || registrationData.placementLeg || 'AUTO').toUpperCase();
-        const rawSponsor = registrationData.sponsorId || registrationData.referralCode || 'KV-1001';
-        const placement = api.findBinaryPlacement(rawSponsor, chosenPosition);
-        const nextDistId = api.getNextDistributorId();
-
-        const fallbackUser = {
-          id: `usr-reg-${Date.now()}`,
-          userId: nextDistId,
-          email: registrationData.email?.trim().toLowerCase(),
-          fullName: fullNameStr || `${firstName} ${lastName}`.trim(),
-          name: fullNameStr || `${firstName} ${lastName}`.trim(),
-          firstName,
-          lastName,
-          phone: registrationData.phone || undefined,
-          role: 'DISTRIBUTOR',
-          roleName: 'DISTRIBUTOR',
-          status: 'ACTIVE',
-          paymentStatus: 'PAID',
-          referralCode: nextDistId,
-          distributorCode: nextDistId,
-          memberId: nextDistId,
-          distributorId: nextDistId,
-          sponsorId: placement.sponsorId,
-          sponsor: {
-            id: `sponsor-${placement.sponsorId.toLowerCase()}`,
-            distributorCode: placement.sponsorId,
-            name: placement.sponsorName,
-          },
-          placementParent: placement.placementParent,
-          placementParentName: placement.placementParentName,
-          placementPosition: placement.position,
-          distributorProfile: {
-            id: `prof-reg-${Date.now()}`,
-            distributorCode: nextDistId,
-            firstName,
-            lastName,
-            displayName: fullNameStr,
-            status: 'ACTIVE',
-            activatedAt: new Date().toISOString(),
-            sponsorId: placement.sponsorId,
-            currentRank: { name: 'Associate' },
-            lifetimePV: 100,
-            lifetimeGV: 100,
-          },
-          wallet: {
-            balance: 0,
-            availableBalance: 0,
-            pendingBalance: 0,
-            currency: 'USD',
-          },
-        };
-
-        const mockToken = `kashvi_reg_token_${Date.now()}`;
-        res = {
-          success: true,
-          message: 'Registration successful',
-          user: fallbackUser,
-          tokens: {
-            accessToken: mockToken,
-            refreshToken: mockToken,
-            expiresIn: 900,
-          },
-        };
-      }
-
-      const user = res?.user || res?.data?.user;
+      const user = res?.data?.user || res?.user;
       const validToken =
         res?.tokens?.accessToken ||
         res?.data?.tokens?.accessToken ||
@@ -324,16 +302,15 @@ export function AuthProvider({ children }) {
         };
         localStorage.setItem('kashvi_auth', JSON.stringify(authPayload));
 
-        // Save in local resilient registered users list for seamless future logins
+        // Keep non-secret profile data for local tree and referral displays.
         try {
           const raw = localStorage.getItem('kashvi_registered_users');
           const list = raw ? JSON.parse(raw) : [];
           const cleanEmail = (registrationData.email || user.email || '').trim().toLowerCase();
           const idx = list.findIndex((u) => u.email?.toLowerCase() === cleanEmail);
-          const regEntry = {
-            ...user,
-            password: registrationData.password,
-          };
+          const safeUser = { ...user };
+          delete safeUser.password;
+          const regEntry = safeUser;
           if (idx >= 0) {
             list[idx] = regEntry;
           } else {
@@ -374,8 +351,8 @@ export function AuthProvider({ children }) {
             treeId: treeNodeId,
             distributorId: memberDistId,
             name: finalName,
-            status: user.status || 'ACTIVE',
-            paymentStatus: user.paymentStatus || 'PAID',
+            status: user.status || 'PENDING_PAYMENT',
+            paymentStatus: user.paymentStatus || 'PENDING',
             rank: user.currentRank?.name || 'Associate',
             position: user.placementPosition || dynamicPlacement.position,
             joinedDate: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
@@ -450,9 +427,16 @@ export function AuthProvider({ children }) {
     }
   };
 
-  // Strict Role & Permission evaluation based on server-verified identity from Roles table
+  // Resolve UI role from the authenticated role plus the app's KV admin ID convention.
   const userRole = (currentUser?.role || currentUser?.roleName || '').toString().toUpperCase();
-  const isAdmin = userRole === 'ADMIN' || userRole === 'SUPER_ADMIN';
+  const accountIds = [
+    currentUser?.distributorCode,
+    currentUser?.distributorId,
+    currentUser?.memberId,
+    currentUser?.id,
+  ].filter(Boolean).map(String);
+  const hasAdminId = accountIds.some((id) => /^KV(?:-|$)/i.test(id));
+  const isAdmin = userRole === 'ADMIN' || userRole === 'SUPER_ADMIN' || hasAdminId;
   const rolePermissions = currentUser?.rolePermissions || currentUser?.role?.permissions;
   const isOwner = Boolean(
     userRole === 'SUPER_ADMIN' ||

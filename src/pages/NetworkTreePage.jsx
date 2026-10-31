@@ -20,7 +20,6 @@ import TreeSearch from '../components/networkTree/TreeSearch';
 import MemberHoverCard from '../components/networkTree/MemberHoverCard';
 import MemberDetailsPanel from '../components/networkTree/MemberDetailsPanel';
 import { useAuth } from '../context/AuthContext.jsx';
-import { treeApi } from '../api/treeApi.js';
 import { api } from '../services/api.js';
 import { normalizeTree } from '../utils/treeNormalize.js';
 import '../components/networkTree/NetworkTree.css';
@@ -48,9 +47,8 @@ function updateNodeInTree(node, targetId, updaterFn) {
  * - Visually represents dual-leg binary hierarchy (ROOT -> LEFT / RIGHT)
  * - Displays Name, Distributor ID, Status, Rank on every node
  * - Renders "+ Available" on open positions
- * - Clicking member opens MemberDetailsPanel with all 11 fields, "View Network" & "Close" buttons
- * - "View Network" re-roots the tree and updates URL to /network-tree?member=...
- * - Preserves selected member across page refreshes
+ * - Clicking a member opens its details without changing the tree root
+ * - Keeps the authenticated account as the tree root
  * - Center Tree button aligns canvas perfectly
  */
 function NetworkTreePage({ embedded = false }) {
@@ -60,29 +58,31 @@ function NetworkTreePage({ embedded = false }) {
   // 1. Authenticated User Session
   const { currentUser, isAuthenticated } = useAuth();
   const isAuthorized = Boolean(isAuthenticated);
-  const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.role === 'SUPER_ADMIN' || Boolean(currentUser?.isOwner);
-  const initialDistributorId =
-    currentUser?.distributorId ||
-    currentUser?.distributorCode ||
-    currentUser?.memberId ||
-    'KV-1001';
+  const accountIds = [
+    currentUser?.distributorCode,
+    currentUser?.distributorId,
+    currentUser?.memberId,
+    currentUser?.id,
+  ].filter(Boolean).map(String);
+  const adminAccountId = accountIds.find((id) => /^KV(?:-|$)/i.test(id));
+  const distributorAccountId = accountIds.find((id) => /^DST(?:-|$)/i.test(id));
+  const isAdmin =
+    currentUser?.role === 'ADMIN' ||
+    currentUser?.role === 'SUPER_ADMIN' ||
+    Boolean(currentUser?.isOwner) ||
+    Boolean(adminAccountId);
+  const initialDistributorId = isAdmin
+    ? adminAccountId || 'KV-1001'
+    : distributorAccountId || currentUser?.distributorCode || currentUser?.distributorId || currentUser?.memberId || currentUser?.id || 'DST-0001';
 
-  // Read URL member param for state persistence on refresh (?member=KV-1002)
-  // Non-admins can only see their own tree, never another user's tree
-  const urlMemberId = searchParams.get('member');
-  const effectiveInitialRootId = isAdmin ? (urlMemberId || initialDistributorId) : initialDistributorId;
+  // Keep the authenticated account as the persistent tree root.
+  const effectiveInitialRootId = initialDistributorId;
 
-  // 2. Tree Navigation & Depth State (depth 2: shows parent and leaf of parent, not leaf of leaf)
+  // 2. Tree Navigation & Depth State (load up to ten generations in one tree view)
   const [currentRootId, setCurrentRootId] = useState(effectiveInitialRootId);
-  const [depth, setDepth] = useState(2);
+  const [depth, setDepth] = useState(10);
   const [breadcrumbs, setBreadcrumbs] = useState(() => {
     const rootName = currentUser?.name || currentUser?.displayName || currentUser?.fullName || initialDistributorId;
-    if (isAdmin && urlMemberId && urlMemberId !== initialDistributorId) {
-      return [
-        { id: initialDistributorId, name: `${rootName} (My Root)` },
-        { id: urlMemberId, name: urlMemberId },
-      ];
-    }
     return [
       { id: initialDistributorId, name: `${rootName} (My Root)` },
     ];
@@ -289,43 +289,18 @@ function NetworkTreePage({ embedded = false }) {
       setLoading(true);
       setError(null);
       try {
-        const targetId = (!isAdmin && rootId !== initialDistributorId)
-          ? initialDistributorId
-          : (rootId || initialDistributorId);
+        const targetId = rootId || initialDistributorId;
 
-        // Fetch tree: try treeApi.getTree first (handles downline security check & 403 authorization)
-        let data = null;
-        try {
-          const treeRes = await treeApi.getTree(targetId, maxDepth);
-          if (treeRes && treeRes.success) {
-            data = treeRes.data?.root || treeRes.data;
-          }
-        } catch (apiErr) {
-          if (
-            apiErr?.status === 403 ||
-            apiErr?.isForbidden ||
-            apiErr?.message?.includes('403') ||
-            apiErr?.message?.includes('Forbidden')
-          ) {
-            setError(
-              apiErr.message ||
-              '403 Forbidden: You do not have permission to access or view this distributor network.'
-            );
-            setLoading(false);
-            return;
-          }
+        // Use role-scoped endpoints: distributors always request their own root;
+        // admins use the global endpoint and may choose another root.
+        const res = isAdmin
+          ? await api.getAdminNetworkTree(targetId, maxDepth)
+          : await api.getNetworkTree(maxDepth);
+        if (res?.status === 403) {
+          setError(res.message || '403 Forbidden: You do not have permission to access this network.');
+          return;
         }
-
-        // Fallback to secondary endpoints if needed
-        if (!data) {
-          const res = await api.getMemberNetworkTree(targetId, maxDepth);
-          data = res?.root || res?.data?.root || res?.data || res;
-        }
-
-        // Fallback to binary tree if needed
-        if (!data) {
-          data = await api.getBinaryTree(targetId, maxDepth);
-        }
+        const data = res?.root || res?.data?.root || res?.data || res;
 
         if (data) {
           setTreeData(normalizeTree(data));
@@ -333,22 +308,12 @@ function NetworkTreePage({ embedded = false }) {
           setError('Unable to load network tree from database.');
         }
 
-        // Fetch network statistics / summary
+        // Keep summary access on the same authorized root as the tree.
         try {
-          const statsRes = await treeApi.getNetworkStats(targetId);
-          if (statsRes && statsRes.success && statsRes.data) {
-            setNetworkSummary(statsRes.data);
-          } else {
-            const summary = await api.getMemberNetworkSummary(targetId);
-            if (summary) {
-              setNetworkSummary(summary);
-            }
-          }
+          const summary = await api.getMemberNetworkSummary(isAdmin ? targetId : initialDistributorId);
+          if (summary) setNetworkSummary(summary);
         } catch {
-          const summary = await api.getMemberNetworkSummary(targetId);
-          if (summary) {
-            setNetworkSummary(summary);
-          }
+          // The tree remains usable when summary data is temporarily unavailable.
         }
       } catch (err) {
         setError(err.message || 'Error fetching network genealogy.');
@@ -359,22 +324,14 @@ function NetworkTreePage({ embedded = false }) {
     [initialDistributorId, isAdmin]
   );
 
-  // Keep root aligned with authenticated session when not viewing a specific downline param
+  // Keep every session on its authorized root; admin member navigation stays in the full tree.
   useEffect(() => {
-    if (!isAdmin) {
-      if (currentRootId !== initialDistributorId) {
-        setCurrentRootId(initialDistributorId);
-      }
-      const rootName = currentUser?.name || currentUser?.displayName || currentUser?.fullName || initialDistributorId;
-      setBreadcrumbs([{ id: initialDistributorId, name: `${rootName} (My Root)` }]);
-      return;
-    }
-    if (!urlMemberId && initialDistributorId) {
+    if (currentRootId !== initialDistributorId) {
       setCurrentRootId(initialDistributorId);
-      const rootName = currentUser?.name || currentUser?.displayName || currentUser?.fullName || initialDistributorId;
-      setBreadcrumbs([{ id: initialDistributorId, name: `${rootName} (My Root)` }]);
     }
-  }, [initialDistributorId, urlMemberId, currentUser?.name, currentUser?.displayName, currentUser?.fullName, isAdmin, currentRootId]);
+    const rootName = currentUser?.name || currentUser?.displayName || currentUser?.fullName || initialDistributorId;
+    setBreadcrumbs([{ id: initialDistributorId, name: `${rootName} (My Root)` }]);
+  }, [initialDistributorId, currentUser?.name, currentUser?.displayName, currentUser?.fullName, currentRootId]);
 
   useEffect(() => {
     fetchTreeData(currentRootId, depth);
@@ -393,58 +350,12 @@ function NetworkTreePage({ embedded = false }) {
     };
   }, [currentRootId, depth, fetchTreeData]);
 
-  // 6. Navigation & View Network Handlers (Prompt 11 & 13) - Admin Only
-  const handleViewNetwork = (member) => {
-    if (!isAdmin || !member) return;
-    const memberId = member.distributorId || member.id || member.distributor?.distributorCode;
-    const memberName = member.name || member.distributor?.displayName || member.distributor?.firstName || memberId;
-
-    // 1. Make that distributor the root of the tree
-    setCurrentRootId(memberId);
-
-    // 2. Update URL to /network-tree?member=KV-1002 (preserved across refreshes)
-    setSearchParams({ member: memberId });
-
-    // 3. Update breadcrumbs path
-    setBreadcrumbs((prev) => {
-      const idx = prev.findIndex((b) => b.id === memberId);
-      if (idx !== -1) return prev.slice(0, idx + 1);
-      return [...prev, { id: memberId, name: memberName }];
-    });
-
-    // 4. Center tree on the newly viewed root
-    setPanPosition({ x: 0, y: 0 });
-    setSelectedMember(null);
-    setHoverNode(null);
-  };
-
+  // Search selects a member in the global tree; it never re-roots the tree.
   const handleSelectSearchResult = (distributor) => {
     if (!isAdmin || !distributor) return;
-    const memberId = distributor.distributorId || distributor.id;
-    const memberName = distributor.name || memberId;
-
-    // 1. Open that distributor's tree
-    setCurrentRootId(memberId);
-
-    // 2. Update URL to /network-tree?member=KV-1001 (preserved across refreshes)
-    setSearchParams({ member: memberId });
-
-    // 3. Update breadcrumbs path
-    setBreadcrumbs((prev) => {
-      const idx = prev.findIndex((b) => b.id === memberId);
-      if (idx !== -1) return prev.slice(0, idx + 1);
-      return [...prev, { id: memberId, name: memberName }];
-    });
-
-    // 4. Center selected distributor
-    setPanPosition({ x: 0, y: 0 });
-    setSelectedMember(null);
+    setSelectedMember(distributor);
     setHoverNode(null);
-
-    // Ensure canvas viewport centers on the newly opened tree
-    setTimeout(() => {
-      handleCenterTree(memberId);
-    }, 120);
+    setSearchParams({});
   };
 
   const handleBreadcrumbClick = (crumbId, index) => {
@@ -468,7 +379,7 @@ function NetworkTreePage({ embedded = false }) {
       { id: initialDistributorId, name: `${rootName} (My Root)` },
     ]);
     setZoomLevel(1);
-    setDepth(2);
+    setDepth(10);
     setPanPosition({ x: 0, y: 0 });
     setSelectedMember(null);
     setHoverNode(null);
@@ -522,19 +433,15 @@ function NetworkTreePage({ embedded = false }) {
       }
       return;
     }
-    const memberParam = searchParams.get('member');
-    const targetId = memberParam || initialDistributorId;
-    if (targetId !== currentRootId) {
-      setCurrentRootId(targetId);
-      setBreadcrumbs((prev) => {
-        if (!prev.some((b) => b.id === targetId)) {
-          return [...prev, { id: targetId, name: targetId }];
-        }
-        return prev;
-      });
-      setPanPosition({ x: 0, y: 0 });
+    if (searchParams.get('member')) {
+      setSearchParams({}, { replace: true });
     }
-  }, [searchParams, initialDistributorId, currentRootId, isAdmin, setSearchParams]);
+    if (currentRootId !== initialDistributorId) {
+      setCurrentRootId(initialDistributorId);
+    }
+    const rootName = currentUser?.name || currentUser?.displayName || currentUser?.fullName || initialDistributorId;
+    setBreadcrumbs([{ id: initialDistributorId, name: `${rootName} (My Root)` }]);
+  }, [searchParams, initialDistributorId, currentRootId, isAdmin, setSearchParams, currentUser?.name, currentUser?.displayName, currentUser?.fullName]);
 
   // 8. Interaction Handlers (Prompt 10: Desktop Hover; Prompt 11: Click opens Member Details)
   const handleNodeClick = (node) => {
@@ -784,7 +691,7 @@ function NetworkTreePage({ embedded = false }) {
         {!loading && (
           <NetworkTree
             rootNode={treeData}
-            depth={2}
+            depth={depth}
             zoomLevel={zoomLevel}
             onZoomChange={handleZoomChange}
             onResetZoom={handleResetZoom}
@@ -795,7 +702,6 @@ function NetworkTreePage({ embedded = false }) {
             onNodeClick={handleNodeClick}
             onNodeHover={handleNodeHover}
             onNodeLeave={handleNodeLeave}
-            onFocusNode={isAdmin ? handleViewNetwork : null}
             onAvailableClick={handleAvailableSlotClick}
             highlightedId={selectedMember?.distributorId || null}
             selectedMemberId={selectedMember?.distributorId}
@@ -827,7 +733,6 @@ function NetworkTreePage({ embedded = false }) {
         <MemberDetailsPanel
           member={selectedMember}
           onClose={() => setSelectedMember(null)}
-          onViewNetwork={isAdmin ? handleViewNetwork : null}
           onEnrollDownline={handleEnrollDownline}
           onMoveDistributor={isAdmin ? handleOpenMoveModal : null}
           onViewAuditLogs={isAdmin ? handleOpenAuditLogs : null}

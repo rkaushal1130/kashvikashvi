@@ -196,9 +196,10 @@ export class MlmTreeController {
       const user = req.user as any;
       if (user && user.role !== 'ADMIN' && user.role !== 'SUPER_ADMIN') {
         const callerId = user.distributorId || user.distributorCode || user.memberId || user.id || '';
-        const isSelf = await NetworkTreeService.isSelf(callerId, distributorId);
+        const userEmail = user.email || '';
+        const isSelf = await NetworkTreeService.isSelf(callerId, distributorId, userEmail);
         if (!isSelf) {
-          const isDownline = await NetworkTreeService.isDownline(callerId, distributorId);
+          const isDownline = await NetworkTreeService.isDownline(callerId, distributorId, userEmail);
           if (!isDownline) {
             res.status(403).json({
               success: false,

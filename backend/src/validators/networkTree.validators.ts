@@ -6,7 +6,7 @@ export const treeDepthQuerySchema = z.object({
     .number()
     .int()
     .min(1, 'Depth must be at least 1')
-    .max(5, 'Depth cannot exceed 5 for performance and security')
+    .max(10, 'Depth cannot exceed 10 for performance and security')
     .default(3)
     .optional(),
 });

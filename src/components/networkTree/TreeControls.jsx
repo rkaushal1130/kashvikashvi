@@ -42,6 +42,7 @@ function TreeControls({
   onBreadcrumbClick,
   selectedMemberName = null,
   isAdmin = false,
+  maxDepth = 5,
 }) {
   const handleZoomIn = () => {
     onZoomChange(Math.min(2.0, Number((zoomLevel + 0.1).toFixed(2))));
@@ -122,7 +123,7 @@ function TreeControls({
             type="button"
             className="control-action-btn expand-btn"
             onClick={onExpand}
-            disabled={depth >= 5}
+            disabled={depth >= maxDepth}
             title="Expand tree levels to show more downline members"
           >
             <ChevronsDown size={15} />

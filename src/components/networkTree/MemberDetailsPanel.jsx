@@ -5,7 +5,6 @@ import {
   Calendar,
   Building2,
   Users,
-  Network,
   Share2,
   Copy,
   Check,
@@ -32,14 +31,11 @@ import {
  * - Right Team Count
  * - Total Team Count
  *
- * Buttons:
- * - View Network (makes this distributor the root of the tree and updates URL to ?member=...)
- * - Close
+ * The panel is for member details and permitted administrative actions.
  */
 function MemberDetailsPanel({
   member,
   onClose,
-  onViewNetwork,
   onEnrollDownline,
   onMoveDistributor,
   onViewAuditLogs,
@@ -379,21 +375,6 @@ function MemberDetailsPanel({
 
         {/* Panel Action Buttons */}
         <div className="panel-actions-col">
-          {(isAdmin || adminMode) && onViewNetwork && (
-            <button
-              type="button"
-              className="panel-action-btn primary-btn view-network-action-btn"
-              onClick={() => {
-                if (onViewNetwork) onViewNetwork(member);
-                onClose();
-              }}
-              title="Make this distributor the root of the tree"
-            >
-              <Network size={16} />
-              <span>{adminMode ? 'Inspect Subtree' : 'View Network'}</span>
-            </button>
-          )}
-
           {!adminMode && onMoveDistributor && (
             <button
               type="button"

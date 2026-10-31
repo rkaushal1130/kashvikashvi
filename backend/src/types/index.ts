@@ -17,6 +17,9 @@ export interface JwtAccessPayload {
   email: string;
   role: UserRole;
   status: AccountStatus;
+  distributorCode?: string;
+  distributorId?: string;
+  memberId?: string;
   iat?: number;
   exp?: number;
 }

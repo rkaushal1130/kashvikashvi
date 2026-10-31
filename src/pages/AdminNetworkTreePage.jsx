@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useNavigate, useSearchParams, useParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ShieldAlert,
   ShieldCheck,
@@ -72,9 +72,13 @@ export default function AdminNetworkTreePage() {
   });
 
   const currentUser = authData?.user;
+  const accountIds = [currentUser?.distributorCode, currentUser?.distributorId, currentUser?.memberId, currentUser?.id]
+    .filter(Boolean)
+    .map(String);
+  const hasAdminId = accountIds.some((id) => /^KV(?:-|$)/i.test(id));
   const isAdmin =
     Boolean(authData?.isLoggedIn) &&
-    (currentUser?.role === 'ADMIN' || currentUser?.role === 'SUPER_ADMIN');
+    (currentUser?.role === 'ADMIN' || currentUser?.role === 'SUPER_ADMIN' || hasAdminId);
 
   useEffect(() => {
     const handleAuthChange = () => {
@@ -132,10 +136,8 @@ export default function AdminNetworkTreePage() {
   // =========================================================================
   // 2. Tree Root, Member, & Navigation State
   // =========================================================================
-  const { distributorId } = useParams();
-  const urlMemberId = distributorId || searchParams.get('member') || searchParams.get('rootId');
-  const [currentRootId, setCurrentRootId] = useState(urlMemberId || 'KV-1001');
-  const [depth, setDepth] = useState(3);
+  const [currentRootId] = useState('KV-1001');
+  const [depth, setDepth] = useState(10);
   const [treeData, setTreeData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -151,9 +153,7 @@ export default function AdminNetworkTreePage() {
   );
 
   // Breadcrumbs lineage path
-  const [breadcrumbs, setBreadcrumbs] = useState([
-    { id: 'KV-1001', name: 'Rahul Kaushal (Root)' },
-  ]);
+  const breadcrumbs = [{ id: 'KV-1001', name: 'Rahul Kaushal (Root)' }];
 
   // =========================================================================
   // 3. Search State (Item 1: Search distributor)
@@ -286,78 +286,22 @@ export default function AdminNetworkTreePage() {
     };
   }, [isAdmin, currentRootId, depth, fetchAdminTree]);
 
-  // Synchronize state when browser URL parameter changes
-  useEffect(() => {
-    const memberParam = distributorId || searchParams.get('member') || searchParams.get('rootId');
-    if (memberParam && memberParam !== currentRootId) {
-      setCurrentRootId(memberParam);
-      setBreadcrumbs((prev) => {
-        if (!prev.some((b) => b.id === memberParam)) {
-          return [...prev, { id: memberParam, name: memberParam }];
-        }
-        return prev;
-      });
-    }
-  }, [searchParams, distributorId, currentRootId]);
-
   // =========================================================================
   // 6. Member Navigation & Search Selection Handlers
   // =========================================================================
   const handleSelectMember = (distributor) => {
     if (!distributor) return;
-    const memberId = distributor.distributorId || distributor.id;
-    const memberName = distributor.name || memberId;
-
-    setCurrentRootId(memberId);
-    setSearchParams({ member: memberId });
     setSelectedMember(distributor);
     setSearchQuery('');
     setSearchDropdownOpen(false);
 
-    setBreadcrumbs((prev) => {
-      const idx = prev.findIndex((b) => b.id === memberId);
-      if (idx !== -1) return prev.slice(0, idx + 1);
-      return [...prev, { id: memberId, name: memberName }];
-    });
-
-    setPanPosition({ x: 0, y: 0 });
-  };
-
-  const handleInspectSubtree = (node) => {
-    if (!node) return;
-    const memberId = node.distributorId || node.id;
-    const memberName = node.name || memberId;
-
-    setCurrentRootId(memberId);
-    setSearchParams({ member: memberId });
-    setSelectedMember(node);
-
-    setBreadcrumbs((prev) => {
-      const idx = prev.findIndex((b) => b.id === memberId);
-      if (idx !== -1) return prev.slice(0, idx + 1);
-      return [...prev, { id: memberId, name: memberName }];
-    });
-
-    setPanPosition({ x: 0, y: 0 });
-  };
-
-  const handleBreadcrumbClick = (crumbId, index) => {
-    setCurrentRootId(crumbId);
-    if (crumbId === 'KV-1001') {
-      setSearchParams({});
-    } else {
-      setSearchParams({ member: crumbId });
-    }
-    setBreadcrumbs((prev) => prev.slice(0, index + 1));
     setPanPosition({ x: 0, y: 0 });
   };
 
   const handleResetToRoot = () => {
-    setCurrentRootId('KV-1001');
     setSearchParams({});
-    setBreadcrumbs([{ id: 'KV-1001', name: 'Rahul Kaushal (Root)' }]);
     setZoomLevel(1);
-    setDepth(3);
+    setDepth(10);
     setPanPosition({ x: 0, y: 0 });
     setSelectedMember(treeData);
   };
@@ -650,28 +594,6 @@ export default function AdminNetworkTreePage() {
             )}
           </div>
 
-          {/* Quick Example Chips */}
-          <div className="admin-chips-row">
-            <span className="admin-chips-label">Quick Jump:</span>
-            {[
-              { id: 'KV-1001', label: 'Rahul (KV-1001)' },
-              { id: 'KV-1002', label: 'Amit (KV-1002)' },
-              { id: 'KV-1003', label: 'Rohit (KV-1003)' },
-              { id: 'KV-1004', label: 'Priya (KV-1004)' },
-              { id: 'KV-1005', label: 'Pooja (KV-1005)' },
-              { id: 'KV-1006', label: 'Neha (KV-1006)' },
-              { id: 'KV-1007', label: 'Suresh (KV-1007)' },
-            ].map((chip) => (
-              <button
-                key={chip.id}
-                type="button"
-                className={`admin-chip-btn ${currentRootId === chip.id ? 'active' : ''}`}
-                onClick={() => handleSelectMember({ distributorId: chip.id, name: chip.label.split(' ')[0] })}
-              >
-                {chip.label}
-              </button>
-            ))}
-          </div>
         </div>
 
         {/* Filters Controls Row */}
@@ -883,6 +805,7 @@ export default function AdminNetworkTreePage() {
       <div style={{ background: '#ffffff', borderBottom: '1px solid #e2e8f0', padding: '12px 24px' }}>
         <TreeControls
           depth={depth}
+          maxDepth={10}
           onDepthChange={setDepth}
           zoomLevel={zoomLevel}
           onZoomChange={(valOrFn) => {
@@ -896,18 +819,16 @@ export default function AdminNetworkTreePage() {
           onClearTree={async () => {
             if (window.confirm('Clear all enrolled downline data and reset the binary tree to fresh state?')) {
               api.clearTreeData();
-              setCurrentRootId('KV-1001');
-              setBreadcrumbs([{ id: 'KV-1001', name: 'Rahul Kaushal (Root)' }]);
               await fetchAdminTree('KV-1001', depth);
             }
           }}
           onCenterTree={handleCenterTree}
-          onExpand={() => setDepth((d) => Math.min(5, d + 1))}
+          onExpand={() => setDepth((d) => Math.min(10, d + 1))}
           onCollapse={() => setDepth((d) => Math.max(2, d - 1))}
           onRefresh={() => fetchAdminTree(currentRootId, depth)}
           loading={loading}
           breadcrumbs={breadcrumbs}
-          onBreadcrumbClick={handleBreadcrumbClick}
+          onBreadcrumbClick={() => {}}
           selectedMemberName={focalName}
         />
       </div>
@@ -946,7 +867,6 @@ export default function AdminNetworkTreePage() {
             panPosition={panPosition}
             onPanChange={setPanPosition}
             onNodeClick={handleNodeClick}
-            onFocusNode={handleInspectSubtree}
             highlightedId={selectedMember?.distributorId || null}
             selectedMemberId={selectedMember?.distributorId}
             filterCriteria={filterCriteria}
@@ -960,7 +880,6 @@ export default function AdminNetworkTreePage() {
         <MemberDetailsPanel
           member={selectedMember}
           onClose={() => setSelectedMember(null)}
-          onViewNetwork={handleInspectSubtree}
           adminMode={true}
         />
       )}

@@ -47,9 +47,8 @@ export class NetworkTreeController {
    *
    * Security & Business Rules (Prompt 15):
    * 1. Authentication required.
-   * 2. User can view their own network.
-   * 3. User can only view other networks if permitted by business rules (must be in their downline organization).
-   * 4. Admin can view all networks.
+   * 2. Distributors can view only their own network, rooted at their own account.
+   * 3. Admin can view all networks.
    * Expected: 401 for unauthenticated, 403 for authenticated but unauthorized.
    */
   public static async getMemberTree(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -62,10 +61,11 @@ export class NetworkTreeController {
       const isAdmin = requestingUser.role === 'ADMIN' || (requestingUser.role as string) === 'SUPER_ADMIN';
 
       if (!isAdmin) {
-        // 2. User can view their own network only
-        const isSelf = await NetworkTreeService.isSelf(requestingUser.id, distributorId);
-
-        // Distributor can see his own tree only not any other's
+        // Downline members are visible as nodes in the caller's tree, but their
+        // subtree cannot be opened as a separately rooted network.
+        const u = requestingUser as any;
+        const callerId = u.distributorCode || u.distributorId || u.memberId || requestingUser.id;
+        const isSelf = await NetworkTreeService.isSelf(callerId, distributorId, requestingUser.email);
         if (!isSelf) {
           // Audit log unauthorized access attempt
           await AuditService.recordLog({
@@ -78,12 +78,12 @@ export class NetworkTreeController {
             newValue: {
               requesterId: requestingUser.id,
               targetDistributorId: distributorId,
-              reason: 'Distributor can see their own tree only',
+              reason: 'Distributor can only view their own rooted network tree',
             },
           });
 
           throw AppError.forbidden(
-            'You are not authorized to view this network tree. Distributors can see their own tree only.',
+            'You are not authorized to view this network tree. Distributors can only view their own network.',
             'FORBIDDEN_NETWORK_VIEW'
           );
         }
@@ -124,7 +124,9 @@ export class NetworkTreeController {
       const isAdmin = requestingUser.role === 'ADMIN' || (requestingUser.role as string) === 'SUPER_ADMIN';
 
       if (!isAdmin) {
-        const isSelf = await NetworkTreeService.isSelf(requestingUser.id, distributorId);
+        const u = requestingUser as any;
+        const callerId = u.distributorCode || u.distributorId || u.memberId || requestingUser.id;
+        const isSelf = await NetworkTreeService.isSelf(callerId, distributorId, requestingUser.email);
         if (!isSelf) {
           await AuditService.recordLog({
             userId: requestingUser.id,
@@ -136,12 +138,12 @@ export class NetworkTreeController {
             newValue: {
               requesterId: requestingUser.id,
               targetDistributorId: distributorId,
-              reason: 'Distributor can see their own network summary only',
+              reason: 'Distributor can view their own network summary only',
             },
           });
 
           throw AppError.forbidden(
-            'You are not authorized to view this network summary. Distributors can see their own tree only.',
+            'You are not authorized to view this network summary. Distributors can view their own network summary only.',
             'FORBIDDEN_NETWORK_VIEW'
           );
         }

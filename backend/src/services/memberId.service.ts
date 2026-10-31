@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../config/database';
 import { logger } from '../config/logger';
+import { NetworkTreeService } from './networkTree.service';
 
 /**
  * ============================================================================
@@ -35,6 +36,7 @@ export class MemberIdService {
   public static async generateNextDistributorCode(tx?: Prisma.TransactionClient): Promise<string> {
     return new Promise<string>((resolve, reject) => {
       this.dstLockQueue = this.dstLockQueue
+        .catch(() => {})
         .then(async () => {
           try {
             const code = await this.executeGenerateDistributorCode(tx);
@@ -42,10 +44,6 @@ export class MemberIdService {
           } catch (err) {
             reject(err);
           }
-        })
-        .catch((err) => {
-          logger.error({ error: err }, 'Lock queue execution error in generateNextDistributorCode');
-          reject(err);
         });
     });
   }
@@ -60,43 +58,68 @@ export class MemberIdService {
       attempts++;
 
       const maxNumeric = await this.findCurrentMaxDstNumeric(db);
+      let nextVal = maxNumeric + 1;
 
-      const existingCounter = await (db as any).memberIdCounter.findUnique({
-        where: { id: this.DST_COUNTER_ID },
-      });
+      if ((db as any)?.memberIdCounter?.upsert) {
+        try {
+          const existingCounter = await (db as any).memberIdCounter.findUnique({
+            where: { id: this.DST_COUNTER_ID },
+          });
+          nextVal = Math.max(maxNumeric + 1, (existingCounter?.currentValue ?? 0) + 1);
 
-      const nextVal = Math.max(maxNumeric + 1, (existingCounter?.currentValue ?? 0) + 1);
+          const counter = await (db as any).memberIdCounter.upsert({
+            where: { id: this.DST_COUNTER_ID },
+            create: {
+              id: this.DST_COUNTER_ID,
+              currentValue: nextVal,
+            },
+            update: {
+              currentValue: nextVal,
+            },
+          });
+          nextVal = counter.currentValue;
+        } catch {
+          // ignore db counter error and use nextVal
+        }
+      }
 
-      const counter = await (db as any).memberIdCounter.upsert({
-        where: { id: this.DST_COUNTER_ID },
-        create: {
-          id: this.DST_COUNTER_ID,
-          currentValue: nextVal,
-        },
-        update: {
-          currentValue: nextVal,
-        },
-      });
-
-      const numStr = String(counter.currentValue).padStart(4, '0');
+      const numStr = String(nextVal).padStart(4, '0');
       candidateCode = `${this.DST_PREFIX}${numStr}`;
 
-      const collisionProfile = await db.distributorProfile.findFirst({
-        where: {
-          OR: [
-            { distributorCode: { equals: candidateCode, mode: 'insensitive' } },
-            { distributorId: { equals: candidateCode, mode: 'insensitive' } },
-          ],
-        },
-        select: { id: true },
-      });
+      let hasCollision = false;
+      try {
+        const collisionProfile = await db.distributorProfile.findFirst({
+          where: {
+            OR: [
+              { distributorCode: { equals: candidateCode, mode: 'insensitive' } },
+              { distributorId: { equals: candidateCode, mode: 'insensitive' } },
+            ],
+          },
+          select: { id: true },
+        });
 
-      const collisionUser = await db.user.findFirst({
-        where: { referralCode: { equals: candidateCode, mode: 'insensitive' } },
-        select: { id: true },
-      });
+        const collisionUser = await db.user.findFirst({
+          where: { referralCode: { equals: candidateCode, mode: 'insensitive' } },
+          select: { id: true },
+        });
 
-      if (!collisionProfile && !collisionUser) {
+        if (collisionProfile || collisionUser) {
+          hasCollision = true;
+        }
+      } catch {
+        // DB offline or error
+      }
+
+      try {
+        const enrollees = NetworkTreeService.getEnrolledMembers();
+        if (enrollees.some((e) => e.distributorId === candidateCode)) {
+          hasCollision = true;
+        }
+      } catch {
+        // ignore
+      }
+
+      if (!hasCollision) {
         isUnique = true;
       }
     }
@@ -115,6 +138,23 @@ export class MemberIdService {
 
   public static async findCurrentMaxDstNumeric(db: Prisma.TransactionClient | typeof prisma): Promise<number> {
     let maxNum = 0;
+
+    // Check dynamic enrollees first
+    try {
+      const enrollees = NetworkTreeService.getEnrolledMembers();
+      for (const m of enrollees) {
+        const match = (m.distributorId || '').match(/^DST[-_]?(\d+)$/i);
+        if (match && match[1]) {
+          const num = parseInt(match[1], 10);
+          if (!isNaN(num) && num > maxNum) {
+            maxNum = num;
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
+
     try {
       const existingProfiles = await db.distributorProfile.findMany({
         where: {
@@ -170,6 +210,7 @@ export class MemberIdService {
   public static async generateNextMemberId(tx?: Prisma.TransactionClient): Promise<string> {
     return new Promise<string>((resolve, reject) => {
       this.lockQueue = this.lockQueue
+        .catch(() => {})
         .then(async () => {
           try {
             const memberId = await this.executeGenerate(tx);
@@ -200,7 +241,7 @@ export class MemberIdService {
             attempts++;
 
             const maxNumeric = await this.findCurrentMaxNumericId(db);
-            const initialVal = Math.max(1000, maxNumeric);
+            const initialVal = maxNumeric;
 
             const counter = await (db as any).memberIdCounter.upsert({
               where: { id: this.COUNTER_ID },
@@ -213,7 +254,7 @@ export class MemberIdService {
               },
             });
 
-            candidateId = `${this.PREFIX}${counter.currentValue}`;
+            candidateId = `${this.PREFIX}${String(counter.currentValue).padStart(4, '0')}`;
 
             const collision = await db.distributorProfile.findFirst({
               where: {
@@ -243,12 +284,12 @@ export class MemberIdService {
 
     // 2. Resilient In-Memory Atomic Counter Fallback (guaranteed safe by sequential lockQueue)
     if (this.inMemoryCounter === null) {
-      const currentMax = this.isDbOffline ? 1000 : await this.findCurrentMaxNumericId(db);
-      this.inMemoryCounter = Math.max(1000, currentMax);
+      const currentMax = this.isDbOffline ? 0 : await this.findCurrentMaxNumericId(db);
+      this.inMemoryCounter = Math.max(0, currentMax);
     }
 
     this.inMemoryCounter++;
-    const candidateId = `${this.PREFIX}${this.inMemoryCounter}`;
+    const candidateId = `${this.PREFIX}${String(this.inMemoryCounter).padStart(4, '0')}`;
 
     logger.info({ memberId: candidateId }, 'Generated unique KV member ID via in-memory synchronized counter');
     return candidateId;
@@ -256,12 +297,12 @@ export class MemberIdService {
 
   /**
    * Scans existing member records to find highest existing numeric suffix
-   * so new sequential KV numbers never conflict with existing members.
-   * Default starting floor is 1000 so the first member begins at KV-1001.
+   * formatted as KV-XXXX (e.g. KV-0001, KV-0002...).
+   * Default starting floor is 0 so the first member begins at KV-0001.
    */
   public static async findCurrentMaxNumericId(db: Prisma.TransactionClient | typeof prisma): Promise<number> {
-    if (this.isDbOffline) return 1000;
-    let maxNum = 1000;
+    if (this.isDbOffline) return 0;
+    let maxNum = 0;
 
     try {
       const existingProfiles = await db.distributorProfile.findMany({
@@ -283,10 +324,10 @@ export class MemberIdService {
       }
     } catch {
       this.isDbOffline = true;
-      maxNum = 1000;
+      maxNum = 0;
     }
 
-    return Math.max(1000, maxNum);
+    return Math.max(0, maxNum);
   }
 
   /**

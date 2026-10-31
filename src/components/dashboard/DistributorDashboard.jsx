@@ -73,23 +73,8 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
   const navigate = useNavigate();
   const location = useLocation();
   const auth = useAuth();
-  const effectiveUser = user || auth.currentUser || {
-    name: 'Admin',
-    memberId: 'KV-1001',
-    distributorId: 'KV-1001',
-    distributorCode: 'KV-1001',
-    referralCode: 'KV-1001',
-    role: 'ADMIN',
-    isOwner: true,
-    distributorProfile: {
-      name: 'Admin',
-      displayName: 'Admin',
-      fullName: 'Admin',
-      distributorCode: 'KV-1001',
-      joinDate: '2026',
-      currentRank: 'Base',
-    },
-  };
+  const effectiveUser = user || auth.currentUser || null;
+  const [isProfileLoading, setIsProfileLoading] = useState(true);
 
 
   // ---------------------------------------------------------------------------
@@ -167,20 +152,26 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
   useEffect(() => {
     let mounted = true;
     async function loadPerformanceData() {
+      setIsProfileLoading(true);
       try {
         const targetId =
-          effectiveUser?.referralCode ||
           effectiveUser?.distributorCode ||
-          effectiveUser?.memberId ||
           effectiveUser?.distributorId ||
-          effectiveUser?.id ||
-          'KV-1001';
-        const perfData = await api.getMemberPerformance(targetId);
-        if (mounted && perfData) {
-          setPerformance(perfData);
+          effectiveUser?.memberId ||
+          effectiveUser?.referralCode ||
+          effectiveUser?.id;
+        if (targetId) {
+          const perfData = await api.getMemberPerformance(targetId);
+          if (mounted && perfData) {
+            setPerformance(perfData);
+          }
         }
       } catch (err) {
         console.warn('Could not load member performance:', err);
+      } finally {
+        if (mounted) {
+          setIsProfileLoading(false);
+        }
       }
     }
     loadPerformanceData();
@@ -418,9 +409,9 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
 
   // Authoritative Member Performance Display Values (PROMPT: Performance Card)
   const displayMemberName = performance?.name || (memberName !== 'NA' ? memberName : (effectiveUser?.name || 'Distributor'));
-  const displayMemberId = effectiveUser.referralCode || 'NA';
+  const displayMemberId = performance?.distributorCode || performance?.memberId || effectiveUser?.distributorCode || effectiveUser?.referralCode || effectiveUser?.memberId || effectiveUser?.distributorId || '...';
   const displayPaymentStatus = (performance?.paymentStatus || paymentStatus || effectiveUser?.paymentStatus || 'PENDING').toUpperCase();
-  const displayUserStatus = (performance?.accountStatus || userStatus || effectiveUser?.accountStatus || (displayPaymentStatus === 'PAID' ? 'ACTIVE' : 'PENDING_PAYMENT')).toUpperCase();
+  const displayUserStatus = (performance?.accountStatus || userStatus || effectiveUser?.status || (displayPaymentStatus === 'PAID' ? 'ACTIVE' : 'PENDING_PAYMENT')).toUpperCase();
   const displayMemberSince = performance?.brandPartnerSince || (memberSince !== 'NA' ? memberSince : 'Today');
   const displayRankName = performance?.currentRank || currentRankName || 'Base';
   const currentRankCode = performance?.currentRankCode || cumulativeRank?.currentRank || (displayRankName ? displayRankName.toUpperCase() : 'BASE');
