@@ -66,8 +66,8 @@ export default function ClientFundingView({ user, onWalletUpdated }) {
       setActiveTab('withdraw');
     }
   }, [isAdmin, activeTab]);
-  const [, setLoading] = useState(true);
-  const [, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [walletBalance, setWalletBalance] = useState(0);
   const [pendingBalance, setPendingBalance] = useState(0);
   const [orders, setOrders] = useState([]);
@@ -469,6 +469,22 @@ export default function ClientFundingView({ user, onWalletUpdated }) {
     return true;
   });
 
+  if (loading) {
+    return (
+      <div
+        className="client-funding-container"
+        role="status"
+        aria-live="polite"
+        style={{ minHeight: '45vh', display: 'grid', placeItems: 'center' }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, color: '#94a3b8' }}>
+          <RefreshCw className="w-5 h-5 animate-spin" aria-hidden="true" />
+          <span>Loading wallet, bank accounts, and funding activity...</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="client-funding-container">
       {/* Header */}
@@ -482,7 +498,7 @@ export default function ClientFundingView({ user, onWalletUpdated }) {
         </div>
         <div className="security-badge">
           <ShieldCheck className="w-4 h-4 text-emerald-400" />
-          PCI-DSS Compliant & Zero-Credential Banking
+          {refreshing ? 'Refreshing portal data...' : 'PCI-DSS Compliant & Zero-Credential Banking'}
         </div>
       </div>
 

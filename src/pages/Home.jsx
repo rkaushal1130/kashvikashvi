@@ -20,6 +20,7 @@ import {
 import './Home.css';
 
 import togetherWeRiseImg from '../assets/home/together_we_rise.png';
+import { INDIA_STATES_AND_UNION_TERRITORIES } from '../data/indiaStatesAndUnionTerritories.js';
 
 /**
  * Premium, Animation-rich Home Page for KASHVIMLM
@@ -1088,14 +1089,9 @@ function Home() {
                           setJoinForm((prev) => ({ ...prev, state: e.target.value }))
                         }
                       >
-                        <option value="Maharashtra">Maharashtra</option>
-                        <option value="Gujarat">Gujarat</option>
-                        <option value="Delhi NCR">Delhi NCR</option>
-                        <option value="Karnataka">Karnataka</option>
-                        <option value="Punjab">Punjab</option>
-                        <option value="Rajasthan">Rajasthan</option>
-                        <option value="Tamil Nadu">Tamil Nadu</option>
-                        <option value="Other">Other State</option>
+                        {INDIA_STATES_AND_UNION_TERRITORIES.map((state) => (
+                          <option key={state} value={state}>{state}</option>
+                        ))}
                       </select>
                     </div>
                   </div>

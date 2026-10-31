@@ -24,6 +24,7 @@ import {
   X,
 } from 'lucide-react';
 import { api } from '../../services/api';
+import { INDIA_STATES_AND_UNION_TERRITORIES } from '../../data/indiaStatesAndUnionTerritories.js';
 import './EnrollmentView.css';
 
 // NOTE: Enrollment pricing temporarily reduced to ₹1 for testing purposes.
@@ -1067,17 +1068,9 @@ function EnrollmentView({ user, onNavigate }) {
                     onChange={(e) => handleInputChange('state', e.target.value)}
                     className="field-select"
                   >
-                    <option value="Maharashtra">Maharashtra</option>
-                    <option value="Delhi">Delhi NCR</option>
-                    <option value="Karnataka">Karnataka</option>
-                    <option value="Haryana">Haryana</option>
-                    <option value="Gujarat">Gujarat</option>
-                    <option value="Tamil Nadu">Tamil Nadu</option>
-                    <option value="Telangana">Telangana</option>
-                    <option value="West Bengal">West Bengal</option>
-                    <option value="Punjab">Punjab</option>
-                    <option value="Rajasthan">Rajasthan</option>
-                    <option value="Uttar Pradesh">Uttar Pradesh</option>
+                    {INDIA_STATES_AND_UNION_TERRITORIES.map((state) => (
+                      <option key={state} value={state}>{state}</option>
+                    ))}
                   </select>
                 </div>
 

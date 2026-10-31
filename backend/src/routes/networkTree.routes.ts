@@ -47,6 +47,13 @@ router.get('/summary', authenticate, NetworkTreeController.getMySummary);
  * Authentication required; authorized only for self, downline, or admin.
  */
 router.get(
+  '/member/:distributorId/legs',
+  authenticate,
+  validate({ params: distributorIdParamSchema, query: treeDepthQuerySchema }),
+  NetworkTreeController.getMemberLegs
+);
+
+router.get(
   '/member/:distributorId/summary',
   authenticate,
   validate({ params: distributorIdParamSchema }),

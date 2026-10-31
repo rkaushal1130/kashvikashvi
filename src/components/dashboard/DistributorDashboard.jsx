@@ -183,16 +183,14 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
     window.addEventListener('kashvi_performance_updated', handleRefresh);
     window.addEventListener('kashvi_tree_updated', handleRefresh);
     window.addEventListener('kashvi_auth_updated', handleRefresh);
-    window.addEventListener('storage', handleRefresh);
 
     return () => {
       mounted = false;
       window.removeEventListener('kashvi_performance_updated', handleRefresh);
       window.removeEventListener('kashvi_tree_updated', handleRefresh);
       window.removeEventListener('kashvi_auth_updated', handleRefresh);
-      window.removeEventListener('storage', handleRefresh);
     };
-  }, [user, effectiveUser?.memberId, effectiveUser?.distributorId, effectiveUser?.referralCode, effectiveUser?.distributorCode, effectiveUser?.id]);
+  }, [effectiveUser?.memberId, effectiveUser?.distributorId, effectiveUser?.referralCode, effectiveUser?.distributorCode, effectiveUser?.id]);
 
   // Cumulative Rank & Commission Progress State (Phase 6)
   const [cumulativeRank, setCumulativeRank] = useState(null);
@@ -873,18 +871,33 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
                         gap: '4px',
                       }}
                     >
-                      <Award size={12} />
-                      {displayRankName.toUpperCase()}
+                      {isProfileLoading ? (
+                        <span className="distributor-skeleton distributor-rank-badge-skeleton" aria-hidden="true" />
+                      ) : (
+                        <><Award size={12} />{displayRankName.toUpperCase()}</>
+                      )}
                     </span>
                   </h2>
                   <p className="member-id-text" style={{ margin: '4px 0 6px', fontWeight: 600, color: '#1e293b' }}>
-                    KASHVI MLM ID: <span className={`node-distributor-id ${displayPaymentStatus === 'PAID' ? 'id-active-paid' : displayPaymentStatus === 'FAILED' ? 'id-failed' : 'id-pending'}`} style={{ fontSize: '13px', letterSpacing: '0.5px' }}>{displayMemberId}</span>
+                    KASHVI MLM ID: {isProfileLoading ? (
+                      <span className="distributor-skeleton distributor-id-skeleton" aria-hidden="true" />
+                    ) : (
+                      <span className={`node-distributor-id ${displayPaymentStatus === 'PAID' ? 'id-active-paid' : displayPaymentStatus === 'FAILED' ? 'id-failed' : 'id-pending'}`} style={{ fontSize: '13px', letterSpacing: '0.5px' }}>{displayMemberId}</span>
+                    )}
                   </p>
                   {treeId && (
                     <p className="member-meta-text" style={{ fontSize: '11px', fontFamily: 'monospace', color: '#475569' }}>
-                      Tree ID: {treeId}
+                      Tree ID: {isProfileLoading
+                        ? <span className="distributor-skeleton distributor-tree-id-skeleton" aria-hidden="true" />
+                        : treeId}
                     </p>
                   )}
+                  {isProfileLoading ? (
+                    <div className="distributor-account-skeleton-row" aria-hidden="true">
+                      <span className="distributor-skeleton distributor-status-skeleton" />
+                      <span className="distributor-skeleton distributor-status-skeleton" />
+                    </div>
+                  ) : (
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center', margin: '6px 0 8px' }}>
                     <span
                       style={{
@@ -915,8 +928,9 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
                       ACCOUNT: {displayUserStatus}
                     </span>
                   </div>
+                  )}
 
-                  {displayPaymentStatus !== 'PAID' && (
+                  {!isProfileLoading && displayPaymentStatus !== 'PAID' && (
                     <div
                       style={{
                         margin: '10px 0',
@@ -972,13 +986,30 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
                   )}
 
                   <p className="member-meta-text" style={{ color: '#64748b', fontSize: '12px', margin: '2px 0 8px' }}>
-                    Brand Partner Since: <strong>{displayMemberSince}</strong>
+                    Brand Partner Since: {isProfileLoading
+                      ? <span className="distributor-skeleton distributor-date-skeleton" aria-hidden="true" />
+                      : <strong>{displayMemberSince}</strong>}
                   </p>
 
                   <div style={{ borderTop: '1px solid #e2e8f0', margin: '8px 0 10px' }} />
 
                   {/* Automatic Member Performance Progression Box (PROMPT: Layout 1:1) */}
                   <div style={{ padding: '10px 12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                    {isProfileLoading ? (
+                      <div className="distributor-performance-skeleton" role="status" aria-live="polite">
+                        <span className="distributor-skeleton distributor-rank-skeleton" />
+                        <span className="distributor-skeleton distributor-rank-skeleton short" />
+                        <span className="distributor-skeleton distributor-progress-skeleton" />
+                        <div className="distributor-metrics-skeleton">
+                          <span className="distributor-skeleton" />
+                          <span className="distributor-skeleton" />
+                          <span className="distributor-skeleton" />
+                          <span className="distributor-skeleton" />
+                        </div>
+                    <span className="distributor-sr-only">Loading account performance details</span>
+                      </div>
+                    ) : (
+                    <>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px', fontSize: '12px' }}>
                       <span style={{ fontWeight: 600, color: '#334155' }}>
                         Rank: <strong style={{ color: '#0f172a' }}>{displayRankName}</strong>
@@ -1061,6 +1092,8 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
                           ))}
                         </div>
                       </div>
+                    )}
+                    </>
                     )}
                   </div>
 

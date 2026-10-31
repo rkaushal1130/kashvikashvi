@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import PageContainer from '../components/PageContainer';
 import { api } from '../services/api';
+import { INDIA_STATES_AND_UNION_TERRITORIES } from '../data/indiaStatesAndUnionTerritories.js';
 import './Join.css';
 
 /**
@@ -683,13 +684,9 @@ function Join() {
                     value={formData.state}
                     onChange={(e) => handleInputChange('state', e.target.value)}
                   >
-                    <option value="Maharashtra">Maharashtra</option>
-                    <option value="Delhi">Delhi</option>
-                    <option value="Karnataka">Karnataka</option>
-                    <option value="Gujarat">Gujarat</option>
-                    <option value="Punjab">Punjab</option>
-                    <option value="Tamil Nadu">Tamil Nadu</option>
-                    <option value="Uttar Pradesh">Uttar Pradesh</option>
+                    {INDIA_STATES_AND_UNION_TERRITORIES.map((state) => (
+                      <option key={state} value={state}>{state}</option>
+                    ))}
                   </select>
                 </div>
 

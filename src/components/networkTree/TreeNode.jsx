@@ -23,6 +23,7 @@ function TreeNode({
   node,
   isRoot = false,
   position = 'ROOT',
+  treeLevel = 1,
   parentNode = null,
   onNodeClick,
   onNodeHover,
@@ -146,6 +147,9 @@ function TreeNode({
         className={`tree-node-card member-card ${isActive && isPaid ? 'status-active' : 'status-inactive'} ${isHighlighted ? 'search-highlighted' : ''
           } ${filterClass}`}
         data-distributor-id={distributorId}
+        data-tree-level={treeLevel}
+        data-has-deeper={hasDeeper ? 'true' : 'false'}
+        data-legs-loaded={node.legsLoaded || node.left || node.right ? 'true' : 'false'}
         onClick={() => onNodeClick && onNodeClick(node)}
         onMouseEnter={(e) => onNodeHover && onNodeHover(node, e)}
         onMouseLeave={() => onNodeLeave && onNodeLeave()}

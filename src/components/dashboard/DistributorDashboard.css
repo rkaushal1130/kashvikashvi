@@ -2274,3 +2274,100 @@ body:has(.kashvimlm-portal-root) .footer,
     grid-template-columns: 1fr;
   }
 }
+/* Account summary loading placeholders */
+.distributor-skeleton {
+  display: inline-block;
+  border-radius: 5px;
+  background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+  background-size: 200% 100%;
+  animation: distributor-skeleton-shimmer 1.35s ease-in-out infinite;
+}
+
+.distributor-account-skeleton-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 6px 0 8px;
+  min-height: 28px;
+}
+
+.distributor-status-skeleton {
+  width: 132px;
+  height: 26px;
+}
+
+.distributor-date-skeleton {
+  width: 96px;
+  height: 14px;
+  vertical-align: middle;
+}
+
+.distributor-id-skeleton {
+  width: 90px;
+  height: 24px;
+  vertical-align: middle;
+}
+
+.distributor-tree-id-skeleton {
+  width: 78px;
+  height: 12px;
+  vertical-align: middle;
+}
+
+.distributor-rank-badge-skeleton {
+  width: 54px;
+  height: 14px;
+}
+
+.distributor-performance-skeleton {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px 16px;
+  padding: 2px 0;
+}
+
+.distributor-rank-skeleton {
+  width: 112px;
+  height: 15px;
+}
+
+.distributor-rank-skeleton.short {
+  width: 100px;
+  justify-self: end;
+}
+
+.distributor-progress-skeleton {
+  grid-column: 1 / -1;
+  width: 100%;
+  height: 8px;
+}
+
+.distributor-metrics-skeleton {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  border-top: 1px solid #f1f5f9;
+  padding-top: 10px;
+}
+
+.distributor-metrics-skeleton .distributor-skeleton {
+  width: 72%;
+  height: 15px;
+}
+
+.distributor-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@keyframes distributor-skeleton-shimmer {
+  to { background-position: -200% 0; }
+}

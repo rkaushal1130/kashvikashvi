@@ -26,6 +26,7 @@ export interface NetworkTreeNode {
   hasDeeperMembers?: boolean;
   hasChildren?: boolean;
   isExpanded?: boolean;
+  legsLoaded?: boolean;
   children?: NetworkTreeNode[];
   left: NetworkTreeNode | null;
   right: NetworkTreeNode | null;
@@ -291,7 +292,7 @@ export class NetworkTreeService {
     const maxDepth = Math.max(1, Math.min(10, Number(depth) || 3));
 
     if (this.isDbOffline) {
-      const modeled = this.getModeledNetworkTree(identifier, maxDepth);
+      const modeled = this.getModeledNetworkTree(identifier, maxDepth + 1);
       return { root: this.sanitizeTreeNode(modeled.root)! };
     }
 
@@ -319,7 +320,7 @@ export class NetworkTreeService {
       });
 
       if (!distributor) {
-        const modeled = this.getModeledNetworkTree(identifier, maxDepth);
+        const modeled = this.getModeledNetworkTree(identifier, maxDepth + 1);
         if (modeled && modeled.root) {
           return { root: this.sanitizeTreeNode(modeled.root)! };
         }
@@ -363,7 +364,8 @@ export class NetworkTreeService {
       const childrenMap = new Map<string, { LEFT?: any; RIGHT?: any }>();
       let currentLevelIds: string[] = [rootNode.id];
 
-      for (let level = 1; level <= maxDepth; level++) {
+      // Read one extra level to mark boundary nodes that have more legs to load.
+      for (let level = 1; level <= maxDepth + 1; level++) {
         if (currentLevelIds.length === 0) break;
 
         const children = await prisma.mLMNode.findMany({
@@ -443,7 +445,8 @@ export class NetworkTreeService {
         const businessCenter = 'BC-001';
 
         if (currentDepth >= maxDepth) {
-          const hasChildrenInDB = childrenMap.has(nodeId);
+          const boundaryChildren = childrenMap.get(nodeId);
+          const hasChildrenInDB = Boolean(boundaryChildren?.LEFT || boundaryChildren?.RIGHT);
           return {
             id: nodeId,
             treeId: nodeId,
@@ -456,15 +459,16 @@ export class NetworkTreeService {
             joinedDate,
             sponsor,
             businessCenter,
-            directMembers: hasChildrenInDB ? 2 : 0,
-            leftTeamCount: hasChildrenInDB ? 1 : 0,
-            rightTeamCount: hasChildrenInDB ? 1 : 0,
-            totalTeamCount: hasChildrenInDB ? 2 : 0,
+            directMembers: Number(Boolean(boundaryChildren?.LEFT)) + Number(Boolean(boundaryChildren?.RIGHT)),
+            leftTeamCount: Number(Boolean(boundaryChildren?.LEFT)),
+            rightTeamCount: Number(Boolean(boundaryChildren?.RIGHT)),
+            totalTeamCount: Number(Boolean(boundaryChildren?.LEFT)) + Number(Boolean(boundaryChildren?.RIGHT)),
             leftBV: 0,
             rightBV: 0,
             hasDeeperMembers: hasChildrenInDB,
             hasChildren: hasChildrenInDB,
             isExpanded: false,
+            legsLoaded: false,
             children: [],
             left: null,
             right: null,
@@ -506,6 +510,7 @@ export class NetworkTreeService {
           hasDeeperMembers: Boolean(leftNode?.hasDeeperMembers || rightNode?.hasDeeperMembers || totalTeamCount > 0),
           hasChildren: Boolean(leftNode || rightNode || childrenMap.has(nodeId)),
           isExpanded: Boolean(leftNode || rightNode),
+          legsLoaded: true,
           children,
           left: leftNode,
           right: rightNode,
@@ -524,7 +529,7 @@ export class NetworkTreeService {
         'Database query failed in getNetworkTree; serving resilient modeled network tree.'
       );
 
-      const modeled = this.getModeledNetworkTree(identifier, maxDepth);
+      const modeled = this.getModeledNetworkTree(identifier, maxDepth + 1);
       return { root: this.sanitizeTreeNode(modeled.root)! };
     }
   }
@@ -777,6 +782,12 @@ export class NetworkTreeService {
             e.sponsor &&
             e.sponsor.toUpperCase().replace(/[^A-Z0-9]/g, '') === normMemId
         ).length;
+        const hasAvailableLegs = allEnrollees.some((e) => {
+          const normalizedParent = (e.placementParent || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+          const normalizedSponsor = (e.sponsor || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+          return (e.paymentStatus === 'PAID' || e.status === 'ACTIVE') &&
+            (normalizedParent === normMemId || (!normalizedParent && normalizedSponsor === normMemId));
+        });
 
         const paymentStatus = mem.paymentStatus || (mem.status === 'ACTIVE' ? 'PAID' : 'PENDING');
 
@@ -801,9 +812,10 @@ export class NetworkTreeService {
           totalTeamCount: totalTeam,
           leftBV,
           rightBV,
-          hasDeeperMembers: totalTeam > 0,
+          hasDeeperMembers: totalTeam > 0 || hasAvailableLegs,
           hasChildren: Boolean(sub.left || sub.right),
           isExpanded: true,
+          legsLoaded: currentDepth + 1 < maxDepth,
           left: sub.left,
           right: sub.right,
           children: [sub.left, sub.right].filter(Boolean) as NetworkTreeNode[],
@@ -864,6 +876,7 @@ export class NetworkTreeService {
           hasDeeperMembers: totalTeam > 0,
           hasChildren: Boolean(sub.left || sub.right),
           isExpanded: true,
+          legsLoaded: true,
           left: sub.left,
           right: sub.right,
           children: [sub.left, sub.right].filter(Boolean) as NetworkTreeNode[],
@@ -914,6 +927,7 @@ export class NetworkTreeService {
           hasDeeperMembers: totalTeam > 0,
           hasChildren: Boolean(sub.left || sub.right),
           isExpanded: true,
+          legsLoaded: true,
           left: sub.left,
           right: sub.right,
           children: [sub.left, sub.right].filter(Boolean) as NetworkTreeNode[],
