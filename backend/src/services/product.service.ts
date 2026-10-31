@@ -603,7 +603,7 @@ export class ProductService {
       });
 
       return product;
-    });
+    }, { timeout: 20000, maxWait: 10000 });
 
     logger.info({ productId: createdProduct.id, sku: createdProduct.sku }, 'Product created successfully');
     return this.formatProduct(createdProduct);

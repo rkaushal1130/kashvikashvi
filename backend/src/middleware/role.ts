@@ -64,6 +64,20 @@ export const requireProductManagementAccess = async (
     return next();
   }
 
+  // KV-prefixed account codes are the application's authenticated admin IDs.
+  // The code is carried in the signed access token, so this does not trust a
+  // client-supplied product payload or query parameter for authorization.
+  const accountCode = String(
+    (req.user as any).distributorCode ||
+    (req.user as any).distributorId ||
+    (req.user as any).memberId ||
+    req.user.id ||
+    ''
+  );
+  if (/^KV(?:-|$)/i.test(accountCode)) {
+    return next();
+  }
+
   // 2. Check trusted database / server-side profile for explicitly authorized business center owner
   try {
     let isAuthorizedOwner = false;
@@ -83,6 +97,11 @@ export const requireProductManagementAccess = async (
       });
 
       if (user) {
+        const profileCode = user.distributorProfile?.distributorCode || user.distributorProfile?.distributorId;
+        if (profileCode && /^KV(?:-|$)/i.test(profileCode)) {
+          return next();
+        }
+
         // Check if role has manage_products permission
         const roleName = user.role?.name || user.roleName;
         const rolePermissions = user.role?.permissions as any;

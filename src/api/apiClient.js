@@ -30,6 +30,7 @@ class ApiClient {
     this.accessToken = null;
     this.refreshPromise = null;
     this.onUnauthorizedCallbacks = new Set();
+    this.inFlightGetRequests = new Map();
   }
 
   setToken(token) {
@@ -226,7 +227,20 @@ class ApiClient {
   }
 
   get(endpoint, options = {}) {
-    return this.request(endpoint, { ...options, method: 'GET' });
+    const token = this.getToken() || '';
+    const headersKey = JSON.stringify(options.headers || {});
+    const requestKey = `${endpoint}|${token}|${headersKey}`;
+    const pendingRequest = this.inFlightGetRequests.get(requestKey);
+    if (pendingRequest) return pendingRequest;
+
+    const request = this.request(endpoint, { ...options, method: 'GET' })
+      .finally(() => {
+        if (this.inFlightGetRequests.get(requestKey) === request) {
+          this.inFlightGetRequests.delete(requestKey);
+        }
+      });
+    this.inFlightGetRequests.set(requestKey, request);
+    return request;
   }
 
   post(endpoint, body, options = {}) {

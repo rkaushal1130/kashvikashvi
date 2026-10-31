@@ -71,7 +71,7 @@ function ProductManagerView({ user, catalog = [], onUpdateCatalog, onNavigate })
 
   // Backend Database Table State
   const [productsList, setProductsList] = useState(catalog || []);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Sync with prop when parent updates
