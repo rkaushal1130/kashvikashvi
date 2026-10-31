@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Network,
@@ -21,8 +21,11 @@ import MemberHoverCard from '../components/networkTree/MemberHoverCard';
 import MemberDetailsPanel from '../components/networkTree/MemberDetailsPanel';
 import { useAuth } from '../context/AuthContext.jsx';
 import { api } from '../services/api.js';
-import { normalizeTree } from '../utils/treeNormalize.js';
+import { normalizeTree, normalizeTreeNode } from '../utils/treeNormalize.js';
 import '../components/networkTree/NetworkTree.css';
+
+const INITIAL_TREE_BATCH_DEPTH = 2; // Root plus two descendant generations = three visible levels.
+const NEXT_TREE_BATCH_DEPTH = 3;
 
 /**
  * Helper function to immutably update a specific node in the recursive binary tree.
@@ -38,6 +41,25 @@ function updateNodeInTree(node, targetId, updaterFn) {
     left: updateNodeInTree(node.left, targetId, updaterFn),
     right: updateNodeInTree(node.right, targetId, updaterFn),
   };
+}
+
+function TreeCardSkeleton() {
+  return (
+    <>
+      <div className="tree-node-skeleton-header">
+        <span className="tree-skeleton-block skeleton-tag" />
+        <span className="tree-skeleton-block skeleton-tag short" />
+      </div>
+      <span className="tree-skeleton-block skeleton-name" />
+      <span className="tree-skeleton-block skeleton-id" />
+      <div className="tree-node-skeleton-status">
+        <span className="tree-skeleton-block skeleton-status" />
+        <span className="tree-skeleton-block skeleton-status" />
+      </div>
+      <span className="tree-skeleton-block skeleton-volume" />
+      <span className="tree-skeleton-block skeleton-footer" />
+    </>
+  );
 }
 
 /**
@@ -94,6 +116,8 @@ function NetworkTreePage({ embedded = false }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [expandingNodeIds, setExpandingNodeIds] = useState({});
+  const loadedLegsRef = useRef(new Set());
+  const loadingLegsRef = useRef(new Set());
 
   // 4. UI Canvas Controls (Zoom, Pan, Search, Hover, Details, Mobile Viewport)
   const [zoomLevel, setZoomLevel] = useState(1);
@@ -163,7 +187,7 @@ function NetworkTreePage({ embedded = false }) {
         personalBV: 250,
         totalBV: 250,
       });
-      await fetchTreeData(initialDistributorId, depth);
+      await fetchTreeData(initialDistributorId);
       setClearTreeModalOpen(false);
       setClearSuccessToast('Tree data cleared! Network tree reset to fresh initial state with 0 team members.');
       setTimeout(() => setClearSuccessToast(null), 5000);
@@ -268,7 +292,7 @@ function NetworkTreePage({ embedded = false }) {
 
       if (res && res.success) {
         setMoveSuccess(res.message || 'Distributor moved successfully! Immutable audit record created.');
-        fetchTreeData(currentRootId, depth);
+        fetchTreeData(currentRootId);
         setTimeout(() => {
           setMoveModalOpen(false);
           handleOpenAuditLogs({ distributorId: moveFormData.memberId });
@@ -285,17 +309,18 @@ function NetworkTreePage({ embedded = false }) {
 
   // 5. Fetch Tree Data & Summary from API
   const fetchTreeData = useCallback(
-    async (rootId, maxDepth = 2) => {
+    async (rootId) => {
       setLoading(true);
       setError(null);
       try {
         const targetId = rootId || initialDistributorId;
+        loadedLegsRef.current = new Set();
 
         // Use role-scoped endpoints: distributors always request their own root;
         // admins use the global endpoint and may choose another root.
         const res = isAdmin
-          ? await api.getAdminNetworkTree(targetId, maxDepth)
-          : await api.getNetworkTree(maxDepth);
+          ? await api.getAdminNetworkTree(targetId, INITIAL_TREE_BATCH_DEPTH)
+          : await api.getNetworkTree(INITIAL_TREE_BATCH_DEPTH);
         if (res?.status === 403) {
           setError(res.message || '403 Forbidden: You do not have permission to access this network.');
           return;
@@ -303,7 +328,13 @@ function NetworkTreePage({ embedded = false }) {
         const data = res?.root || res?.data?.root || res?.data || res;
 
         if (data) {
-          setTreeData(normalizeTree(data));
+          const normalized = normalizeTree(data);
+          const rootNode = normalized?.root || normalized;
+          const rootNodeId = rootNode?.distributorId || rootNode?.id || targetId;
+          loadedLegsRef.current.add(String(rootNodeId));
+          setTreeData(normalized?.root
+            ? { ...normalized, root: { ...rootNode, legsLoaded: true } }
+            : { ...rootNode, legsLoaded: true });
         } else {
           setError('Unable to load network tree from database.');
         }
@@ -324,6 +355,52 @@ function NetworkTreePage({ embedded = false }) {
     [initialDistributorId, isAdmin]
   );
 
+  const handleLoadVisibleNodeLegs = useCallback(async (nodeId) => {
+    if (!nodeId || loadedLegsRef.current.has(String(nodeId)) || loadingLegsRef.current.has(String(nodeId))) return;
+
+    loadingLegsRef.current.add(String(nodeId));
+    setExpandingNodeIds((prev) => ({ ...prev, [nodeId]: true }));
+    try {
+      const response = isAdmin
+        ? await api.getAdminNetworkTree(nodeId, NEXT_TREE_BATCH_DEPTH)
+        : await api.getNetworkTreeLegs(nodeId, NEXT_TREE_BATCH_DEPTH);
+      if (response?.status === 403 || response?.success === false) {
+        throw new Error(response.message || `Access denied while loading ${nodeId}'s legs.`);
+      }
+      const branchRoot = response?.root || response?.data?.root || response?.data || response;
+      if (!branchRoot || typeof branchRoot !== 'object') {
+        throw new Error(`No leg data returned for ${nodeId}.`);
+      }
+
+      setTreeData((currentTree) => {
+        const envelope = currentTree?.root ? currentTree : null;
+        const root = envelope?.root || currentTree;
+        const updatedRoot = updateNodeInTree(root, String(nodeId), (currentNode) => ({
+          ...currentNode,
+          left: normalizeTreeNode(branchRoot.left || branchRoot.leftChild || null),
+          right: normalizeTreeNode(branchRoot.right || branchRoot.rightChild || null),
+          children: [branchRoot.left || branchRoot.leftChild, branchRoot.right || branchRoot.rightChild]
+            .filter(Boolean)
+            .map(normalizeTreeNode),
+          hasDeeperMembers: Boolean(branchRoot.left || branchRoot.right || branchRoot.leftChild || branchRoot.rightChild),
+          hasChildren: Boolean(branchRoot.left || branchRoot.right || branchRoot.leftChild || branchRoot.rightChild),
+          legsLoaded: true,
+        }));
+        return envelope ? { ...currentTree, root: updatedRoot } : updatedRoot;
+      });
+      loadedLegsRef.current.add(String(nodeId));
+    } catch (err) {
+      console.warn(`[NetworkTree] Could not load legs for ${nodeId}:`, err);
+    } finally {
+      loadingLegsRef.current.delete(String(nodeId));
+      setExpandingNodeIds((prev) => {
+        const next = { ...prev };
+        delete next[nodeId];
+        return next;
+      });
+    }
+  }, [isAdmin]);
+
   // Keep every session on its authorized root; admin member navigation stays in the full tree.
   useEffect(() => {
     if (currentRootId !== initialDistributorId) {
@@ -334,21 +411,19 @@ function NetworkTreePage({ embedded = false }) {
   }, [initialDistributorId, currentUser?.name, currentUser?.displayName, currentUser?.fullName, currentRootId]);
 
   useEffect(() => {
-    fetchTreeData(currentRootId, depth);
-  }, [currentRootId, depth, fetchTreeData]);
+    fetchTreeData(currentRootId);
+  }, [currentRootId, fetchTreeData]);
 
   // Auto-refresh tree when dynamic enrollment or tree change occurs
   useEffect(() => {
     const handleTreeUpdated = () => {
-      fetchTreeData(currentRootId, depth);
+      fetchTreeData(currentRootId);
     };
     window.addEventListener('kashvi_tree_updated', handleTreeUpdated);
-    window.addEventListener('storage', handleTreeUpdated);
     return () => {
       window.removeEventListener('kashvi_tree_updated', handleTreeUpdated);
-      window.removeEventListener('storage', handleTreeUpdated);
     };
-  }, [currentRootId, depth, fetchTreeData]);
+  }, [currentRootId, fetchTreeData]);
 
   // Search selects a member in the global tree; it never re-roots the tree.
   const handleSelectSearchResult = (distributor) => {
@@ -519,7 +594,7 @@ function NetworkTreePage({ embedded = false }) {
                       setCurrentRootId('KV-1001');
                       setBreadcrumbs([{ id: 'KV-1001', name: 'Company Root (KV-1001)' }]);
                       setSearchParams({ member: 'KV-1001' });
-                      fetchTreeData('KV-1001', depth);
+                      fetchTreeData('KV-1001');
                     }}
                     title="View Company Root Organization (Admin/Owner Only)"
                     style={{ background: '#fef3c7', borderColor: '#fcd34d', color: '#92400e', fontWeight: 600 }}
@@ -602,7 +677,7 @@ function NetworkTreePage({ embedded = false }) {
             onResetToRoot={handleResetToRoot}
             onClearTree={isAdmin ? () => setClearTreeModalOpen(true) : null}
             onCenterTree={() => handleCenterTree()}
-            onRefresh={() => fetchTreeData(currentRootId, depth)}
+            onRefresh={() => fetchTreeData(currentRootId)}
             loading={loading}
             breadcrumbs={breadcrumbs}
             onBreadcrumbClick={handleBreadcrumbClick}
@@ -615,9 +690,28 @@ function NetworkTreePage({ embedded = false }) {
       {/* Main Binary Canvas Viewport */}
       <main className="tree-main-content-area">
         {loading && (
-          <div className="tree-canvas-loading-overlay">
-            <div className="spinner-orbit" />
-            <p>Loading database-driven binary genealogy...</p>
+          <div className="tree-canvas-loading-overlay" role="status" aria-live="polite">
+            <div className="tree-loading-message-card">
+              <strong>Loading the first 3 levels</strong>
+              <p>Fetching the root and its first two generations from the database.</p>
+            </div>
+            <div className="tree-initial-skeleton-tree" aria-hidden="true">
+              <div className="tree-initial-skeleton-level root-level">
+                <div className="tree-node-card tree-node-skeleton-card"><TreeCardSkeleton /></div>
+              </div>
+              <div className="tree-initial-skeleton-connectors level-one-connectors"><i /><i /><i /><i /></div>
+              <div className="tree-initial-skeleton-level second-level">
+                {Array.from({ length: 2 }, (_, index) => (
+                  <div className="tree-node-card tree-node-skeleton-card" key={`level-two-${index}`}><TreeCardSkeleton /></div>
+                ))}
+              </div>
+              <div className="tree-initial-skeleton-connectors level-two-connectors"><i /><i /><i /><i /><i /></div>
+              <div className="tree-initial-skeleton-level third-level">
+                {Array.from({ length: 4 }, (_, index) => (
+                  <div className="tree-node-card tree-node-skeleton-card" key={`level-three-${index}`}><TreeCardSkeleton /></div>
+                ))}
+              </div>
+            </div>
           </div>
         )}
 
@@ -653,7 +747,7 @@ function NetworkTreePage({ embedded = false }) {
                   const rootName = currentUser?.name || currentUser?.displayName || initialDistributorId;
                   setBreadcrumbs([{ id: initialDistributorId, name: `${rootName} (My Root)` }]);
                   setSearchParams({});
-                  fetchTreeData(initialDistributorId, depth);
+                  fetchTreeData(initialDistributorId);
                 }}
                 style={{
                   background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
@@ -670,7 +764,7 @@ function NetworkTreePage({ embedded = false }) {
               </button>
               <button
                 type="button"
-                onClick={() => fetchTreeData(currentRootId, depth)}
+                onClick={() => fetchTreeData(currentRootId)}
                 style={{
                   background: '#f1f5f9',
                   color: '#475569',
@@ -706,6 +800,7 @@ function NetworkTreePage({ embedded = false }) {
             highlightedId={selectedMember?.distributorId || null}
             selectedMemberId={selectedMember?.distributorId}
             expandingNodeIds={expandingNodeIds}
+            onLoadVisibleNodeLegs={handleLoadVisibleNodeLegs}
             isAdmin={isAdmin}
           />
         )}

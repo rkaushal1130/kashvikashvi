@@ -110,6 +110,41 @@ export class NetworkTreeController {
   }
 
   /**
+   * Retrieves one node's direct LEFT and RIGHT legs for incremental tree rendering.
+   * Distributors may load legs only for members within their own rooted network.
+   */
+  public static async getMemberLegs(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { distributorId } = req.params;
+      const depth = req.query.depth ? parseInt(req.query.depth as string, 10) : 3;
+      const requestingUser = req.user!;
+      const isAdmin = requestingUser.role === 'ADMIN' || requestingUser.role === 'SUPER_ADMIN';
+
+      if (!isAdmin) {
+        const u = requestingUser as any;
+        const callerId = u.distributorCode || u.distributorId || u.memberId || requestingUser.id;
+        const authorized = await NetworkTreeService.isDownline(callerId, distributorId, requestingUser.email);
+        if (!authorized) {
+          throw AppError.forbidden(
+            'You are not authorized to load legs outside your network.',
+            'FORBIDDEN_NETWORK_VIEW'
+          );
+        }
+      }
+
+      const tree = await NetworkTreeService.getNetworkTree(distributorId, depth);
+      sendSuccess(res, {
+        data: {
+          left: tree.root?.left || null,
+          right: tree.root?.right || null,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
    * Retrieves network summary statistics for a specific member.
    * GET /api/v1/network-tree/member/:distributorId/summary
    *

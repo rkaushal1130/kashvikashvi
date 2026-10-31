@@ -1544,6 +1544,20 @@ export const api = {
     };
   },
 
+  async getNetworkTreeLegs(distributorId, depth = 3) {
+    const cleanId = encodeURIComponent(distributorId || '');
+    if (!distributorId) throw new Error('Distributor ID is required to load network legs.');
+
+    const res = await fetch(`${API_BASE_URL}/network-tree/member/${cleanId}/legs?depth=${depth}`, {
+      headers: getAuthHeaders(),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success || !data.data) {
+      throw new Error(data.message || `Unable to load network legs (${res.status}).`);
+    }
+    return data.data;
+  },
+
   getModeledTree(distributorId = 'KV-1001', maxDepth = 2, currentDepth = 1) {
     const rawId = distributorId || this.getCurrentDistributorId() || 'KV-1001';
     const normId = safeId(rawId) || 'KV-1001';
@@ -1634,8 +1648,9 @@ export const api = {
           personalBV: memBV,
           totalBV: memBV + leftBV + rightBV,
           hasChildren: Boolean(nested.left || nested.right),
-          hasDeeperMembers: Boolean(nested.left || nested.right),
+          hasDeeperMembers: leftCount + rightCount > 0,
           isExpanded: Boolean(nested.left || nested.right),
+          legsLoaded: Boolean(nested.left || nested.right) || leftCount + rightCount === 0,
           left: nested.left,
           right: nested.right,
           children: [nested.left, nested.right].filter(Boolean),
@@ -1734,6 +1749,7 @@ export const api = {
           hasChildren: Boolean(sub.left || sub.right),
           hasDeeperMembers: Boolean(leftCount > 1 || rightCount > 1),
           isExpanded: true,
+          legsLoaded: true,
           left: sub.left,
           right: sub.right,
           children: [sub.left, sub.right].filter(Boolean),
@@ -1780,6 +1796,7 @@ export const api = {
       hasChildren: Boolean(adminSub.left || adminSub.right),
       hasDeeperMembers: Boolean(leftCount > 1 || rightCount > 1),
       isExpanded: true,
+      legsLoaded: true,
       left: adminSub.left,
       right: adminSub.right,
       children: [adminSub.left, adminSub.right].filter(Boolean),

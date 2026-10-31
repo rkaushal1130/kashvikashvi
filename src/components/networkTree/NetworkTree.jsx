@@ -31,6 +31,7 @@ function NetworkTree({
   expandingNodeIds = {},
   onExpandNode,
   onCollapseNode,
+  onLoadVisibleNodeLegs,
   filterCriteria = null,
   adminViewOnly = false,
   isAdmin = false,
@@ -46,6 +47,33 @@ function NetworkTree({
 
   const currentPan = panPosition !== undefined ? panPosition : internalPan;
   const updatePan = onPanChange || setInternalPan;
+
+  // Fetch the next pair of legs only when a node that has more descendants
+  // actually enters the tree viewport.
+  useEffect(() => {
+    if (!containerRef.current || !onLoadVisibleNodeLegs) return undefined;
+    const candidates = Array.from(containerRef.current.querySelectorAll(
+      '.tree-node-card.member-card[data-has-deeper="true"][data-legs-loaded="false"]'
+    )).filter((element) => Number(element.dataset.treeLevel || 1) <= depth);
+    if (typeof IntersectionObserver === 'undefined') {
+      candidates.forEach((element) => {
+        if (element.dataset.distributorId) onLoadVisibleNodeLegs(element.dataset.distributorId);
+      });
+      return undefined;
+    }
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        const distributorId = entry.target.dataset.distributorId;
+        if (distributorId) onLoadVisibleNodeLegs(distributorId);
+        observer.unobserve(entry.target);
+      });
+    }, { root: containerRef.current, threshold: 0.1 });
+
+    candidates.forEach((element) => observer.observe(element));
+    return () => observer.disconnect();
+  }, [rootNode, depth, onLoadVisibleNodeLegs]);
 
   // 1. Mouse Drag / Pan Handlers
   const handleMouseDown = (e) => {
@@ -194,6 +222,26 @@ function NetworkTree({
     return true;
   };
 
+  const renderLegSkeleton = (legName) => (
+    <div className="tree-leg-loading tree-leg-loading-skeleton" role="status" aria-label={`Loading the next three levels of the ${legName} leg`}>
+      <div className="tree-node-card tree-node-skeleton-card" aria-hidden="true">
+        <div className="tree-node-skeleton-header">
+          <span className="tree-skeleton-block skeleton-tag" />
+          <span className="tree-skeleton-block skeleton-tag short" />
+        </div>
+        <span className="tree-skeleton-block skeleton-name" />
+        <span className="tree-skeleton-block skeleton-id" />
+        <div className="tree-node-skeleton-status">
+          <span className="tree-skeleton-block skeleton-status" />
+          <span className="tree-skeleton-block skeleton-status" />
+        </div>
+        <span className="tree-skeleton-block skeleton-volume" />
+        <span className="tree-skeleton-block skeleton-footer" />
+      </div>
+      <span className="tree-leg-loading-label">Loading next 3 levels…</span>
+    </div>
+  );
+
   const renderBinaryBranch = (
     node,
     isRoot = false,
@@ -207,9 +255,6 @@ function NetworkTree({
     const rightChild = node.right || node.rightChild || null;
     const hasChildren = Boolean(leftChild || rightChild);
 
-    // Render every generation returned by the API, up to the selected depth.
-    const isBranchExpanded = currentLevel <= depth && (isRoot || hasChildren);
-
     const nodeId = node.distributorId || node.id || node.distributor?.distributorCode;
     const isMatch =
       highlightedId &&
@@ -219,6 +264,8 @@ function NetworkTree({
 
     const isExpanding = Boolean(expandingNodeIds && expandingNodeIds[nodeId]);
     const isMatchedByFilter = checkFilterMatch(node);
+    // Expand the pending branch so its skeleton legs are visible while loading.
+    const isBranchExpanded = currentLevel <= depth && (isRoot || hasChildren || isExpanding);
 
     return (
       <div className={`binary-branch-unit ${isRoot ? 'root-branch' : ''}`}>
@@ -228,6 +275,7 @@ function NetworkTree({
             node={node}
             isRoot={isRoot}
             position={position}
+            treeLevel={currentLevel}
             parentNode={parentNode}
             onNodeClick={onNodeClick}
             onNodeHover={onNodeHover}
@@ -258,6 +306,8 @@ function NetworkTree({
                 <div className="leg-label-pill left-leg-pill">◀ LEFT LEG</div>
                 {leftChild ? (
                   renderBinaryBranch(leftChild, false, 'LEFT', currentLevel + 1, node)
+                ) : isExpanding ? (
+                  renderLegSkeleton('left')
                 ) : (
                   <TreeNode
                     node={null}
@@ -274,6 +324,8 @@ function NetworkTree({
                 <div className="leg-label-pill right-leg-pill">RIGHT LEG ▶</div>
                 {rightChild ? (
                   renderBinaryBranch(rightChild, false, 'RIGHT', currentLevel + 1, node)
+                ) : isExpanding ? (
+                  renderLegSkeleton('right')
                 ) : (
                   <TreeNode
                     node={null}
