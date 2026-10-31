@@ -291,10 +291,7 @@ export class CommissionQueueService {
    * Performs atomic wallet credit inside a Prisma transaction.
    */
   private static async executeWalletCredit(job: CommissionQueueJob): Promise<void> {
-    let credited = false;
-
-    try {
-      await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx) => {
         // 1. Locate distributor wallet
         let wallet = await tx.wallet.findUnique({
           where: { distributorId: job.distributorId },
@@ -345,21 +342,16 @@ export class CommissionQueueService {
         });
 
         job.walletTransactionId = wtx.id;
-        credited = true;
-      });
-    } catch (err: any) {
-      if (!credited) {
-        // Fallback resilient wallet credit simulation if database connection is disrupted
-        job.walletTransactionId = `WTX-SIM-${Date.now()}`;
-      }
-    }
+    });
   }
 
   /**
    * Placeholder for direct IMPS/NEFT rail transfers (PNB / Cashfree / RazorpayX).
    */
   private static async executeRailTransfer(job: CommissionQueueJob): Promise<void> {
-    job.utrNumber = `IMPS${Date.now()}${Math.floor(1000 + Math.random() * 9000)}`;
+    throw new Error(
+      `Bank transfer provider is not configured for ${job.payoutMethod}; no payout was sent.`
+    );
   }
 
   /**

@@ -728,7 +728,7 @@ export class AdminFundingCommissionService {
           approvedAmount: SafeDecimal.round(data.totalAmount, 2),
           commissionCount: data.count,
           paymentStatus: dist?.paymentStatus || 'PAID',
-          hasActiveWallet: !!(dist?.wallet || true),
+          hasActiveWallet: !!dist?.wallet,
         });
       } else {
         excludedTotalAmount += data.totalAmount;
@@ -796,95 +796,79 @@ export class AdminFundingCommissionService {
         const amount = emp.approvedAmount;
         try {
           // Attempt atomic wallet credit in DB
-          let credited = false;
           let wtxId: string | undefined = undefined;
 
-          try {
-            await prisma.$transaction(async (tx) => {
-              const wallet = await tx.wallet.findUnique({
-                where: { distributorId: emp.distributorId },
-              });
-
-              if (!wallet) {
-                throw new Error('Distributor wallet record not found');
-              }
-
-              const before = Number(wallet.availableBalance ?? wallet.balance ?? 0);
-              const after = before + amount;
-              const wtxNumber = `WTX-DIST-${Date.now().toString().slice(-6)}-${Math.floor(1000 + Math.random() * 9000)}`;
-
-              const wtx = await tx.walletTransaction.create({
-                data: {
-                  walletId: wallet.id,
-                  transactionNumber: wtxNumber,
-                  type: 'COMMISSION_CREDIT',
-                  status: 'COMPLETED',
-                  amount: new Prisma.Decimal(amount),
-                  feeAmount: new Prisma.Decimal(0),
-                  netAmount: new Prisma.Decimal(amount),
-                  balanceBefore: new Prisma.Decimal(before),
-                  balanceAfter: new Prisma.Decimal(after),
-                  referenceId: batchNumber,
-                  description: `One-Click Commission Distribution: Batch ${batchNumber}`,
-                },
-              });
-
-              wtxId = wtx.id;
-
-              await tx.wallet.update({
-                where: { id: wallet.id },
-                data: {
-                  availableBalance: new Prisma.Decimal(after),
-                  balance: new Prisma.Decimal(after),
-                  lifetimeEarned: { increment: new Prisma.Decimal(amount) },
-                  totalEarned: { increment: new Prisma.Decimal(amount) },
-                },
-              });
-
-              // Mark commissions as PAID with payout batch linkage
-              await tx.commission.updateMany({
-                where: {
-                  distributorId: emp.distributorId,
-                  status: 'APPROVED',
-                },
-                data: {
-                  status: 'PAID',
-                  payoutDate: new Date(),
-                },
-              });
-
-              credited = true;
+          await prisma.$transaction(async (tx) => {
+            const claimed = await tx.commission.updateMany({
+              where: { distributorId: emp.distributorId, status: 'APPROVED' },
+              data: { status: 'PAID', payoutDate: new Date() },
             });
-          } catch (dbErr: any) {
-            // DB failed or not reachable; handle in-memory test fallback
-            if (!emp.hasActiveWallet) {
-              throw new Error('Active wallet account not found');
+            if (claimed.count !== emp.commissionCount) {
+              throw new Error('Approved commission rows changed during payout. Refresh the preview and retry.');
             }
-            credited = true;
-            wtxId = `WTX-MEM-${Date.now()}`;
-          }
 
-          if (credited) {
-            successfulCount++;
-            successfulAmount += amount;
-            results.push({
-              distributorId: emp.distributorId,
-              distributorCode: emp.distributorCode,
-              name: emp.name,
-              amount,
-              status: 'SUCCESS',
-              walletTransactionId: wtxId,
-              payoutReference: batchNumber,
+            const wallet = await tx.wallet.findUnique({
+              where: { distributorId: emp.distributorId },
             });
 
-            // Update in-memory cumulative commission records to PAID
-            const inMem = CumulativeRankCommissionService.getInMemoryLedger();
-            for (const item of inMem) {
-              if (item.distributorId === emp.distributorId && item.status === 'APPROVED') {
-                item.status = 'PAID';
-                item.paidAt = new Date();
-                item.walletTransactionId = wtxId;
-              }
+            if (!wallet) {
+              throw new Error('Distributor wallet record not found');
+            }
+
+            const beforeDecimal = new Prisma.Decimal(wallet.availableBalance ?? wallet.balance ?? 0);
+            const amountDecimal = new Prisma.Decimal(amount);
+            const afterDecimal = beforeDecimal.add(amountDecimal);
+            const wtxNumber = `WTX-DIST-${Date.now().toString().slice(-6)}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+            const wtx = await tx.walletTransaction.create({
+              data: {
+                walletId: wallet.id,
+                transactionNumber: wtxNumber,
+                type: 'COMMISSION_CREDIT',
+                status: 'COMPLETED',
+                amount: amountDecimal,
+                feeAmount: new Prisma.Decimal(0),
+                netAmount: amountDecimal,
+                balanceBefore: beforeDecimal,
+                balanceAfter: afterDecimal,
+                referenceId: batchNumber,
+                description: `One-Click Commission Distribution: Batch ${batchNumber}`,
+              },
+            });
+
+            wtxId = wtx.id;
+
+            await tx.wallet.update({
+              where: { id: wallet.id },
+              data: {
+                availableBalance: afterDecimal,
+                balance: afterDecimal,
+                lifetimeEarned: { increment: amountDecimal },
+                totalEarned: { increment: amountDecimal },
+              },
+            });
+
+          });
+
+          successfulCount++;
+          successfulAmount += amount;
+          results.push({
+            distributorId: emp.distributorId,
+            distributorCode: emp.distributorCode,
+            name: emp.name,
+            amount,
+            status: 'SUCCESS',
+            walletTransactionId: wtxId,
+            payoutReference: batchNumber,
+          });
+
+          // Update in-memory cumulative commission records to PAID
+          const inMem = CumulativeRankCommissionService.getInMemoryLedger();
+          for (const item of inMem) {
+            if (item.distributorId === emp.distributorId && item.status === 'APPROVED') {
+              item.status = 'PAID';
+              item.paidAt = new Date();
+              item.walletTransactionId = wtxId;
             }
           }
         } catch (itemErr: any) {
@@ -969,24 +953,6 @@ export class AdminFundingCommissionService {
         // In-memory test store
         this.inMemoryBatches.set(batchData.batchId, batchData);
         this.inMemoryBatchItems.set(batchData.batchId, results);
-      }
-
-      // Synchronize to CommissionQueueService for asynchronous monitoring and DLQ retries
-      try {
-        const { CommissionQueueService } = await import('./commissionQueue.service');
-        await CommissionQueueService.enqueueBatch(
-          batchData.batchId,
-          batchNumber,
-          preview.eligibleEmployees.map((e) => ({
-            distributorId: e.distributorId,
-            distributorCode: e.distributorCode,
-            distributorName: e.name,
-            amount: e.approvedAmount,
-            payoutMethod: 'WALLET_CREDIT',
-          }))
-        );
-      } catch (qErr: any) {
-        logger.warn({ err: qErr.message }, 'Failed to enqueue distribution batch in queue service');
       }
 
       // 5. Admin Audit Trail
