@@ -346,7 +346,7 @@ function ProductManagerView({ user, catalog = [], onUpdateCatalog, onNavigate })
       return;
     }
     if (newProduct.distributorPrice === '' || isNaN(Number(newProduct.distributorPrice))) {
-      alert('Please enter a valid distributor wholesale price.');
+      alert('Please enter a valid DP(₹).');
       return;
     }
 
@@ -382,6 +382,7 @@ function ProductManagerView({ user, catalog = [], onUpdateCatalog, onNavigate })
       categoryId,
       distributorPrice: distVal,
       wholesalePrice: distVal,
+      dp: distVal,
       mrp: mrpVal,
       bv: bvVal,
       volumeBv: bvVal,
@@ -466,16 +467,15 @@ function ProductManagerView({ user, catalog = [], onUpdateCatalog, onNavigate })
 
     const updatedCatalog = productsList.map((p) => {
       if (p.id === productId) {
+        const newDist =
+          changes.distributorPrice !== undefined
+            ? parseFloat(changes.distributorPrice)
+            : (p.distributorPrice ?? p.wholesalePrice ?? p.dp);
         return {
           ...p,
-          distributorPrice:
-            changes.distributorPrice !== undefined
-              ? parseFloat(changes.distributorPrice)
-              : p.distributorPrice,
-          wholesalePrice:
-            changes.distributorPrice !== undefined
-              ? parseFloat(changes.distributorPrice)
-              : (p.wholesalePrice || p.distributorPrice),
+          distributorPrice: newDist,
+          wholesalePrice: newDist,
+          dp: newDist,
           mrp: changes.mrp !== undefined ? parseFloat(changes.mrp) : p.mrp,
           volumeBV: changes.volumeBV !== undefined ? parseFloat(changes.volumeBV) : p.volumeBV,
           bv: changes.volumeBV !== undefined ? parseFloat(changes.volumeBV) : (p.bv || p.volumeBV),
@@ -495,6 +495,7 @@ function ProductManagerView({ user, catalog = [], onUpdateCatalog, onNavigate })
       await api.updateProduct(productId, {
         distributorPrice: changes.distributorPrice !== undefined ? parseFloat(changes.distributorPrice) : undefined,
         wholesalePrice: changes.distributorPrice !== undefined ? parseFloat(changes.distributorPrice) : undefined,
+        dp: changes.distributorPrice !== undefined ? parseFloat(changes.distributorPrice) : undefined,
         mrp: changes.mrp !== undefined ? parseFloat(changes.mrp) : undefined,
         bv: changes.volumeBV !== undefined ? parseFloat(changes.volumeBV) : undefined,
         volumeBV: changes.volumeBV !== undefined ? parseFloat(changes.volumeBV) : undefined,
@@ -725,7 +726,7 @@ function ProductManagerView({ user, catalog = [], onUpdateCatalog, onNavigate })
             <div className="pm-fields-grid four-cols">
               <div className="pm-form-group">
                 <label className="field-label">
-                  Distributor Wholesale Price (₹) <span className="req">*</span>
+                  DP(₹) <span className="req">*</span>
                 </label>
                 <div className="input-prefix-wrap">
                   <span className="input-prefix">₹</span>
@@ -1155,7 +1156,7 @@ function ProductManagerView({ user, catalog = [], onUpdateCatalog, onNavigate })
                     </th>
                     <th>Product</th>
                     <th>Category</th>
-                    <th>Wholesale Price (₹)</th>
+                    <th>DP(₹)</th>
                     <th>MRP (₹)</th>
                     <th>Volume (BV)</th>
                     <th>Stock</th>
@@ -1220,7 +1221,7 @@ function ProductManagerView({ user, catalog = [], onUpdateCatalog, onNavigate })
                           <span className="table-cat-badge">{product.category}</span>
                         </td>
 
-                        {/* Distributor Wholesale Price (Editable) */}
+                        {/* DP(₹) (Editable) */}
                         <td>
                           <div className="inline-price-input-wrap">
                             <span className="inline-curr">₹</span>
@@ -1229,7 +1230,7 @@ function ProductManagerView({ user, catalog = [], onUpdateCatalog, onNavigate })
                               value={
                                 inline.distributorPrice !== undefined
                                   ? inline.distributorPrice
-                                  : product.distributorPrice
+                                  : (product.distributorPrice ?? product.wholesalePrice ?? product.dp ?? 0)
                               }
                               onChange={(e) =>
                                 handleInlineChange(product.id, 'distributorPrice', e.target.value)

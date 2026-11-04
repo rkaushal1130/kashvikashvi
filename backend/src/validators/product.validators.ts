@@ -26,7 +26,9 @@ export const createProductSchema = z.object({
     .optional(),
   description: z.string().trim().optional(),
   categoryId: z.string().min(1, 'Category ID or Code is required').trim(),
-  wholesalePrice: z.coerce.number().min(0, 'Wholesale price cannot be negative'),
+  wholesalePrice: z.coerce.number().min(0, 'Wholesale price cannot be negative').optional(),
+  distributorPrice: z.coerce.number().min(0, 'Distributor price cannot be negative').optional(),
+  dp: z.coerce.number().min(0, 'DP cannot be negative').optional(),
   mrp: z.coerce.number().min(0, 'MRP cannot be negative'),
   bv: z.coerce.number().min(0, 'BV cannot be negative').default(0),
   stock: z.coerce.number().int().min(0, 'Stock cannot be negative').default(0),
@@ -58,7 +60,7 @@ export const productQuerySchema = z.object({
 });
 
 export const productIdParamSchema = z.object({
-  id: z.string().uuid('Product ID must be a valid UUID'),
+  id: z.string().min(1, 'Product ID is required'),
 });
 
 export const productSlugParamSchema = z.object({

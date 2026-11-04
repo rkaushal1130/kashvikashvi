@@ -535,7 +535,8 @@ export class ProductService {
       productStatus = 'OUT_OF_STOCK';
     }
 
-    const wholesaleDecimal = new Prisma.Decimal(input.wholesalePrice);
+    const wholesaleVal = input.distributorPrice ?? input.wholesalePrice ?? (input as any).dp ?? 0;
+    const wholesaleDecimal = new Prisma.Decimal(wholesaleVal);
     const mrpDecimal = new Prisma.Decimal(input.mrp);
     const bvDecimal = new Prisma.Decimal(input.bv);
 
@@ -613,12 +614,37 @@ export class ProductService {
    * Admin-Only: Updates an existing product.
    */
   public static async updateProduct(id: string, input: UpdateProductInput) {
-    const existing = await prisma.product.findUnique({
-      where: { id },
-      include: { inventory: true },
-    });
+    let existing: any = null;
+    try {
+      existing = await prisma.product.findUnique({
+        where: { id },
+        include: { inventory: true },
+      });
+    } catch {
+      // Prisma offline, handle in-memory fallback below
+    }
 
     if (!existing || existing.deletedAt !== null) {
+      const fallbackIdx = ProductService.FALLBACK_PRODUCTS.findIndex((p) => p.id === id || p.sku === id || p.slug === id);
+      if (fallbackIdx >= 0) {
+        const current = ProductService.FALLBACK_PRODUCTS[fallbackIdx];
+        const newDist = input.distributorPrice ?? input.wholesalePrice ?? (input as any).dp ?? current.wholesalePrice;
+        const updatedFallback = {
+          ...current,
+          name: input.name ?? current.name,
+          sku: input.sku ?? current.sku,
+          wholesalePrice: Number(newDist),
+          distributorPrice: Number(newDist),
+          mrp: input.mrp !== undefined ? Number(input.mrp) : current.mrp,
+          bv: input.bv !== undefined ? Number(input.bv) : current.bv,
+          stock: input.stock !== undefined ? Number(input.stock) : current.stock,
+          status: input.status ?? current.status,
+          updatedAt: new Date().toISOString(),
+        };
+        ProductService.FALLBACK_PRODUCTS[fallbackIdx] = updatedFallback;
+        logger.info({ productId: id }, 'Product updated in memory successfully');
+        return updatedFallback;
+      }
       throw AppError.notFound('Product not found.', 'PRODUCT_NOT_FOUND');
     }
 
@@ -721,9 +747,10 @@ export class ProductService {
         });
       }
 
+      const newWholesale = input.distributorPrice ?? input.wholesalePrice ?? (input as any).dp;
       const wholesaleDecimal =
-        input.wholesalePrice !== undefined
-          ? new Prisma.Decimal(input.wholesalePrice)
+        newWholesale !== undefined
+          ? new Prisma.Decimal(newWholesale)
           : existing.wholesalePrice;
       const mrpDecimal =
         input.mrp !== undefined ? new Prisma.Decimal(input.mrp) : existing.mrp;

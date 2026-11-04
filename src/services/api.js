@@ -100,7 +100,7 @@ export function normalizeProduct(p) {
       ? p.category.id
       : (p.categoryId || categoryName);
   const distributorPrice = Number(
-    p.distributorPrice ?? p.distributor_price ?? p.wholesalePrice ?? p.wholesale_price ?? 0
+    p.distributorPrice ?? p.distributor_price ?? p.wholesalePrice ?? p.wholesale_price ?? p.dp ?? 0
   );
   const mrp = Number(p.mrp ?? p.retailPrice ?? p.retail_price ?? 0);
   const volumeBV = Number(p.volumeBV ?? p.volume_bv ?? p.bv ?? 0);
@@ -117,6 +117,7 @@ export function normalizeProduct(p) {
     categoryId,
     distributorPrice,
     wholesalePrice: distributorPrice,
+    dp: distributorPrice,
     mrp,
     volumeBV,
     bv: volumeBV,
