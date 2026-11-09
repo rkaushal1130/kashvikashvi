@@ -55,40 +55,14 @@ export class AdminCommissionController {
         });
         return;
       } catch (dbErr) {
-        // Fallback to in-memory store if DB is offline
-        const inMemoryCommissions = [
-          {
-            id: 'comm-101',
-            type: 'BINARY_MATCH',
-            grossCommissionAmount: 1120.0,
-            amount: 1120.0,
-            status: 'PAID',
-            commissionLevel: 1,
-            recipientMemberId: 'KV-1001',
-            recipientDistributorCode: 'KV-1001',
-            createdAt: new Date().toISOString(),
-          },
-          {
-            id: 'comm-102',
-            type: 'DIRECT_SPONSOR',
-            grossCommissionAmount: 250.0,
-            amount: 250.0,
-            status: 'PAID',
-            commissionLevel: 1,
-            recipientMemberId: 'KV-1002',
-            recipientDistributorCode: 'KV-1002',
-            createdAt: new Date().toISOString(),
-          },
-        ];
-
         sendSuccess(res, {
           message: 'Admin commissions retrieved successfully',
-          data: inMemoryCommissions,
+          data: [],
           statusCode: 200,
           meta: {
             page: 1,
             limit: 20,
-            total: inMemoryCommissions.length,
+            total: 0,
             totalPages: 1,
           },
         });

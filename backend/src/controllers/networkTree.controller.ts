@@ -118,7 +118,7 @@ export class NetworkTreeController {
       const { distributorId } = req.params;
       const depth = req.query.depth ? parseInt(req.query.depth as string, 10) : 3;
       const requestingUser = req.user!;
-      const isAdmin = requestingUser.role === 'ADMIN' || requestingUser.role === 'SUPER_ADMIN';
+      const isAdmin = (requestingUser.role as string) === 'ADMIN' || (requestingUser.role as string) === 'SUPER_ADMIN';
 
       if (!isAdmin) {
         const u = requestingUser as any;

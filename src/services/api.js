@@ -384,20 +384,20 @@ export const api = {
     } catch (err) {
       console.warn('[API] Fetch wallet balance fallback:', err.message);
     }
-    let balance = 12500;
+    let balance = 0;
     if (typeof window !== 'undefined' && window.localStorage) {
       const stored = localStorage.getItem('kashvi_wallet_balance');
       if (stored !== null) {
         balance = parseFloat(stored) || 0;
       } else {
-        localStorage.setItem('kashvi_wallet_balance', '12500');
+        localStorage.setItem('kashvi_wallet_balance', '0');
       }
     }
     return {
       availableBalance: balance,
       balance,
       pendingBalance: 0,
-      totalEarned: Math.max(12500, balance),
+      totalEarned: balance,
       totalWithdrawn: 0,
       currency: 'INR',
     };
@@ -2353,8 +2353,8 @@ export const api = {
           if (data.data?.walletBalance !== undefined) {
             localStorage.setItem('kashvi_wallet_balance', String(data.data.walletBalance));
           } else {
-            const current = parseFloat(localStorage.getItem('kashvi_wallet_balance') || '12500') || 0;
-            const added = Number(verifyData.amount || 1000);
+            const current = parseFloat(localStorage.getItem('kashvi_wallet_balance') || '0') || 0;
+            const added = Number(verifyData.amount || 0);
             localStorage.setItem('kashvi_wallet_balance', String(current + added));
           }
         }
@@ -2363,10 +2363,10 @@ export const api = {
       throw new Error(data?.message || 'Verification failed');
     } catch (err) {
       console.warn('[API] Verify client funding fallback:', err.message);
-      let balance = 12500;
+      let balance = 0;
       if (typeof window !== 'undefined' && window.localStorage) {
-        const current = parseFloat(localStorage.getItem('kashvi_wallet_balance') || '12500') || 0;
-        const added = Number(verifyData.amount || 1000);
+        const current = parseFloat(localStorage.getItem('kashvi_wallet_balance') || '0') || 0;
+        const added = Number(verifyData.amount || 0);
         balance = current + added;
         localStorage.setItem('kashvi_wallet_balance', String(balance));
       }
@@ -2548,9 +2548,9 @@ export const api = {
       throw new Error(data.message || 'Failed to process withdrawal');
     } catch (err) {
       console.warn('[API] Request withdrawal fallback:', err.message);
-      let currentBalance = 12500;
+      let currentBalance = 0;
       if (typeof window !== 'undefined' && window.localStorage) {
-        currentBalance = parseFloat(localStorage.getItem('kashvi_wallet_balance') || '12500') || 0;
+        currentBalance = parseFloat(localStorage.getItem('kashvi_wallet_balance') || '0') || 0;
       }
       const numAmount = Number(withdrawalData.amount);
       if (numAmount > currentBalance) {

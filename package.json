@@ -45,7 +45,10 @@
     "db:studio": "npm run prisma:studio --prefix backend",
     "db:roles": "npm run roles:migrate --prefix backend",
     "db:migrate": "npm run prisma:migrate:deploy --prefix backend",
-    "db:status": "npm run prisma:migrate --prefix backend"
+    "db:status": "npm run prisma:migrate --prefix backend",
+    "db:backup": "npm run db:backup --prefix backend",
+    "db:restore": "npm run db:restore --prefix backend",
+    "db:reset:prod": "npm run db:reset:prod --prefix backend"
   },
   "dependencies": {
     "@prisma/client": "^6.4.1",

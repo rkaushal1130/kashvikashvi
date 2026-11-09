@@ -3,6 +3,9 @@ import { prisma } from '../config/database';
 import { AuditService } from '../services/audit.service';
 import { NetworkTreeService } from '../services/networkTree.service';
 import { MemberIdService } from '../services/memberId.service';
+import { AuthService } from '../services/auth.service';
+import { DatabaseMaintenanceService } from '../services/databaseMaintenance.service';
+import { verifyPassword } from '../utils/password';
 import { sendSuccess } from '../utils/apiResponse';
 import { AppError } from '../utils/appError';
 
@@ -137,139 +140,94 @@ export class AdminController {
     }
   }
 
-  // In-memory persistent distributor store for administrative actions
-  public static distributorsStore: any[] = [
-    {
-      id: 'dist-1001',
-      distributorId: 'KV-1001',
-      memberId: 'KV-1001',
-      distributorCode: 'KV-1001',
-      name: 'Rahul Kaushal',
-      firstName: 'Rahul',
-      lastName: 'Kaushal',
-      email: 'rahul.kaushal@kashvimlm.com',
-      phone: '+91 9998887776',
-      status: 'ACTIVE',
-      position: 'ROOT',
-      rank: 'Associate',
-      sponsorId: null,
-      parentId: null,
-      level: 0,
-      depth: 0,
-      leftBv: 0,
-      rightBv: 0,
-      personalBv: 0,
-      teamSize: 0,
-      lifetimePV: 0,
-      lifetimeGV: 0,
-      joinedAt: '2026-01-01T00:00:00.000Z',
-    },
-    {
-      id: 'dist-1002',
-      distributorId: 'KV-1002',
-      memberId: 'KV-1002',
-      distributorCode: 'KV-1002',
-      name: 'Amit Patel',
-      firstName: 'Amit',
-      lastName: 'Patel',
-      email: 'distributor@example.com',
-      phone: '+91 9876543210',
-      status: 'ACTIVE',
-      position: 'LEFT',
-      rank: 'Associate',
-      sponsorId: 'KV-1001',
-      parentId: 'KV-1001',
-      level: 1,
-      depth: 1,
-      leftBv: 0,
-      rightBv: 0,
-      personalBv: 0,
-      teamSize: 0,
-      lifetimePV: 0,
-      lifetimeGV: 0,
-      joinedAt: '2026-01-01T00:00:00.000Z',
-    },
-    {
-      id: 'dist-1003',
-      distributorId: 'KV-1003',
-      memberId: 'KV-1003',
-      distributorCode: 'KV-1003',
-      name: 'Rohit Sharma',
-      firstName: 'Rohit',
-      lastName: 'Sharma',
-      email: 'rohit@example.com',
-      phone: '+91 9876543211',
-      status: 'ACTIVE',
-      position: 'RIGHT',
-      rank: 'Associate',
-      sponsorId: 'KV-1001',
-      parentId: 'KV-1001',
-      level: 1,
-      depth: 1,
-      leftBv: 0,
-      rightBv: 0,
-      personalBv: 0,
-      teamSize: 0,
-      lifetimePV: 0,
-      lifetimeGV: 0,
-      joinedAt: '2026-01-01T00:00:00.000Z',
-    },
-    {
-      id: 'dist-1004',
-      distributorId: 'KV-1004',
-      memberId: 'KV-1004',
-      distributorCode: 'KV-1004',
-      name: 'Priya Sharma',
-      firstName: 'Priya',
-      lastName: 'Sharma',
-      email: 'priya@example.com',
-      phone: '+91 9876543212',
-      status: 'ACTIVE',
-      position: 'LEFT',
-      rank: 'Associate',
-      sponsorId: 'KV-1002',
-      parentId: 'KV-1002',
-      level: 2,
-      depth: 2,
-      leftBv: 0,
-      rightBv: 0,
-      personalBv: 0,
-      teamSize: 0,
-      lifetimePV: 0,
-      lifetimeGV: 0,
-      joinedAt: '2026-01-02T00:00:00.000Z',
-    },
-    {
-      id: 'dist-1008',
-      distributorId: 'KV-1008',
-      memberId: 'KV-1008',
-      distributorCode: 'KV-1008',
-      name: 'Suspended Member',
-      firstName: 'Suspended',
-      lastName: 'Member',
-      email: 'suspended@example.com',
-      phone: '+91 9876543216',
-      status: 'SUSPENDED',
-      position: 'RIGHT',
-      rank: 'Associate',
-      sponsorId: 'KV-1003',
-      parentId: 'KV-1003',
-      level: 2,
-      depth: 2,
-      leftBv: 0,
-      rightBv: 0,
-      personalBv: 0,
-      teamSize: 0,
-      lifetimePV: 0,
-      lifetimeGV: 0,
-      joinedAt: '2026-01-02T00:00:00.000Z',
-    },
-  ];
+  // In-memory persistent distributor store for administrative actions (empty by default)
+  public static distributorsStore: any[] = [];
 
   // 3. Distributors: /api/v1/admin/distributors
   public static async getDistributors(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { search, status, position, rank, page = 1, limit = 50 } = req.query;
+      const pageNum = Math.max(1, parseInt(String(page), 10) || 1);
+      const limitNum = Math.max(1, parseInt(String(limit), 10) || 50);
+
+      if (process.env.NODE_ENV !== 'test' && prisma && prisma.distributorProfile) {
+        try {
+          const whereClause: any = {};
+          if (search) {
+            const q = String(search).trim();
+            whereClause.OR = [
+              { distributorId: { contains: q, mode: 'insensitive' } },
+              { distributorCode: { contains: q, mode: 'insensitive' } },
+              { firstName: { contains: q, mode: 'insensitive' } },
+              { lastName: { contains: q, mode: 'insensitive' } },
+              { displayName: { contains: q, mode: 'insensitive' } },
+              { user: { email: { contains: q, mode: 'insensitive' } } },
+            ];
+          }
+          if (status && status !== 'ALL') {
+            whereClause.status = String(status).toUpperCase();
+          }
+
+          const [dbDistributors, totalCount] = await Promise.all([
+            prisma.distributorProfile.findMany({
+              where: whereClause,
+              include: {
+                user: { select: { email: true, phone: true, createdAt: true } },
+                businessCenters: { select: { leftVolume: true, rightVolume: true } },
+                currentRank: { select: { name: true } },
+                sponsor: { select: { distributorCode: true, firstName: true, lastName: true } },
+              },
+              skip: (pageNum - 1) * limitNum,
+              take: limitNum,
+              orderBy: { createdAt: 'desc' },
+            }),
+            prisma.distributorProfile.count({ where: whereClause }),
+          ]);
+
+          const formatted = dbDistributors.map((d) => ({
+            id: d.id,
+            distributorId: d.distributorId,
+            memberId: d.distributorId,
+            distributorCode: d.distributorCode,
+            name: d.displayName || `${d.firstName || ''} ${d.lastName || ''}`.trim() || 'Distributor',
+            firstName: d.firstName,
+            lastName: d.lastName,
+            email: d.user?.email || '',
+            phone: d.user?.phone || '',
+            status: d.status,
+            position: 'ROOT',
+            rank: d.currentRank?.name || 'Associate',
+            sponsorId: d.sponsor?.distributorCode || null,
+            parentId: null,
+            leftBv: d.businessCenters?.[0]?.leftVolume || 0,
+            rightBv: d.businessCenters?.[0]?.rightVolume || 0,
+            personalBv: 0,
+            joinedAt: d.user?.createdAt || d.createdAt,
+          }));
+
+          res.status(200).json({
+            success: true,
+            message: 'Distributors retrieved successfully',
+            data: formatted,
+            pagination: {
+              page: pageNum,
+              limit: limitNum,
+              total: totalCount,
+              totalPages: Math.ceil(totalCount / limitNum) || 1,
+            },
+            meta: {
+              page: pageNum,
+              limit: limitNum,
+              total: totalCount,
+              totalPages: Math.ceil(totalCount / limitNum) || 1,
+            },
+          });
+          return;
+        } catch {
+          // Fall through to in-memory store
+        }
+      }
+
       let list = [...AdminController.distributorsStore];
 
       if (search) {
@@ -298,8 +256,6 @@ export class AdminController {
         list = list.filter((d) => (d.rank || '').toLowerCase() === r);
       }
 
-      const pageNum = Math.max(1, parseInt(String(page), 10) || 1);
-      const limitNum = Math.max(1, parseInt(String(limit), 10) || 50);
       const total = list.length;
       const paginated = list.slice((pageNum - 1) * limitNum, pageNum * limitNum);
 
@@ -419,6 +375,57 @@ export class AdminController {
   public static async getDistributorById(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const id = req.params.id;
+
+      if (process.env.NODE_ENV !== 'test' && prisma && prisma.distributorProfile) {
+        try {
+          const profile = await prisma.distributorProfile.findFirst({
+            where: {
+              OR: [
+                { id },
+                { distributorId: { equals: id, mode: 'insensitive' } },
+                { distributorCode: { equals: id, mode: 'insensitive' } },
+                { userId: id },
+              ],
+            },
+            include: {
+              user: { select: { email: true, phone: true, createdAt: true, status: true } },
+              businessCenters: { select: { leftVolume: true, rightVolume: true } },
+              currentRank: { select: { name: true } },
+              sponsor: { select: { distributorCode: true, firstName: true, lastName: true } },
+            },
+          });
+          if (profile) {
+            res.status(200).json({
+              success: true,
+              message: 'Distributor profile retrieved',
+              data: {
+                id: profile.id,
+                distributorId: profile.distributorId,
+                memberId: profile.distributorId,
+                distributorCode: profile.distributorCode,
+                name: profile.displayName || `${profile.firstName || ''} ${profile.lastName || ''}`.trim() || 'Distributor',
+                firstName: profile.firstName,
+                lastName: profile.lastName,
+                email: profile.user?.email || '',
+                phone: profile.user?.phone || '',
+                status: profile.status,
+                position: 'ROOT',
+                rank: profile.currentRank?.name || 'Associate',
+                sponsorId: profile.sponsor?.distributorCode || null,
+                parentId: null,
+                leftBv: profile.businessCenters?.[0]?.leftVolume || 0,
+                rightBv: profile.businessCenters?.[0]?.rightVolume || 0,
+                personalBv: 0,
+                joinedAt: profile.user?.createdAt || profile.createdAt,
+              },
+            });
+            return;
+          }
+        } catch {
+          // Fall through
+        }
+      }
+
       const found = AdminController.distributorsStore.find(
         (d) => d.distributorId === id || d.memberId === id || d.id === id || d.distributorCode === id
       );
@@ -745,16 +752,7 @@ export class AdminController {
         // Fallback
       }
 
-      if (orders.length === 0) {
-        orders = [
-          { orderNumber: 'ORD-2026-10001', status: 'DELIVERED', totalAmount: 109.73, totalBV: 48.0 },
-          { orderNumber: 'ORD-2026-10002', status: 'PAID', totalAmount: 167.38, totalBV: 115.0 },
-          { orderNumber: 'ORD-2026-10003', status: 'SHIPPED', totalAmount: 147.93, totalBV: 95.0 },
-          { orderNumber: 'ORD-2026-10004', status: 'PAID', totalAmount: 128.49, totalBV: 80.0 },
-        ];
-        total = orders.length;
-      }
-
+      // Return genuine orders (empty when database is freshly initialized)
       sendSuccess(res, {
         message: 'Admin orders list retrieved',
         data: orders,
@@ -820,15 +818,7 @@ export class AdminController {
         // Fallback
       }
 
-      if (bvLedger.length === 0) {
-        bvLedger = [
-          { id: 'bv-001', distributorCode: 'KV-DEMO-1001', leg: 'LEFT', bv: 115, ref: 'ORD-2026-10002' },
-          { id: 'bv-002', distributorCode: 'KV-DEMO-1001', leg: 'RIGHT', bv: 95, ref: 'ORD-2026-10003' },
-          { id: 'bv-003', distributorCode: 'KV-DEMO-1002', leg: 'LEFT', bv: 80, ref: 'ORD-2026-10004' },
-          { id: 'bv-004', distributorCode: 'KV-DEMO-1001', leg: null, bv: 48, ref: 'ORD-2026-10001' },
-        ];
-      }
-
+      // Return genuine BV records (empty when freshly initialized)
       sendSuccess(res, {
         message: 'BV ledger audit logs retrieved',
         data: bvLedger,
@@ -917,14 +907,6 @@ export class AdminController {
         // Fallback
       }
 
-      if (wallets.length === 0) {
-        wallets = [
-          { distributorCode: 'KV-DEMO-1001', balance: 720.0, earned: 4870.0, withdrawn: 4150.0 },
-          { distributorCode: 'KV-DEMO-1002', balance: 450.0, earned: 1850.0, withdrawn: 1400.0 },
-          { distributorCode: 'KV-DEMO-1003', balance: 380.0, earned: 1420.0, withdrawn: 1040.0 },
-        ];
-      }
-
       sendSuccess(res, {
         message: 'Distributor e-wallets retrieved',
         data: wallets,
@@ -948,12 +930,6 @@ export class AdminController {
         }
       } catch {
         // Fallback
-      }
-
-      if (payouts.length === 0) {
-        payouts = [
-          { payoutNumber: 'POR-10001', distributorCode: 'KV-DEMO-1001', amount: 250.0, fee: 5.0, status: 'PAID' },
-        ];
       }
 
       sendSuccess(res, {
@@ -981,13 +957,6 @@ export class AdminController {
         // Fallback
       }
 
-      if (enrollments.length === 0) {
-        enrollments = [
-          { enrollmentNumber: 'ENR-2026-9001', sponsorCode: 'KV-DEMO-1001', currentStep: 5, status: 'COMPLETED' },
-          { enrollmentNumber: 'ENR-2026-9002', sponsorCode: 'KV-DEMO-1001', currentStep: 3, status: 'IN_PROGRESS' },
-        ];
-      }
-
       sendSuccess(res, {
         message: 'Enrollment pipeline overview retrieved',
         data: enrollments,
@@ -1011,16 +980,6 @@ export class AdminController {
         }
       } catch {
         // Fallback
-      }
-
-      if (centers.length === 0) {
-        centers = [
-          { centerCode: 'KV-DEMO-1001-BC1', centerNumber: 1, leftVolume: 14500, rightVolume: 11200 },
-          { centerCode: 'KV-DEMO-1001-BC2', centerNumber: 2, leftVolume: 6200, rightVolume: 5400 },
-          { centerCode: 'KV-DEMO-1001-BC3', centerNumber: 3, leftVolume: 3800, rightVolume: 3100 },
-          { centerCode: 'KV-DEMO-1002-BC1', centerNumber: 1, leftVolume: 6200, rightVolume: 5800 },
-          { centerCode: 'KV-DEMO-1003-BC1', centerNumber: 1, leftVolume: 5100, rightVolume: 4800 },
-        ];
       }
 
       sendSuccess(res, {
@@ -1117,12 +1076,6 @@ export class AdminController {
         // Fallback
       }
 
-      if (tickets.length === 0) {
-        tickets = [
-          { ticketNumber: 'TCK-10001', subject: 'Inquiry regarding Binary Matching Cycle Payout', department: 'COMMISSIONS', priority: 'MEDIUM', status: 'OPEN' },
-        ];
-      }
-
       sendSuccess(res, {
         message: 'Support helpdesk queue retrieved',
         data: tickets,
@@ -1147,14 +1100,6 @@ export class AdminController {
         }
       } catch {
         // Fallback
-      }
-
-      if (notifications.length === 0) {
-        notifications = [
-          { title: 'Welcome to Kashvi MLM!', type: 'WELCOME', recipientEmail: 'rahul.example@example.com' },
-          { title: 'Commission Payout Received', type: 'COMMISSION', recipientEmail: 'rahul.example@example.com' },
-          { title: 'Order Confirmed', type: 'ORDER', recipientEmail: 'customer@example.com' },
-        ];
       }
 
       sendSuccess(res, {
@@ -1184,7 +1129,7 @@ export class AdminController {
       if (settings.length === 0) {
         settings = [
           { key: 'BINARY_MATCH_PERCENTAGE', value: '10.00', category: 'COMPENSATION' },
-          { key: 'DEFAULT_SPONSOR_CODE', value: 'KV-DEMO-1001', category: 'SYSTEM' },
+          { key: 'DEFAULT_SPONSOR_CODE', value: 'KV-1001', category: 'SYSTEM' },
           { key: 'MIN_PAYOUT_AMOUNT', value: '50.00', category: 'FINANCE' },
           { key: 'MAX_BUSINESS_CENTERS', value: '3', category: 'COMPENSATION' },
           { key: 'AUTO_FLUSH_PERIOD_DAYS', value: '365', category: 'COMPENSATION' },
@@ -1258,6 +1203,68 @@ export class AdminController {
       sendSuccess(res, {
         message: 'Admin global network tree retrieved successfully',
         data: tree,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Protected Database Reset & Fresh Production Initialization
+   * POST /api/v1/admin/maintenance/reset-database
+   * 
+   * Strict Safeguards:
+   * 1. Requires authenticated SUPER_ADMIN / ADMIN.
+   * 2. In production, requires ENABLE_ADMIN_RESET_API=true in environment.
+   * 3. Requires body confirmation: { confirmText: "CONFIRM_DATABASE_RESET", adminPassword: "..." }
+   * 4. Re-verifies admin password with Argon2 before execution.
+   */
+  public static async resetDatabase(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const isProd = process.env.NODE_ENV === 'production';
+      if (isProd && process.env.ENABLE_ADMIN_RESET_API !== 'true') {
+        throw AppError.forbidden('Maintenance reset via API is disabled in production. Use CLI script instead.');
+      }
+
+      const { confirmText, adminPassword } = req.body || {};
+      if (confirmText !== 'CONFIRM_DATABASE_RESET') {
+        throw AppError.badRequest('Confirmation text must match: CONFIRM_DATABASE_RESET');
+      }
+
+      const currentUser = (req as any).user;
+      if (!currentUser?.id) {
+        throw AppError.unauthorized('Authentication required');
+      }
+
+      // Re-verify admin password for destructive action
+      const userRecord = await prisma.user.findUnique({ where: { id: currentUser.id } });
+      if (!userRecord || !adminPassword) {
+        throw AppError.badRequest('Admin password is required to authorize database reset.');
+      }
+
+      const isPwValid = await verifyPassword(adminPassword, userRecord.passwordHash);
+      if (!isPwValid) {
+        throw AppError.forbidden('Invalid administrator password. Reset operation rejected.');
+      }
+
+      // Clear memory caches
+      AdminController.distributorsStore = [];
+      AuthService.clearInMemoryUsers();
+      NetworkTreeService.clearEnrolledMembers();
+
+      // Execute database reset service
+      const result = await DatabaseMaintenanceService.resetDatabase({
+        confirmProductionReset: true,
+        adminEmail: userRecord.email,
+        adminPassword,
+        adminName: userRecord.fullName || 'System Administrator',
+        adminPhone: userRecord.phone || '9876543210',
+        adminReferralCode: userRecord.referralCode || 'KV-1001',
+      });
+
+      sendSuccess(res, {
+        message: 'Database reset and fresh production initialization completed successfully.',
+        data: result,
       });
     } catch (error) {
       next(error);

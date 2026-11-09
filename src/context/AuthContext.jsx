@@ -216,35 +216,7 @@ export function AuthProvider({ children }) {
   const login = async (credentials) => {
     setLoading(true);
     try {
-      let res;
-      try {
-        res = await authApi.login(credentials);
-      } catch (loginError) {
-        const legacyAccount = loginError?.status === 401
-          ? findLegacyLocalRegistration(credentials)
-          : null;
-        if (!legacyAccount) throw loginError;
-
-        // Older clients could falsely complete registration locally when the
-        // server was unavailable. Migrate that account through the real,
-        // password-hashing registration endpoint on its first valid login.
-        try {
-          res = await authApi.register({
-            fullName: legacyAccount.fullName || legacyAccount.name,
-            email: legacyAccount.email,
-            phone: legacyAccount.phone,
-            password: credentials.password,
-            confirmPassword: credentials.password,
-            referralCode: legacyAccount.sponsorId || 'KV-1001',
-            sponsorId: legacyAccount.sponsorId || 'KV-1001',
-          });
-          clearLegacyLocalPassword(legacyAccount);
-        } catch (migrationError) {
-          if (migrationError?.status === 409) throw loginError;
-          throw migrationError;
-        }
-      }
-
+      const res = await authApi.login(credentials);
       const user = res?.data?.user || res?.user;
       const validToken =
         res?.tokens?.accessToken ||

@@ -22,6 +22,8 @@ coverage/
 
 # Local Embedded Database
 .pgdata/
+backups/
+*.dump
 
 # OS and Editor
 .DS_Store

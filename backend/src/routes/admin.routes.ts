@@ -119,4 +119,7 @@ router.delete('/tree/audit-logs', TreeAuditController.blockAuditMutation);
 import { adminMemberRouter } from './adminMember.routes';
 router.use('/members', adminMemberRouter);
 
+// 24. Maintenance & Production Initialization (Strictly Protected Admin Operation)
+router.post('/maintenance/reset-database', AdminController.resetDatabase);
+
 export const adminRouter = router;

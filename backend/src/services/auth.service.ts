@@ -46,9 +46,19 @@ export class AuthService {
   private static initializedSeed = false;
   private static isDbOffline = false;
 
+  public static clearInMemoryUsers(): void {
+    this.inMemoryUsers.clear();
+    this.initializedSeed = false;
+  }
+
   public static async initSeedUsers(): Promise<void> {
     if (this.initializedSeed) return;
     this.initializedSeed = true;
+
+    // In production or clean mode, do not populate mock demo accounts
+    if (process.env.ENABLE_DEMO_SEED !== 'true') {
+      return;
+    }
 
     try {
       const defaultHash = await hashPassword('password123');
@@ -1604,12 +1614,12 @@ export class AuthService {
 
     const tokenHash = hashToken(token);
 
-    // Look up session in database with user's role from roles table
+    // Look up session in database with user's role and distributorProfile
     const session = await prisma.session.findUnique({
       where: { refreshTokenHash: tokenHash },
       include: {
         user: {
-          include: { role: true },
+          include: { role: true, distributorProfile: true },
         },
       },
     });
