@@ -45,21 +45,21 @@ describe('MEMBER PERFORMANCE, UNIQUE KV ID & RANK MANAGEMENT SUITE', { timeout: 
   // TEST 1: Unique Member ID Generation on Registration
   // --------------------------------------------------------------------------
   describe('TEST 1: Unique Member ID Generation', () => {
-    it('should assign a permanent, unique Kashvi MLM ID starting with "KV" followed by digits', async () => {
+    it('should assign a permanent, unique Kashvi MLM ID starting with "KK-" followed by digits', async () => {
       const generatedId = await MemberIdService.generateNextMemberId();
       expect(generatedId).toBeDefined();
-      expect(generatedId.startsWith('KV')).toBe(true);
-      expect(generatedId).toMatch(/^KV\d{6}$/);
+      expect(generatedId.startsWith('KK')).toBe(true);
+      expect(generatedId).toMatch(/^KK-\d{4,}$/);
 
-      // Registering a user through auth creates user with permanent KV ID
+      // Registering a user through auth creates user with permanent KK ID
       const timestamp = Date.now();
       const regRes = await request(app)
         .post('/api/v1/auth/register')
         .send({
-          email: `test_kv_user_${timestamp}@kashvimlm.com`,
+          email: `test_kk_user_${timestamp}@kashvimlm.com`,
           password: 'Password123!',
           fullName: 'Ananya Sharma',
-          sponsorId: 'KV-1001',
+          sponsorId: 'KK-0001',
         })
         .expect(201);
 
@@ -67,7 +67,7 @@ describe('MEMBER PERFORMANCE, UNIQUE KV ID & RANK MANAGEMENT SUITE', { timeout: 
       const user = regRes.body.data.user;
       const memberId = user.distributorId || user.referralCode || user.memberId;
       expect(memberId).toBeDefined();
-      expect(memberId.startsWith('KV')).toBe(true);
+      expect(memberId.startsWith('KK')).toBe(true);
     });
   });
 
@@ -89,9 +89,9 @@ describe('MEMBER PERFORMANCE, UNIQUE KV ID & RANK MANAGEMENT SUITE', { timeout: 
       const uniqueIds = new Set(results);
       expect(uniqueIds.size).toBe(count);
 
-      // All IDs must strictly match KV format
+      // All IDs must strictly match KK format
       for (const id of results) {
-        expect(id).toMatch(/^KV\d{6}$/);
+        expect(id).toMatch(/^KK-\d{4,}$/);
       }
     });
   });

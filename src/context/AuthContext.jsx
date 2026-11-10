@@ -295,7 +295,7 @@ export function AuthProvider({ children }) {
 
         // Sync into kashvi_enrolled_tree_members for immediate tree view update
         try {
-          const rawSponsor = user.sponsorId || registrationData.sponsorId || registrationData.referralCode || 'KV-1001';
+          const rawSponsor = user.sponsorId || registrationData.sponsorId || registrationData.referralCode || 'KK-0001';
           const chosenPos = user.placementPosition || registrationData.placementPosition || 'AUTO';
           const dynamicPlacement = api.findBinaryPlacement(rawSponsor, chosenPos);
 
@@ -399,7 +399,7 @@ export function AuthProvider({ children }) {
     }
   };
 
-  // Resolve UI role from the authenticated role plus the app's KV admin ID convention.
+  // Resolve UI role from the authenticated role plus the app's KK-0001 admin ID convention.
   const userRole = (currentUser?.role || currentUser?.roleName || '').toString().toUpperCase();
   const accountIds = [
     currentUser?.distributorCode,
@@ -407,11 +407,12 @@ export function AuthProvider({ children }) {
     currentUser?.memberId,
     currentUser?.id,
   ].filter(Boolean).map(String);
-  const hasAdminId = accountIds.some((id) => /^KV(?:-|$)/i.test(id));
+  const hasAdminId = accountIds.some((id) => /^(?:KK-?0001|KV-?1001|KV-?0001|ROOT)$/i.test(id.trim()));
   const isAdmin = userRole === 'ADMIN' || userRole === 'SUPER_ADMIN' || hasAdminId;
   const rolePermissions = currentUser?.rolePermissions || currentUser?.role?.permissions;
   const isOwner = Boolean(
     userRole === 'SUPER_ADMIN' ||
+    hasAdminId ||
     rolePermissions?.all === true ||
     rolePermissions?.root === true
   );

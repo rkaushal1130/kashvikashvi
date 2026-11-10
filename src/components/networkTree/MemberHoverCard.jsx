@@ -46,11 +46,17 @@ function MemberHoverCard({
   const distributorId =
     node.distributorId ||
     node.distributor?.distributorCode ||
-    'KV-1001';
+    'KK-0001';
   const rank = node.rank || node.distributor?.rankName || 'Business Center';
-  const rawStatus = node.status || node.distributor?.status || 'Active';
-  const status = rawStatus.charAt(0).toUpperCase() + rawStatus.slice(1).toLowerCase();
-  const isActive = status.toLowerCase() === 'active';
+
+  const isRootAdminNode = distributorId === 'KK-0001' || distributorId === 'KV-1001';
+  const rawPayment = node.paymentStatus || node.distributor?.paymentStatus;
+  const paymentStatus = isRootAdminNode ? 'PAID' : (rawPayment ? String(rawPayment).toUpperCase() : 'PENDING');
+  const isPaid = isRootAdminNode || node.isPaid === true || paymentStatus === 'PAID';
+  const rawStatus = node.status || node.distributor?.status || (isPaid ? 'Active' : 'Pending Payment');
+  const status = isRootAdminNode ? 'Active' : (isPaid ? (rawStatus.charAt(0).toUpperCase() + rawStatus.slice(1).toLowerCase()) : 'Pending Payment');
+  const isActive = isRootAdminNode || (isPaid && status.toLowerCase() === 'active');
+  const idColorClass = isPaid ? 'id-active-paid' : 'id-pending';
 
   const rawJoinedDate =
     node.joinedDate ||
@@ -73,7 +79,7 @@ function MemberHoverCard({
     node.sponsor ||
     node.sponsorId ||
     node.distributor?.sponsorCode ||
-    (distributorId === 'KV-1001' ? 'KV-1000' : 'KV-1001');
+    (distributorId === 'KK-0001' || distributorId === 'KV-1001' ? 'ROOT' : 'KK-0001');
   const businessCenter =
     node.businessCenter ||
     node.businessCenterName ||
@@ -101,7 +107,7 @@ function MemberHoverCard({
   const directMembers =
     node.directMembers !== undefined
       ? node.directMembers
-      : (node.left ? 1 : 0) + (node.right ? 1 : 0) || (distributorId === 'KV-1001' ? 2 : 1);
+      : (node.left ? 1 : 0) + (node.right ? 1 : 0) || (distributorId === 'KK-0001' || distributorId === 'KV-1001' ? 2 : 1);
 
   // Position calculation for desktop with boundary safety
   const cardStyle = isMobile
@@ -125,7 +131,7 @@ function MemberHoverCard({
           </div>
           <div>
             <h3 className="hover-node-name">{name}</h3>
-            <span className="hover-node-dist-id">{distributorId}</span>
+            <span className={`hover-node-dist-id node-distributor-id ${idColorClass}`}>{distributorId}</span>
           </div>
         </div>
 
@@ -145,7 +151,7 @@ function MemberHoverCard({
       <div className="hover-fields-grid">
         <div className="hover-field-row">
           <span className="hover-field-label">Distributor ID:</span>
-          <span className="hover-field-value text-accent">{distributorId}</span>
+          <span className={`hover-field-value ${idColorClass}`} style={{ padding: '2px 6px', borderRadius: '4px', display: 'inline-block' }}>{distributorId}</span>
         </div>
 
         <div className="hover-field-row">

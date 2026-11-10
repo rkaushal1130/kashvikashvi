@@ -128,7 +128,7 @@ export class DatabaseMaintenanceService {
       options.adminReferralCode ||
       process.env.INITIAL_ADMIN_REFERRAL_CODE ||
       process.env.ADMIN_REFERRAL_CODE ||
-      'KV-1001'
+      'KK-0001'
     ).trim();
 
     if (!adminEmail) {
@@ -158,14 +158,14 @@ export class DatabaseMaintenanceService {
     await prisma.$executeRawUnsafe(truncateSql);
     console.log('   ✅ All 53 application and genealogy tables truncated successfully.');
 
-    // 2. Reset Member ID Counter
+    // 2. Reset Member ID Counter (1 represents KK-0001 reserved for Super Admin, so first member receives KK-0002)
     console.log('\n2️⃣ Resetting sequence counters...');
     await prisma.$executeRawUnsafe(`
       INSERT INTO "member_id_counters" ("id", "currentValue", "updatedAt")
-      VALUES ('KV_MEMBER_ID', 0, NOW())
-      ON CONFLICT ("id") DO UPDATE SET "currentValue" = 0, "updatedAt" = NOW();
+      VALUES ('KK_MEMBER_ID', 1, NOW())
+      ON CONFLICT ("id") DO UPDATE SET "currentValue" = 1, "updatedAt" = NOW();
     `);
-    console.log('   ✅ MemberIdCounter reset to 0.');
+    console.log('   ✅ MemberIdCounter initialized to 1 (Super Admin KK-0001 reserved; next member starts at KK-0002).');
 
     // 3. Ensure Canonical ADMIN Role
     console.log('\n3️⃣ Verifying canonical ADMIN role...');
@@ -192,6 +192,7 @@ export class DatabaseMaintenanceService {
         fullName: adminName,
         email: adminEmail,
         phone: adminPhone,
+        userId: referralCode,
         referralCode,
         passwordHash,
         roleId: adminRole.id,

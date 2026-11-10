@@ -172,16 +172,19 @@ export function ProfilePage() {
     profileData?.distributorCode ||
     currentUser?.memberId ||
     currentUser?.distributorId ||
-    'KV-1001';
+    (currentUser?.role === 'ADMIN' || currentUser?.role === 'SUPER_ADMIN' ? 'KK-0001' : 'KK-0002');
   const email = profileData?.email || currentUser?.email || 'distributor@kashvimlm.com';
   const sponsor =
     typeof profileData?.sponsor === 'object' && profileData?.sponsor !== null
-      ? profileData.sponsor.displayName || profileData.sponsor.distributorCode || 'KV-1001'
-      : (profileData?.sponsor || currentUser?.sponsorName || currentUser?.sponsorId || 'KV-1001');
-  const parent = profileData?.parent || profileData?.parentId || currentUser?.parent || 'KV-1000';
+      ? profileData.sponsor.displayName || profileData.sponsor.distributorCode || 'KK-0001'
+      : (profileData?.sponsor || currentUser?.sponsorName || currentUser?.sponsorId || 'KK-0001');
+  const parent = profileData?.parent || profileData?.parentId || currentUser?.parent || 'ROOT';
   const position = profileData?.position || currentUser?.position || 'LEFT';
   const level = profileData?.level || currentUser?.level || 1;
-  const status = profileData?.status || currentUser?.status || 'ACTIVE';
+  const isRoot = distributorId === 'KK-0001' || currentUser?.role === 'SUPER_ADMIN' || currentUser?.role === 'ADMIN';
+  const isPaid = isRoot || profileData?.isPaid === true || profileData?.paymentStatus === 'PAID' || currentUser?.isPaid === true || currentUser?.paymentStatus === 'PAID';
+  const paymentStatus = isPaid ? 'PAID' : (profileData?.paymentStatus || currentUser?.paymentStatus || 'PENDING');
+  const status = isRoot ? 'ACTIVE' : (isPaid ? (profileData?.status || currentUser?.status || 'ACTIVE') : 'PENDING PAYMENT');
   const role = currentUser?.role || profileData?.role || 'DISTRIBUTOR';
 
   const [copiedLink, setCopiedLink] = useState(false);
@@ -224,10 +227,10 @@ export function ProfilePage() {
           <div className="identity-title-row">
             <h1 className="profile-name">{displayName}</h1>
             <span className="role-chip">{role}</span>
-            <span className="status-chip active-chip">{status}</span>
+            <span className={`status-chip ${isPaid ? 'active-chip' : 'pending-chip'}`}>{status}</span>
           </div>
           <p className="profile-id-row">
-            Distributor ID: <strong>{distributorId}</strong> &nbsp;•&nbsp; Email: {email}
+            Distributor ID: <strong className={`profile-id-badge ${isPaid ? 'id-paid-green' : 'id-unpaid-inactive'}`}>{distributorId}</strong> &nbsp;•&nbsp; Email: {email}
           </p>
         </div>
       </div>
@@ -328,7 +331,7 @@ export function ProfilePage() {
           <div className="immutable-attr-list">
             <div className="attr-item">
               <span className="attr-label">Distributor ID</span>
-              <span className="attr-value font-mono">{distributorId}</span>
+              <span className={`attr-value font-mono profile-id-badge ${isPaid ? 'id-paid-green' : 'id-unpaid-inactive'}`}>{distributorId}</span>
             </div>
             <div className="attr-item">
               <span className="attr-label">Direct Sponsor</span>
@@ -348,7 +351,7 @@ export function ProfilePage() {
             </div>
             <div className="attr-item">
               <span className="attr-label">Account Status</span>
-              <span className="attr-value text-green-600 font-semibold">{status}</span>
+              <span className={`attr-value font-semibold ${isPaid ? 'text-green-600' : 'text-amber-600'}`}>{status}</span>
             </div>
           </div>
         </div>

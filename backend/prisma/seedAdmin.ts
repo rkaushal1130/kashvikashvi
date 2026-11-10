@@ -68,9 +68,10 @@ export async function seedSuperAdmin(options: SeedAdminOptions = {}): Promise<vo
   const adminUser = await prisma.user.upsert({
     where: { email: primaryEmail },
     update: {
-      fullName: 'Admin',
+      fullName: 'Super Admin',
       phone: '9876543210',
-      referralCode: 'KV-1001',
+      userId: 'KK-0001',
+      referralCode: 'KK-0001',
       passwordHash: primaryHash,
       roleId: adminRole.id,
       roleName: 'ADMIN',
@@ -81,10 +82,11 @@ export async function seedSuperAdmin(options: SeedAdminOptions = {}): Promise<vo
       phoneVerifiedAt: new Date(),
     },
     create: {
-      fullName: 'Admin',
+      fullName: 'Super Admin',
       email: primaryEmail,
       phone: '9876543210',
-      referralCode: 'KV-1001',
+      userId: 'KK-0001',
+      referralCode: 'KK-0001',
       passwordHash: primaryHash,
       roleId: adminRole.id,
       roleName: 'ADMIN',
@@ -115,40 +117,40 @@ export async function seedSuperAdmin(options: SeedAdminOptions = {}): Promise<vo
     },
   });
 
-  // Ensure primary distributor profile (KV-1001)
+  // Ensure primary distributor profile (KK-0001)
   const adminProfile = await prisma.distributorProfile.upsert({
     where: { userId: adminUser.id },
     update: {
-      distributorId: 'KV-1001',
-      distributorCode: 'KV-1001',
-      firstName: 'Admin',
-      lastName: '',
-      displayName: 'Admin',
+      distributorId: 'KK-0001',
+      distributorCode: 'KK-0001',
+      firstName: 'Super',
+      lastName: 'Admin',
+      displayName: 'Super Admin',
       status: 'ACTIVE',
       paymentStatus: 'PAID',
     },
     create: {
       userId: adminUser.id,
-      distributorId: 'KV-1001',
-      distributorCode: 'KV-1001',
-      firstName: 'Admin',
-      lastName: '',
-      displayName: 'Admin',
+      distributorId: 'KK-0001',
+      distributorCode: 'KK-0001',
+      firstName: 'Super',
+      lastName: 'Admin',
+      displayName: 'Super Admin',
       status: 'ACTIVE',
       paymentStatus: 'PAID',
     },
   });
 
-  // Ensure root business center (KV-1001-BC1)
+  // Ensure root business center (KK-0001-BC1)
   const adminBC1 = await prisma.businessCenter.upsert({
-    where: { centerCode: 'KV-1001-BC1' },
+    where: { centerCode: 'KK-0001-BC1' },
     update: {
       status: 'ACTIVE',
     },
     create: {
       distributorId: adminProfile.id,
       centerNumber: 1,
-      centerCode: 'KV-1001-BC1',
+      centerCode: 'KK-0001-BC1',
       status: 'ACTIVE',
       leftVolume: 0,
       rightVolume: 0,
@@ -166,7 +168,17 @@ export async function seedSuperAdmin(options: SeedAdminOptions = {}): Promise<vo
       binaryPath: 'ROOT',
     },
   });
-  console.log(`   ✅ Primary Super Admin verified with password: "${primaryPassword}"`);
+
+  // Ensure KK_MEMBER_ID counter is initialized with value 1 (so first member receives KK-0002)
+  await prisma.memberIdCounter.upsert({
+    where: { id: 'KK_MEMBER_ID' },
+    update: {},
+    create: {
+      id: 'KK_MEMBER_ID',
+      currentValue: 1,
+    },
+  });
+  console.log(`   ✅ Primary Super Admin verified with ID: KK-0001`);
 
   // 3. Demo Admin (admin@example.com) - commonly used in frontend tests & default dev forms
   const exampleEmail = 'admin@example.com';

@@ -42,19 +42,43 @@ export class AuthController {
         res.cookie('refreshToken', result.tokens.refreshToken, getRefreshCookieOptions());
       }
 
+      const userAny = result.user as any;
+      const memberCode =
+        userAny.referralCode ||
+        userAny.distributorCode ||
+        userAny.distributorId ||
+        userAny.memberId ||
+        userAny.userId;
+
+      const isPaid =
+        memberCode === 'KK-0001' ||
+        userAny.paymentStatus === 'PAID' ||
+        userAny.distributorProfile?.paymentStatus === 'PAID' ||
+        false;
+      const paymentStatus = isPaid
+        ? 'PAID'
+        : (userAny.paymentStatus || userAny.distributorProfile?.paymentStatus || 'PENDING');
+      const accountStatus = isPaid ? 'ACTIVE' : 'PENDING_PAYMENT';
+      const effectiveStatus = isPaid ? (userAny.status || 'ACTIVE') : 'PENDING_PAYMENT';
+
       const safeUser = {
-        userId: result.user.userId || result.user.id,
-        id: result.user.id,
+        userId: userAny.userId || memberCode || userAny.id,
+        id: userAny.id,
+        memberId: memberCode,
+        distributorId: memberCode,
+        distributorCode: memberCode,
+        referralCode: memberCode,
         fullName:
           result.user.fullName ||
           result.user.name ||
           `${result.user.firstName || ''} ${result.user.lastName || ''}`.trim() ||
           'Distributor',
         email: result.user.email,
-        referralCode:
-          result.user.referralCode ||
-          result.user.distributorCode ||
-          result.user.memberId,
+        role: result.user.role || (result.user as any).roleName || 'DISTRIBUTOR',
+        status: effectiveStatus,
+        paymentStatus,
+        accountStatus,
+        isPaid,
         sponsorId: result.user.sponsorId,
         sponsor: result.user.sponsor,
       };
@@ -95,9 +119,34 @@ export class AuthController {
         res.cookie('refreshToken', result.tokens.refreshToken, getRefreshCookieOptions());
       }
 
+      const userAny = result.user as any;
+      const loginMemberCode =
+        userAny.referralCode ||
+        userAny.distributorCode ||
+        userAny.distributorId ||
+        userAny.memberId ||
+        userAny.userId;
+
+      const isPaid =
+        loginMemberCode === 'KK-0001' ||
+        userAny.paymentStatus === 'PAID' ||
+        userAny.distributorProfile?.paymentStatus === 'PAID' ||
+        userAny.role === 'ADMIN' ||
+        userAny.roleName === 'ADMIN' ||
+        false;
+      const paymentStatus = isPaid
+        ? 'PAID'
+        : (userAny.paymentStatus || userAny.distributorProfile?.paymentStatus || 'PENDING');
+      const accountStatus = isPaid ? 'ACTIVE' : 'PENDING_PAYMENT';
+      const effectiveStatus = isPaid ? (userAny.status || 'ACTIVE') : 'PENDING_PAYMENT';
+
       const safeUser = {
-        userId: result.user.userId || result.user.id,
-        id: result.user.id,
+        userId: userAny.userId || loginMemberCode || userAny.id,
+        id: userAny.id,
+        memberId: loginMemberCode,
+        distributorId: loginMemberCode,
+        distributorCode: loginMemberCode,
+        referralCode: loginMemberCode,
         fullName:
           result.user.fullName ||
           result.user.name ||
@@ -106,15 +155,10 @@ export class AuthController {
           'Distributor',
         email: result.user.email,
         role: result.user.role || (result.user as any).roleName,
-        status: result.user.status,
-        referralCode:
-          result.user.referralCode ||
-          result.user.distributorCode ||
-          result.user.memberId,
-        distributorCode:
-          result.user.distributorCode ||
-          result.user.referralCode ||
-          result.user.memberId,
+        status: effectiveStatus,
+        paymentStatus,
+        accountStatus,
+        isPaid,
         sponsorId: result.user.sponsorId,
         lastLoginAt: result.user.lastLoginAt,
       };

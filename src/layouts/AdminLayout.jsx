@@ -52,7 +52,7 @@ export function AdminLayout({ children }) {
   const closeMobile = () => setMobileMenuOpen(false);
 
   const displayName = currentUser?.name || currentUser?.displayName || 'Administrator';
-  const displayId = currentUser?.memberId || currentUser?.distributorId || 'KV-1001';
+  const displayId = currentUser?.memberId || currentUser?.distributorId || 'KK-0001';
 
   return (
     <div className="admin-portal-container">

@@ -136,7 +136,7 @@ export default function AdminNetworkTreePage() {
   // =========================================================================
   // 2. Tree Root, Member, & Navigation State
   // =========================================================================
-  const [currentRootId] = useState('KV-1001');
+  const [currentRootId] = useState('KK-0001');
   const [depth, setDepth] = useState(10);
   const [treeData, setTreeData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -153,7 +153,7 @@ export default function AdminNetworkTreePage() {
   );
 
   // Breadcrumbs lineage path
-  const breadcrumbs = [{ id: 'KV-1001', name: 'Rahul Kaushal (Root)' }];
+  const breadcrumbs = [{ id: 'KK-0001', name: 'Super Admin (Root)' }];
 
   // =========================================================================
   // 3. Search State (Item 1: Search distributor)
@@ -343,16 +343,16 @@ export default function AdminNetworkTreePage() {
 
   // Format focal member values
   const focalName = focalMember?.name || 'Distributor';
-  const focalId = focalMember?.distributorId || 'KV-1001';
+  const focalId = focalMember?.distributorId || 'KK-0001';
   const focalRank = focalMember?.rank || 'Business Center';
   const focalStatus = String(focalMember?.status || 'ACTIVE').toUpperCase();
-  const focalPosition = String(focalMember?.position || (focalId === 'KV-1001' ? 'ROOT' : 'LEFT')).toUpperCase();
+  const focalPosition = String(focalMember?.position || (focalId === 'KK-0001' || focalId === 'KV-1001' ? 'ROOT' : 'LEFT')).toUpperCase();
   const focalSponsor = focalMember?.sponsorName
     ? `${focalMember.sponsor} (${focalMember.sponsorName})`
-    : focalMember?.sponsor || (focalId === 'KV-1001' ? 'KV-1000 (Corporate System)' : 'KV-1001 (Rahul Kaushal)');
+    : focalMember?.sponsor || (focalId === 'KK-0001' || focalId === 'KV-1001' ? 'ROOT (Corporate System)' : 'KK-0001 (Super Admin)');
   const focalPlacementParent = focalMember?.placementParentName
     ? `${focalMember.placementParent} (${focalMember.placementParentName})`
-    : focalMember?.placementParent || (focalId === 'KV-1001' ? 'ROOT (None)' : 'KV-1001 (Rahul Kaushal)');
+    : focalMember?.placementParent || (focalId === 'KK-0001' || focalId === 'KV-1001' ? 'ROOT (None)' : 'KK-0001 (Super Admin)');
   const focalBusinessCenter = focalMember?.businessCenterName
     ? `${focalMember.businessCenter || 'BC-001'} - ${focalMember.businessCenterName}`
     : focalMember?.businessCenter || 'BC-001 (Corporate Headquarters)';
@@ -522,7 +522,7 @@ export default function AdminNetworkTreePage() {
             <input
               type="text"
               className="admin-search-input"
-              placeholder="Search distributor by Name or ID (e.g. KV-1001, Amit, Priya, Neha, Suresh)..."
+              placeholder="Search distributor by Name or ID (e.g. KK-0001, KK-0002, Amit, Priya, Neha, Suresh)..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onFocus={() => {
@@ -819,7 +819,7 @@ export default function AdminNetworkTreePage() {
           onClearTree={async () => {
             if (window.confirm('Clear all enrolled downline data and reset the binary tree to fresh state?')) {
               api.clearTreeData();
-              await fetchAdminTree('KV-1001', depth);
+              await fetchAdminTree('KK-0001', depth);
             }
           }}
           onCenterTree={handleCenterTree}

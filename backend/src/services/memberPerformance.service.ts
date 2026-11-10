@@ -20,6 +20,7 @@ export interface MemberPerformanceData {
   rankProgressPercent: number;
   paymentStatus: 'PAID' | 'PENDING' | 'FAILED' | 'UNPAID';
   accountStatus: 'ACTIVE' | 'PENDING' | 'INACTIVE' | 'SUSPENDED';
+  isPaid?: boolean;
   brandPartnerSince: string;
   personalBV: number;
   leftBV: number;
@@ -247,6 +248,7 @@ export class MemberPerformanceService {
       rankProgressPercent,
       paymentStatus,
       accountStatus,
+      isPaid: distributorCode === 'KK-0001' || distributorCode === 'KV-1001' || paymentStatus === 'PAID',
       brandPartnerSince,
       personalBV,
       leftBV,
@@ -281,13 +283,15 @@ export class MemberPerformanceService {
   }
 
   private static buildFallbackPerformance(user: any, distCode: string): MemberPerformanceData {
+    const isRoot = distCode === 'KK-0001' || distCode === 'KV-1001';
     const rawPayment = (user.paymentStatus || user.distributorProfile?.paymentStatus || '').toUpperCase();
     const paymentStatus: 'PAID' | 'PENDING' | 'FAILED' | 'UNPAID' =
-      rawPayment === 'PAID' ? 'PAID' : rawPayment === 'FAILED' ? 'FAILED' : rawPayment === 'PENDING' ? 'PENDING' : 'UNPAID';
+      isRoot || rawPayment === 'PAID' ? 'PAID' : rawPayment === 'FAILED' ? 'FAILED' : rawPayment === 'PENDING' ? 'PENDING' : 'UNPAID';
+    const isPaid = isRoot || paymentStatus === 'PAID';
 
     const rawAccount = (user.status || user.distributorProfile?.status || '').toUpperCase();
     const accountStatus: 'ACTIVE' | 'PENDING' | 'INACTIVE' | 'SUSPENDED' =
-      rawAccount === 'ACTIVE' && paymentStatus === 'PAID' ? 'ACTIVE' : rawAccount === 'SUSPENDED' ? 'SUSPENDED' : 'PENDING';
+      isRoot || (rawAccount === 'ACTIVE' && isPaid) ? 'ACTIVE' : rawAccount === 'SUSPENDED' ? 'SUSPENDED' : 'PENDING';
 
     const personalBV = Number(user.bv ?? user.personalBV ?? user.distributorProfile?.lifetimePV ?? 0);
     const leftBV = Number(user.leftBV ?? user.leftMatching ?? user.distributorProfile?.businessCenters?.[0]?.leftVolume ?? 0);
@@ -334,6 +338,7 @@ export class MemberPerformanceService {
       rankProgressPercent,
       paymentStatus,
       accountStatus,
+      isPaid,
       brandPartnerSince: this.formatDate(user.createdAt || new Date()),
       personalBV,
       leftBV,

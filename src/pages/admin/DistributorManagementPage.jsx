@@ -53,7 +53,7 @@ export default function DistributorManagementPage() {
     name: '',
     email: '',
     phone: '',
-    sponsorId: 'KV-0001',
+    sponsorId: 'KK-0001',
     placementParentId: '',
     position: 'LEFT',
     rank: 'Associate',
@@ -162,7 +162,7 @@ export default function DistributorManagementPage() {
           name: '',
           email: '',
           phone: '',
-          sponsorId: 'KV-0001',
+          sponsorId: 'KK-0001',
           placementParentId: '',
           position: 'LEFT',
           rank: 'Associate',
@@ -317,15 +317,18 @@ export default function DistributorManagementPage() {
               </tr>
             ) : (
               distributors.map((dist) => {
+                const isRoot = dist.distributorId === 'KK-0001' || dist.distributorId === 'KV-1001';
+                const isPaid = isRoot || dist.isPaid === true || dist.paymentStatus === 'PAID';
                 const isSuspended = dist.status === 'SUSPENDED';
-                const isActive = dist.status === 'ACTIVE';
+                const isActive = isRoot || (isPaid && dist.status === 'ACTIVE');
 
                 return (
                   <tr key={dist.distributorId || dist.id}>
                     <td>
                       <span
-                        className="distributor-id-link"
+                        className={`distributor-id-link ${isPaid ? 'id-paid-green' : 'id-unpaid-inactive'}`}
                         onClick={() => navigate(`/admin/distributors/${dist.distributorId}`)}
+                        title={isPaid ? 'Payment Confirmed - Active' : 'Payment Pending - Inactive'}
                       >
                         {dist.distributorId}
                       </span>
@@ -364,7 +367,7 @@ export default function DistributorManagementPage() {
                         }`}
                       >
                         <span className="status-dot" />
-                        {dist.status}
+                        {isPaid ? dist.status : 'PENDING PAYMENT'}
                       </span>
                     </td>
                     <td>
@@ -636,7 +639,7 @@ export default function DistributorManagementPage() {
                       name="sponsorId"
                       className="admin-search-input"
                       style={{ width: '100%' }}
-                      placeholder="e.g. KV-0001 or DST-0001"
+                      placeholder="e.g. KK-0001 or DST-0001"
                       value={addForm.sponsorId}
                       onChange={(e) => setAddForm({ ...addForm, sponsorId: e.target.value })}
                     />

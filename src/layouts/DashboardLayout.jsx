@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import {
@@ -24,6 +24,19 @@ export function DashboardLayout({ children }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [, setTick] = useState(0);
+
+  useEffect(() => {
+    const handleUpdate = () => setTick((t) => t + 1);
+    window.addEventListener('kashvi_member_paid', handleUpdate);
+    window.addEventListener('kashvi_auth_change', handleUpdate);
+    window.addEventListener('kashvi_tree_updated', handleUpdate);
+    return () => {
+      window.removeEventListener('kashvi_member_paid', handleUpdate);
+      window.removeEventListener('kashvi_auth_change', handleUpdate);
+      window.removeEventListener('kashvi_tree_updated', handleUpdate);
+    };
+  }, []);
 
   const handleLogout = async () => {
     await logout();
@@ -88,8 +101,15 @@ export function DashboardLayout({ children }) {
   const closeMobile = () => setMobileMenuOpen(false);
 
   const displayName = currentUser?.name || currentUser?.displayName || 'Distributor';
-  const displayId = currentUser?.memberId || currentUser?.distributorId || 'KV-1001';
+  const displayId = currentUser?.memberId || currentUser?.distributorId || (isAdmin ? 'KK-0001' : 'KK-0002');
   const displayRank = isAdmin ? 'System Owner & Admin' : (currentUser?.rank || currentUser?.role || 'Executive');
+
+  // Super Admin KK-0001 is permanently ACTIVE and PAID (green).
+  // All other members are green only when their payment has been confirmed.
+  const isOwner = isAdmin || displayId === 'KK-0001' || currentUser?.role === 'SUPER_ADMIN';
+  const isPaid = isOwner || currentUser?.isPaid === true || currentUser?.paymentStatus === 'PAID' || currentUser?.distributorProfile?.paymentStatus === 'PAID';
+  const paymentStatus = isPaid ? 'PAID' : (currentUser?.paymentStatus || currentUser?.distributorProfile?.paymentStatus || 'PENDING');
+  const userStatusLabel = isOwner ? 'OWNER / ACTIVE' : isPaid ? (currentUser?.status || 'ACTIVE') : 'INACTIVE (UNPAID)';
 
   return (
     <div className="portal-container">
@@ -104,7 +124,7 @@ export function DashboardLayout({ children }) {
             {mobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
           </button>
           <div className="portal-brand" onClick={() => navigate('/dashboard')}>
-            <div className="brand-badge">KV</div>
+            <div className="brand-badge">KK</div>
             <span className="brand-text">
               KASHVI<span className="brand-accent">MLM</span>
             </span>
@@ -137,9 +157,12 @@ export function DashboardLayout({ children }) {
             </button>
           )}
 
-          <div className="user-status-pill">
-            <span className="live-dot" />
-            <span className="status-label">{isAdmin ? 'OWNER / ACTIVE' : (currentUser?.status || 'ACTIVE')}</span>
+          <div
+            className={`user-status-pill ${isPaid ? 'status-paid-active' : 'status-unpaid-pending'}`}
+            title={`Status: ${userStatusLabel} | Payment: ${paymentStatus}`}
+          >
+            <span className={`live-dot ${isPaid ? 'dot-paid' : 'dot-unpaid'}`} />
+            <span className="status-label">{userStatusLabel}</span>
           </div>
 
           <div className="user-profile-widget" onClick={() => navigate('/profile')}>
@@ -148,7 +171,12 @@ export function DashboardLayout({ children }) {
             </div>
             <div className="user-meta-column">
               <span className="user-name-text">{displayName}</span>
-              <span className="user-id-text">{displayId}</span>
+              <span
+                className={`user-id-text ${isPaid ? 'id-paid-green' : 'id-unpaid-inactive'}`}
+                title={`Member ID: ${displayId} (${isPaid ? 'Payment Confirmed' : 'Payment Pending'})`}
+              >
+                {displayId}
+              </span>
             </div>
           </div>
         </div>
@@ -191,7 +219,7 @@ export function DashboardLayout({ children }) {
                   <span className="rank-tag">{displayRank}</span>
                   <Sparkles size={14} className="rank-star" />
                 </div>
-                <div className="card-id-row">ID: {displayId}</div>
+                <div className={`card-id-row ${isPaid ? 'id-paid-green' : 'id-unpaid-inactive'}`}>ID: <span className="id-val">{displayId}</span></div>
               </div>
 
               <button className="sidebar-logout-btn" onClick={handleLogout}>

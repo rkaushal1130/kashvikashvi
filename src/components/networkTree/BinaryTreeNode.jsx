@@ -44,24 +44,28 @@ export function BinaryTreeNode({
 
   // 2. ACTIVE / REGISTERED Distributor Node
   const name = node.name || node.distributor?.displayName || node.distributor?.firstName || 'Distributor';
-  const id = node.distributorId || node.distributor?.distributorCode || 'KV-0000';
+  const id = node.distributorId || node.distributor?.distributorCode || 'KK-0000';
   const treeId = node.treeId || node.id;
   const nodePosition = node.position || position;
   const nodeLevel = node.level || level;
-  const status = String(node.status || node.distributor?.status || 'ACTIVE').toUpperCase();
-  const isActive = status === 'ACTIVE';
 
-  const rawPayment = node.paymentStatus || (isActive ? 'PAID' : 'PENDING');
-  const paymentStatus = String(rawPayment || 'PENDING').toUpperCase();
-  const isPaid = paymentStatus === 'PAID';
-  const isFailed = paymentStatus === 'FAILED' || paymentStatus === 'CANCELLED';
+  // Root Super Admin (KK-0001) is permanently ACTIVE and PAID (green).
+  // All other members are green ONLY when paymentStatus is verified as PAID.
+  const isRootAdminNode = id === 'KK-0001' || id === 'KV-1001' || isRoot;
+  const rawPayment = node.paymentStatus || node.distributor?.paymentStatus;
+  const paymentStatus = isRootAdminNode ? 'PAID' : (rawPayment ? String(rawPayment).toUpperCase() : 'PENDING');
+  const isPaid = isRootAdminNode || node.isPaid === true || paymentStatus === 'PAID';
+  const rawStatus = String(node.status || node.distributor?.status || (isPaid ? 'ACTIVE' : 'PENDING_PAYMENT')).toUpperCase();
+  const status = isRootAdminNode ? 'ACTIVE' : (isPaid ? rawStatus : 'PENDING_PAYMENT');
+  const isActive = isRootAdminNode || (isPaid && status === 'ACTIVE');
+  const isFailed = !isPaid && (paymentStatus === 'FAILED' || paymentStatus === 'CANCELLED');
 
-  const idColorClass = (isActive && isPaid)
+  const idColorClass = isPaid
     ? 'id-active-paid'
     : isFailed
     ? 'id-failed'
     : 'id-pending';
-  const rank = node.rank || node.distributor?.rankName || 'Executive';
+  const rank = node.rank || node.distributor?.rankName || (isRootAdminNode ? 'Super Admin' : 'Executive');
 
   return (
     <div className={`binary-node-container ${isRoot ? 'is-root' : ''}`}>

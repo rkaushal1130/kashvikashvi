@@ -255,8 +255,8 @@ export function Register() {
         phone: formData.phone.trim() || undefined,
         password: formData.password,
         confirmPassword: formData.confirmPassword,
-        referralCode: formData.referralCode.trim() || 'KV-1001',
-        sponsorId: formData.referralCode.trim() || 'KV-1001',
+        referralCode: formData.referralCode.trim() || 'KK-0001',
+        sponsorId: formData.referralCode.trim() || 'KK-0001',
       };
 
       const res = await register(payload);
@@ -265,10 +265,10 @@ export function Register() {
       setSuccessData({
         name: registeredUser?.fullName || formData.fullName.trim(),
         referralCode:
-          registeredUser?.referralCode ||
-          registeredUser?.distributorCode ||
           registeredUser?.memberId ||
-          'DST-SUCCESS',
+          registeredUser?.distributorCode ||
+          registeredUser?.referralCode ||
+          'KK-0002',
         userId: registeredUser?.userId || registeredUser?.id,
       });
 
@@ -479,7 +479,7 @@ export function Register() {
                 type="text"
                 required
                 readOnly={hasUrlRef}
-                placeholder="Enter Sponsor / Referral Code"
+                placeholder="Enter Sponsor / Referral Code (e.g. KK-0001)"
                 value={formData.referralCode}
                 onChange={handleChange}
                 disabled={loading || Boolean(successData)}

@@ -77,20 +77,38 @@
   align-items: center;
   gap: 6px;
   padding: 4px 10px;
-  background-color: #ecfdf5;
-  border: 1px solid #a7f3d0;
   border-radius: 20px;
   font-size: 12px;
   font-weight: 700;
-  color: #065f46;
+  transition: all 0.2s ease;
+}
+
+.user-status-pill.status-paid-active {
+  background-color: #ecfdf5;
+  border: 1px solid #86efac;
+  color: #15803d;
+}
+
+.user-status-pill.status-unpaid-pending {
+  background-color: #fef3c7;
+  border: 1px solid #fde68a;
+  color: #b45309;
 }
 
 .live-dot {
   width: 7px;
   height: 7px;
-  background-color: #10b981;
   border-radius: 50%;
-  box-shadow: 0 0 6px #10b981;
+}
+
+.live-dot.dot-paid {
+  background-color: #16a34a;
+  box-shadow: 0 0 6px #16a34a;
+}
+
+.live-dot.dot-unpaid {
+  background-color: #f59e0b;
+  box-shadow: 0 0 6px #f59e0b;
 }
 
 .user-profile-widget {
@@ -135,8 +153,27 @@
 
 .user-id-text {
   font-size: 11px;
-  font-weight: 500;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-weight: 600;
+  padding: 1px 4px;
+  border-radius: 3px;
+  display: inline-block;
+  margin-top: 1px;
   color: #64748b;
+  background-color: #f1f5f9;
+}
+
+.user-id-text.id-paid-green {
+  color: #15803d !important;
+  background-color: #dcfce7 !important;
+  border: 1px solid #86efac;
+  font-weight: 700;
+}
+
+.user-id-text.id-unpaid-inactive {
+  color: #64748b !important;
+  background-color: #f1f5f9 !important;
+  border: 1px solid #cbd5e1;
 }
 
 .portal-body {
@@ -265,7 +302,25 @@
 .card-id-row {
   font-size: 11px;
   color: #64748b;
-  font-family: monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.card-id-row.id-paid-green .id-val {
+  color: #15803d !important;
+  font-weight: 700;
+  background-color: #dcfce7;
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid #86efac;
+}
+
+.card-id-row.id-unpaid-inactive .id-val {
+  color: #64748b !important;
+  font-weight: 600;
+  background-color: #f1f5f9;
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid #cbd5e1;
 }
 
 .sidebar-logout-btn {

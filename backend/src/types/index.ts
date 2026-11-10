@@ -1,15 +1,18 @@
 export type UserRole = 'ADMIN' | 'DISTRIBUTOR' | 'CUSTOMER_CARE';
 
-export type AccountStatus = 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | 'PENDING_KYC' | 'BLOCKED';
+export type AccountStatus = 'ACTIVE' | 'INACTIVE' | 'SUSPENDED' | 'PENDING_KYC' | 'BLOCKED' | 'PENDING_PAYMENT';
 
 export interface AuthUser {
   id: string;
   email: string;
   role: UserRole;
-  status: AccountStatus;
+  status: AccountStatus | string;
   distributorProfileId?: string;
   distributorCode?: string;
   customerId?: string;
+  paymentStatus?: string;
+  distributorProfile?: any;
+  [key: string]: any;
 }
 
 export interface JwtAccessPayload {

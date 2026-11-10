@@ -55,6 +55,7 @@ function Profile({ defaultNav }) {
           const normName = (parsed.user.name || '').toLowerCase().replace(/[@4]/g, 'a').replace(/[^a-z0-9]/g, '');
           const normUser = (parsed.user.username || '').toLowerCase().replace(/[@4]/g, 'a').replace(/[^a-z0-9]/g, '');
           const isOwnerUser =
+            parsed.user.memberId === 'KK-0001' ||
             parsed.user.memberId === 'KV-1001' ||
             parsed.user.memberId === '88767139' ||
             parsed.user.memberId === '18618331' ||
@@ -100,7 +101,7 @@ function Profile({ defaultNav }) {
     email: '',
     phone: '',
     username: '',
-    sponsorId: 'KV-1001', // Default to Rahul Kaushal (KV-1001)
+    sponsorId: 'KK-0001', // Default to Super Admin (KK-0001)
     password: '',
     confirmPassword: '',
   });
@@ -134,7 +135,9 @@ function Profile({ defaultNav }) {
     const cleanUsername = (loginForm.username || '').toLowerCase().replace(/[@4]/g, 'a').replace(/[^a-z0-9]/g, '');
     const isOwnerDemo =
       cleanUsername.includes('rahul') ||
+      cleanUsername.includes('admin') ||
       loginForm.username === '88767139' ||
+      loginForm.username.toUpperCase() === 'KK-0001' ||
       loginForm.username.toUpperCase() === 'KV-1001' ||
       cleanUsername.includes('poonam') ||
       loginForm.username === '18618331' ||
@@ -144,7 +147,7 @@ function Profile({ defaultNav }) {
     const displayName = isOwnerDemo
       ? (loginForm.username.includes('@') || loginForm.username.toLowerCase().includes('r@hul')
         ? loginForm.username
-        : 'Rahul kaushal')
+        : 'Super Admin')
       : (loginForm.username === 'kashvi' ? 'Kashvi Sharma' : loginForm.username);
 
     const userData = {
@@ -153,8 +156,8 @@ function Profile({ defaultNav }) {
       email: `${loginForm.username.toLowerCase().replace(/[@]/g, 'a')}@kashvimlm.com`,
       phone: '+91 98765 43210',
       location: 'Mumbai, Maharashtra, India',
-      memberId: isOwnerDemo ? 'KV-1001' : (loginForm.username === 'kashvi' ? '10001001' : 'KV-1001'),
-      sponsorId: loginForm.sponsorId.trim() || 'KV-1001',
+      memberId: isOwnerDemo ? 'KK-0001' : (loginForm.username === 'kashvi' ? '10001001' : 'KK-0002'),
+      sponsorId: loginForm.sponsorId.trim() || 'KK-0001',
       isOwner: isOwnerDemo,
       role: isOwnerDemo ? 'ADMIN' : 'DISTRIBUTOR',
       memberSince: '2026',
@@ -184,7 +187,7 @@ function Profile({ defaultNav }) {
 
     // Sponsor ID is compulsory
     if (!registerForm.sponsorId.trim()) {
-      alert('Sponsor ID is compulsory! Each new distributor must join using a Sponsor ID (e.g. KV-1001).');
+      alert('Sponsor ID is compulsory! Each new distributor must join using a Sponsor ID (e.g. KK-0001).');
       return;
     }
 
@@ -194,19 +197,19 @@ function Profile({ defaultNav }) {
     }
 
     const cleanSponsorId = registerForm.sponsorId.trim().toUpperCase();
-    const isRahul = cleanSponsorId === 'KV-1001' || cleanSponsorId === '88767139' || cleanSponsorId.includes('RAHUL');
-    const isAmit = cleanSponsorId === 'KV-1002' || cleanSponsorId.includes('AMIT');
-    const isRohit = cleanSponsorId === 'KV-1003' || cleanSponsorId.includes('ROHIT');
+    const isRahul = cleanSponsorId === 'KK-0001' || cleanSponsorId === 'KV-1001' || cleanSponsorId === '88767139' || cleanSponsorId.includes('RAHUL') || cleanSponsorId.includes('ADMIN');
+    const isAmit = cleanSponsorId === 'KK-0002' || cleanSponsorId === 'KV-1002' || cleanSponsorId.includes('AMIT');
+    const isRohit = cleanSponsorId === 'KK-0003' || cleanSponsorId === 'KV-1003' || cleanSponsorId.includes('ROHIT');
 
     const sponsorName = isRahul
-      ? 'Rahul Kaushal'
+      ? 'Super Admin'
       : isAmit
         ? 'Amit Verma'
         : isRohit
           ? 'Rohit Singh'
           : `Sponsor (${cleanSponsorId})`;
 
-    const newMemberId = `KV-${Math.floor(1008 + Math.random() * 8990)}`;
+    const newMemberId = api.getNextDistributorId();
     const userData = {
       name: registerForm.fullName,
       username: `@${registerForm.username.replace('@', '') || registerForm.fullName.toLowerCase().replace(/\s+/g, '_')}`,
@@ -275,12 +278,12 @@ function Profile({ defaultNav }) {
     navigate("/login", { replace: true });
   };
 
-  // Autofill Demo Account (Owner Profile: R@hul11 / KV-1001)
+  // Autofill Demo Account (Owner Profile: R@hul11 / KK-0001)
   const handleAutofillDemo = () => {
     setLoginForm({
       username: 'R@hul11',
       password: '••••••••',
-      sponsorId: 'KV-1001',
+      sponsorId: 'KK-0001',
       rememberMe: true,
     });
   };
@@ -565,7 +568,7 @@ function Profile({ defaultNav }) {
                       id="reg-sponsor"
                       type="text"
                       required
-                      placeholder="Enter Sponsor ID (e.g. KV-1001 for Rahul)"
+                      placeholder="Enter Sponsor ID (e.g. KK-0001 for Super Admin)"
                       value={registerForm.sponsorId}
                       onChange={(e) =>
                         setRegisterForm((prev) => ({ ...prev, sponsorId: e.target.value }))
@@ -579,19 +582,21 @@ function Profile({ defaultNav }) {
                       style={{ color: '#059669', fontWeight: 600, display: 'block', marginTop: '5px' }}
                     >
                       ✓ Verified Sponsor:{' '}
-                      {registerForm.sponsorId.toUpperCase() === 'KV-1001' ||
+                      {registerForm.sponsorId.toUpperCase() === 'KK-0001' ||
+                        registerForm.sponsorId.toUpperCase() === 'KV-1001' ||
                         registerForm.sponsorId === '88767139' ||
-                        registerForm.sponsorId.toLowerCase().includes('rahul')
-                        ? 'Rahul Kaushal (KV-1001) - You will join directly under Rahul'
-                        : registerForm.sponsorId.toUpperCase() === 'KV-1002'
-                          ? 'Amit Verma (KV-1002) - You will join under Amit'
-                          : registerForm.sponsorId.toUpperCase() === 'KV-1003'
-                            ? 'Rohit Singh (KV-1003) - You will join under Rohit'
+                        registerForm.sponsorId.toLowerCase().includes('rahul') ||
+                        registerForm.sponsorId.toLowerCase().includes('admin')
+                        ? 'Super Admin (KK-0001) - You will join directly under Super Admin'
+                        : registerForm.sponsorId.toUpperCase() === 'KK-0002' || registerForm.sponsorId.toUpperCase() === 'KV-1002'
+                          ? 'Amit Verma (KK-0002) - You will join under Amit'
+                          : registerForm.sponsorId.toUpperCase() === 'KK-0003' || registerForm.sponsorId.toUpperCase() === 'KV-1003'
+                            ? 'Rohit Singh (KK-0003) - You will join under Rohit'
                             : `Sponsor (${registerForm.sponsorId.toUpperCase()})`}
                     </span>
                   ) : (
                     <span className="auth-sponsor-hint">
-                      Each new distributor/customer joins using a Sponsor ID (e.g. KV-1001).
+                      Each new distributor/customer joins using a Sponsor ID (e.g. KK-0001).
                     </span>
                   )}
                 </div>

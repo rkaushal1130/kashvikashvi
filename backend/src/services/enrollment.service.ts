@@ -932,8 +932,8 @@ export class EnrollmentService {
             status: 'PENDING',
             paymentStatus: 'PENDING',
             position: 'RIGHT',
-            sponsor: fallback.sponsorId || 'KV-1001',
-            placementParent: fallback.placementParentId || fallback.sponsorId || 'KV-1001',
+            sponsor: fallback.sponsorId || 'KK-0001',
+            placementParent: fallback.placementParentId || fallback.sponsorId || 'KK-0001',
             bv: 100,
           });
 
@@ -1232,7 +1232,15 @@ export class EnrollmentService {
         const uniqueMemberId = await MemberIdService.generateNextMemberId(tx);
         const distributorCode = uniqueMemberId;
 
-        // 8. Create distributor with unique permanent KV ID
+        await tx.user.update({
+          where: { id: user.id },
+          data: {
+            userId: uniqueMemberId,
+            referralCode: uniqueMemberId,
+          },
+        });
+
+        // 8. Create distributor with unique permanent KK ID
         distributorProfile = await tx.distributorProfile.create({
           data: {
             userId: user.id,
@@ -1716,10 +1724,18 @@ export class EnrollmentService {
           },
         });
 
-        // 8. Create distributor with concurrency-safe permanent KV ID
+        // 8. Create distributor with concurrency-safe permanent KK ID
         const uniqueMemberId = await MemberIdService.generateNextMemberId(tx);
         const newDistributorId = uniqueMemberId;
         const distributorCode = uniqueMemberId;
+
+        await tx.user.update({
+          where: { id: user.id },
+          data: {
+            userId: uniqueMemberId,
+            referralCode: uniqueMemberId,
+          },
+        });
 
         const distributor = await tx.distributorProfile.create({
           data: {
@@ -1884,8 +1900,8 @@ export class EnrollmentService {
           paymentStatus: 'PENDING',
           rank: 'Associate',
           position: (input.placementPosition as any) || 'RIGHT',
-          sponsor: input.sponsorId || 'KV-1001',
-          placementParent: input.placementParentId || input.sponsorId || 'KV-1001',
+          sponsor: input.sponsorId || 'KK-0001',
+          placementParent: input.placementParentId || input.sponsorId || 'KK-0001',
           email,
           phone,
           bv: Number((input as any).bv) || 100,

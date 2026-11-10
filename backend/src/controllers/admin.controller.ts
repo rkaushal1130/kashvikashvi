@@ -306,12 +306,12 @@ export class AdminController {
       const distFirstName = firstName || fullName.split(' ')[0] || 'Distributor';
       const distLastName = lastName || fullName.split(' ').slice(1).join(' ') || '';
 
-      // Generate dynamic sequential IDs strictly formatted as DST-0001 / KV-0001
-      const distributorCode = await MemberIdService.generateNextDistributorCode();
+      // Generate dynamic sequential ID strictly formatted as KK-XXXX
       const memberId = await MemberIdService.generateNextMemberId();
+      const distributorCode = memberId;
 
       const chosenPosition = (position || 'LEFT').toUpperCase() as 'LEFT' | 'RIGHT';
-      const targetSponsor = sponsorId || 'KV-0001';
+      const targetSponsor = sponsorId || 'KK-0001';
       const targetParent = placementParentId || targetSponsor;
 
       // Enroll into dynamic tree

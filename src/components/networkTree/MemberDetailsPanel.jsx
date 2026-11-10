@@ -56,16 +56,17 @@ function MemberDetailsPanel({
     member.distributor?.distributorCode ||
     'KV-0000';
   const rank = member.rank || member.distributor?.rankName || 'Business Center';
-  const rawStatus = String(member.status || member.distributor?.status || 'Active').toUpperCase();
-  const isActive = rawStatus === 'ACTIVE';
-  const status = rawStatus;
+  const isRootAdminMember = distributorId === 'KK-0001' || distributorId === 'KV-1001';
+  const rawPayment = member.paymentStatus || member.distributor?.paymentStatus;
+  const paymentStatus = isRootAdminMember ? 'PAID' : (rawPayment ? String(rawPayment).toUpperCase() : 'PENDING');
+  const isPaid = isRootAdminMember || member.isPaid === true || paymentStatus === 'PAID';
+  const rawStatus = String(member.status || member.distributor?.status || (isPaid ? 'ACTIVE' : 'PENDING_PAYMENT')).toUpperCase();
+  const status = isRootAdminMember ? 'ACTIVE' : (isPaid ? rawStatus : 'PENDING_PAYMENT');
+  const isActive = isRootAdminMember || (isPaid && status === 'ACTIVE');
+  const isFailed = !isPaid && (paymentStatus === 'FAILED' || paymentStatus === 'CANCELLED');
+  const idColorClass = isPaid ? 'id-active-paid' : isFailed ? 'id-failed' : 'id-pending';
 
   const treeId = member.treeId || member.id;
-  const rawPayment = member.paymentStatus || (isActive ? 'PAID' : 'PENDING');
-  const paymentStatus = String(rawPayment || 'PENDING').toUpperCase();
-  const isPaid = paymentStatus === 'PAID';
-  const isFailed = paymentStatus === 'FAILED' || paymentStatus === 'CANCELLED';
-  const idColorClass = (isActive && isPaid) ? 'id-active-paid' : isFailed ? 'id-failed' : 'id-pending';
 
   const rawJoinedDate =
     member.joinedDate ||
@@ -90,16 +91,16 @@ function MemberDetailsPanel({
       : member.sponsor ||
         member.sponsorId ||
         member.distributor?.sponsorCode ||
-        (distributorId === 'KV-1001' ? 'KV-1000 (Corporate System)' : 'KV-1001 (Rahul Kaushal)');
+        (distributorId === 'KK-0001' || distributorId === 'KV-1001' ? 'ROOT (Corporate System)' : 'KK-0001 (Super Admin)');
 
   const placementParent =
     member.placementParentName
       ? `${member.placementParent} (${member.placementParentName})`
       : member.placementParent ||
         member.placementParentId ||
-        (distributorId === 'KV-1001' ? 'ROOT (None)' : (member.parentId || member.sponsor || 'KV-1001'));
+        (distributorId === 'KK-0001' || distributorId === 'KV-1001' ? 'ROOT (None)' : (member.parentId || member.sponsor || 'KK-0001'));
 
-  const position = String(member.position || (distributorId === 'KV-1001' ? 'ROOT' : 'LEFT')).toUpperCase();
+  const position = String(member.position || (distributorId === 'KK-0001' || distributorId === 'KV-1001' ? 'ROOT' : 'LEFT')).toUpperCase();
 
   const businessCenter =
     member.businessCenterName

@@ -148,7 +148,26 @@ export const adminApi = {
       Object.entries(params).filter(([, v]) => v !== undefined && v !== null && v !== '')
     );
     const query = new URLSearchParams(cleanParams).toString();
-    return apiClient.get(`/orders${query ? `?${query}` : ''}`);
+    try {
+      const res = await apiClient.get(`/orders${query ? `?${query}` : ''}`);
+      if (res && res.data) {
+        const list = Array.isArray(res.data) ? res.data : (res.data.items || []);
+        if (list.length > 0) {
+          try {
+            localStorage.setItem('kashvi_orders', JSON.stringify(list));
+          } catch {}
+        }
+      }
+      return res;
+    } catch (err) {
+      console.warn('[adminApi] getOrders network error, using local orders cache:', err);
+      try {
+        const cached = JSON.parse(localStorage.getItem('kashvi_orders') || '[]');
+        return { success: true, data: cached };
+      } catch {
+        return { success: true, data: [] };
+      }
+    }
   },
 
   async getOrder(id) {
@@ -156,7 +175,12 @@ export const adminApi = {
   },
 
   async updateOrderStatus(id, status, notes = '') {
-    return apiClient.put(`/orders/${encodeURIComponent(id)}/status`, { status, notes });
+    const res = await apiClient.put(`/orders/${encodeURIComponent(id)}/status`, { status, notes });
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('kashvi_orders_updated'));
+      window.dispatchEvent(new CustomEvent('kashvi_order_placed', { detail: { order: res?.data } }));
+    }
+    return res;
   },
 
   async adjustOrderBV(id, commissionableBusinessVolume, reason = '') {

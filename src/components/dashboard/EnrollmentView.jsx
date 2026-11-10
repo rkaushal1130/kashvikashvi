@@ -85,9 +85,9 @@ export const getSelectedEnrollmentPack = (enrollType, starterKitId) => {
 function EnrollmentView({ user, onNavigate }) {
   const urlParams = new URLSearchParams(window.location.search);
   const urlRef = urlParams.get('ref') || urlParams.get('sponsor');
-  const initialSponsorId = urlRef || (user?.memberId && user.memberId.startsWith('KV-') ? user.memberId : (user?.memberId || 'KV-1001'));
-  const sponsorId = user?.memberId || initialSponsorId || 'KV-1001';
-  const sponsorName = user?.name || 'Rahul Kaushal';
+  const initialSponsorId = urlRef || (user?.memberId && (user.memberId.startsWith('KK-') || user.memberId.startsWith('KV-')) ? user.memberId : (user?.memberId || 'KK-0001'));
+  const sponsorId = user?.memberId || initialSponsorId || 'KK-0001';
+  const sponsorName = user?.name || 'Super Admin';
 
   // Mode: 'distributor' (Brand Partner) | 'customer' (Preferred Customer)
   const [enrollType, setEnrollType] = useState('distributor');
@@ -148,7 +148,7 @@ function EnrollmentView({ user, onNavigate }) {
   const handleValidateSponsor = async (idToValidate) => {
     const id = (idToValidate || sponsorInput).trim();
     if (!id) {
-      setSponsorError('Please enter a Sponsor ID (e.g. KV-1001).');
+      setSponsorError('Please enter a Sponsor ID (e.g. KK-0001).');
       setSponsorData(null);
       return;
     }
@@ -264,7 +264,7 @@ function EnrollmentView({ user, onNavigate }) {
         status: 'PENDING',
       });
 
-      const assignedMemberId = preRes?.data?.distributor?.distributorId || preRes?.data?.memberId || 'KV-1002';
+      const assignedMemberId = preRes?.data?.distributor?.distributorId || preRes?.data?.memberId || 'KK-0002';
 
       // Step 2: Create payment order with backend
       let serverOrderId = '';
@@ -442,7 +442,7 @@ function EnrollmentView({ user, onNavigate }) {
         status: 'PENDING',
       });
 
-      const assignedMemberId = preRes?.data?.distributor?.distributorId || preRes?.data?.memberId || 'KV-1002';
+      const assignedMemberId = preRes?.data?.distributor?.distributorId || preRes?.data?.memberId || 'KK-0002';
 
       // Verify payment with server
       const verifyRes = await api.verifyEnrollmentPayment({
@@ -1129,7 +1129,7 @@ function EnrollmentView({ user, onNavigate }) {
                   <input
                     type="text"
                     className="field-input uppercase"
-                    placeholder="e.g. KV-1001"
+                    placeholder="e.g. KK-0001"
                     value={sponsorInput}
                     onChange={(e) => {
                       const val = e.target.value.toUpperCase();
@@ -1156,7 +1156,7 @@ function EnrollmentView({ user, onNavigate }) {
                   </button>
                 </div>
                 <span className="field-hint">
-                  Enter Sponsor ID (e.g. <strong>KV-1001</strong> or <strong>KV-DEMO-1005</strong>).
+                  Enter Sponsor ID (e.g. <strong>KK-0001</strong>).
                 </span>
               </div>
 

@@ -287,7 +287,7 @@ export default function DistributorDetailPage() {
               <div className="kv-row">
                 <span className="kv-key">Sponsor Distributor:</span>
                 <span className="kv-val font-semibold">
-                  {distributor.sponsorName || 'Rahul Kaushal'} ({distributor.sponsorId || 'KV-1001'})
+                  {distributor.sponsorName || 'Super Admin'} ({distributor.sponsorId || 'KK-0001'})
                 </span>
               </div>
               <div className="kv-row">
@@ -311,7 +311,7 @@ export default function DistributorDetailPage() {
               <div className="kv-row">
                 <span className="kv-key">Tree Path:</span>
                 <span className="kv-val text-xs text-muted font-mono">
-                  {distributor.treePath || distributor.tree_path || `/KV-1001/${distributor.distributorId || id}`}
+                  {distributor.treePath || distributor.tree_path || `/KK-0001/${distributor.distributorId || id}`}
                 </span>
               </div>
             </div>

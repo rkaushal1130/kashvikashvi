@@ -9,6 +9,8 @@ export interface NetworkTreeNode {
   name: string;
   status: string;
   paymentStatus?: string;
+  isPaid?: boolean;
+  accountStatus?: string;
   rank: string;
   position: 'ROOT' | 'LEFT' | 'RIGHT';
   joinedDate?: string;
@@ -61,6 +63,8 @@ export interface EnrolledTreeMember {
   name: string;
   status: string;
   paymentStatus?: string;
+  isPaid?: boolean;
+  accountStatus?: string;
   rank: string;
   position: 'RIGHT' | 'LEFT';
   joinedDate: string;
@@ -81,7 +85,7 @@ export class NetworkTreeService {
 
   public static async resolveDistributorCode(identifier: string): Promise<string> {
     const clean = (identifier || '').trim();
-    if (!clean) return 'KV-1001';
+    if (!clean) return 'KK-0001';
 
     const cleanUpper = clean.toUpperCase();
     const cleanNormalized = cleanUpper.replace(/[^A-Z0-9]/g, '');
@@ -131,7 +135,7 @@ export class NetworkTreeService {
     sponsorId: string,
     preferredLeg: 'LEFT' | 'RIGHT' = 'RIGHT'
   ): { targetParentId: string; position: 'LEFT' | 'RIGHT' } {
-    const cleanSponsor = (sponsorId || 'KV-1001').toUpperCase().trim();
+    const cleanSponsor = (sponsorId || 'KK-0001').toUpperCase().trim();
 
     // Helper to get active placed children of any node in dynamicEnrollees
     const getChildren = (parentId: string) => {
@@ -183,14 +187,16 @@ export class NetworkTreeService {
   }
 
   public static addEnrolledMember(member: Partial<EnrolledTreeMember>): EnrolledTreeMember {
-    const nextNum = 1002 + this.dynamicEnrollees.length;
-    const distId = member.distributorId || `KV-${nextNum}`;
+    const nextNum = 2 + this.dynamicEnrollees.length;
+    const distId = member.distributorId || `KK-${String(nextNum).padStart(4, '0')}`;
     const treeId = member.treeId || member.id || `node-${distId.toLowerCase()}`;
     const normDistId = distId.toUpperCase().replace(/[^A-Z0-9]/g, '');
-    const isRoot = normDistId === 'KV1001' || normDistId === 'KV0001' || normDistId === 'KV1000' || (member.position as any) === 'ROOT';
-    const sponsor = member.sponsor || (isRoot ? 'KV-1000' : 'KV-0001');
-    const status = member.status || 'ACTIVE';
-    const paymentStatus = member.paymentStatus || (status === 'ACTIVE' ? 'PAID' : 'PENDING');
+    const isRoot = normDistId === 'KK0001' || normDistId === 'KV1001' || normDistId === 'KV0001' || (member.position as any) === 'ROOT';
+    const sponsor = member.sponsor || (isRoot ? 'ROOT' : 'KK-0001');
+    const paymentStatus = isRoot ? 'PAID' : (member.paymentStatus || 'PENDING');
+    const isPaid = isRoot || paymentStatus === 'PAID';
+    const status = isRoot ? 'ACTIVE' : (isPaid ? (member.status || 'ACTIVE') : 'PENDING_PAYMENT');
+    const accountStatus = isPaid ? 'ACTIVE' : 'PENDING_PAYMENT';
 
     // Check if member already exists (idempotency against duplicate payment callbacks or enrollments)
     const existingIndex = this.dynamicEnrollees.findIndex(
@@ -204,7 +210,7 @@ export class NetworkTreeService {
       placementParent = undefined;
     } else {
       // If active and payment confirmed, resolve binary placement with automatic spillover
-      if (paymentStatus === 'PAID' || status === 'ACTIVE') {
+      if (isPaid) {
         if (!placementParent) {
           const slot = this.findNextAvailableSlot(sponsor, position);
           placementParent = slot.targetParentId;
@@ -235,16 +241,18 @@ export class NetworkTreeService {
       id: treeId,
       treeId,
       distributorId: distId,
-      name: member.name || (isRoot ? 'Rahul Kaushal' : 'New Distributor'),
+      name: member.name || (isRoot ? 'Super Admin' : 'New Distributor'),
       status,
       paymentStatus,
-      rank: member.rank || (isRoot ? 'Business Center' : 'Associate'),
+      isPaid,
+      accountStatus,
+      rank: member.rank || (isRoot ? 'Super Admin' : 'Associate'),
       position,
       joinedDate: member.joinedDate || new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
       sponsor,
-      sponsorName: member.sponsorName || (sponsor === 'KV-1001' ? 'Rahul Kaushal' : sponsor),
+      sponsorName: member.sponsorName || (sponsor === 'KK-0001' || sponsor === 'KV-1001' ? 'Super Admin' : sponsor),
       placementParent: finalPlacementParent,
-      placementParentName: member.placementParentName || (finalPlacementParent === 'KV-1001' ? 'Rahul Kaushal' : finalPlacementParent),
+      placementParentName: member.placementParentName || (finalPlacementParent === 'KK-0001' || finalPlacementParent === 'KV-1001' ? 'Super Admin' : finalPlacementParent),
       businessCenter: member.businessCenter || 'BC-001',
       bv: Number(member.bv) || 100,
       starterKitId: member.starterKitId || 'kit_pro',
@@ -422,14 +430,18 @@ export class NetworkTreeService {
         currentDepth: number
       ): NetworkTreeNode => {
         const distId = distributorObj?.distributorId || distributorObj?.distributorCode || 'KV-0000';
+        const isRoot = distId === 'KK-0001' || distId === 'KV-1001' || position === 'ROOT';
         const name =
           distributorObj?.firstName?.trim() ||
           distributorObj?.displayName?.split(' ')[0] ||
           distributorObj?.displayName ||
-          'Distributor';
-        const rank = distributorObj?.currentRank?.name || 'Business Center';
-        const status = distributorObj?.status || 'ACTIVE';
-        const paymentStatus = (distributorObj as any)?.paymentStatus || (status === 'ACTIVE' ? 'PAID' : 'PENDING');
+          (isRoot ? 'Super Admin' : 'Distributor');
+        const rank = distributorObj?.currentRank?.name || (isRoot ? 'Super Admin' : 'Business Center');
+        const rawPayment = (distributorObj as any)?.paymentStatus;
+        const paymentStatus = isRoot ? 'PAID' : (rawPayment ? String(rawPayment).toUpperCase() : 'PENDING');
+        const isPaid = isRoot || paymentStatus === 'PAID';
+        const status = isRoot ? 'ACTIVE' : (isPaid ? (distributorObj?.status || 'ACTIVE') : 'PENDING_PAYMENT');
+        const accountStatus = isPaid ? 'ACTIVE' : 'PENDING_PAYMENT';
         const joinedDate = distributorObj?.createdAt
           ? new Date(distributorObj.createdAt).toLocaleDateString('en-GB', {
               day: '2-digit',
@@ -454,6 +466,8 @@ export class NetworkTreeService {
             name,
             status,
             paymentStatus,
+            isPaid,
+            accountStatus,
             rank,
             position,
             joinedDate,
@@ -496,6 +510,8 @@ export class NetworkTreeService {
           name,
           status,
           paymentStatus,
+          isPaid,
+          accountStatus,
           rank,
           position,
           joinedDate,
@@ -703,7 +719,7 @@ export class NetworkTreeService {
    * Personal Tree Guarantee: Whenever a distributor requests their tree,
    * that distributor is always the ROOT of the returned tree.
    */
-  public static getModeledNetworkTree(identifier = 'KV-1001', maxDepth = 3): NetworkTreeResponse {
+  public static getModeledNetworkTree(identifier = 'KK-0001', maxDepth = 3): NetworkTreeResponse {
     const cleanId = (identifier || '').toUpperCase().trim();
     const normId = cleanId.replace(/[^A-Z0-9]/g, '');
     const allEnrollees = this.dynamicEnrollees;
@@ -789,15 +805,21 @@ export class NetworkTreeService {
             (normalizedParent === normMemId || (!normalizedParent && normalizedSponsor === normMemId));
         });
 
-        const paymentStatus = mem.paymentStatus || (mem.status === 'ACTIVE' ? 'PAID' : 'PENDING');
+        const isMemRoot = mem.distributorId === 'KK-0001' || mem.distributorId === 'KV-1001' || (pos as string) === 'ROOT';
+        const paymentStatus = isMemRoot ? 'PAID' : (mem.paymentStatus || 'PENDING');
+        const isPaid = isMemRoot || paymentStatus === 'PAID';
+        const status = isMemRoot ? 'ACTIVE' : (isPaid ? (mem.status || 'ACTIVE') : 'PENDING_PAYMENT');
+        const accountStatus = isPaid ? 'ACTIVE' : 'PENDING_PAYMENT';
 
         return {
           id: mem.id,
           treeId: mem.treeId || mem.id,
           distributorId: mem.distributorId,
           name: mem.name,
-          status: mem.status || 'ACTIVE',
+          status,
           paymentStatus,
+          isPaid,
+          accountStatus,
           rank: mem.rank || 'Associate',
           position: pos,
           joinedDate: mem.joinedDate,
@@ -849,7 +871,11 @@ export class NetworkTreeService {
           e.sponsor.toUpperCase().replace(/[^A-Z0-9]/g, '') === normTargetId
       ).length;
 
-      const paymentStatus = targetEnrollee.paymentStatus || (targetEnrollee.status === 'ACTIVE' ? 'PAID' : 'PENDING');
+      const isTargetRoot = targetEnrollee.distributorId === 'KK-0001' || targetEnrollee.distributorId === 'KV-1001';
+      const paymentStatus = isTargetRoot ? 'PAID' : (targetEnrollee.paymentStatus || 'PENDING');
+      const isPaid = isTargetRoot || paymentStatus === 'PAID';
+      const status = isTargetRoot ? 'ACTIVE' : (isPaid ? (targetEnrollee.status || 'ACTIVE') : 'PENDING_PAYMENT');
+      const accountStatus = isPaid ? 'ACTIVE' : 'PENDING_PAYMENT';
 
       return {
         root: {
@@ -857,8 +883,10 @@ export class NetworkTreeService {
           treeId: targetEnrollee.treeId || targetEnrollee.id,
           distributorId: targetEnrollee.distributorId,
           name: targetEnrollee.name,
-          status: targetEnrollee.status || 'ACTIVE',
+          status,
           paymentStatus,
+          isPaid,
+          accountStatus,
           rank: targetEnrollee.rank || 'Associate',
           position: 'ROOT',
           joinedDate: targetEnrollee.joinedDate,
@@ -884,9 +912,9 @@ export class NetworkTreeService {
       };
     }
 
-    // 2. Admin Root (Rahul Kaushal - KV-1001 / System Admin - KV-0001)
-    if (!normId || normId === 'KV0001' || normId === 'KV1001' || normId.includes('1001') || cleanId.includes('RAHUL') || normId === 'ADMIN') {
-      const rootId = normId === 'KV0001' ? 'KV-0001' : 'KV-1001';
+    // 2. Admin Root (Super Admin - KK-0001)
+    if (!normId || normId === 'KK0001' || normId === 'KV0001' || normId === 'KV1001' || normId.includes('1001') || cleanId.includes('RAHUL') || normId === 'ADMIN') {
+      const rootId = 'KK-0001';
       const sub = buildSubtree(rootId, 1);
       const leftCount = countSubtree(sub.left);
       const rightCount = countSubtree(sub.right);
@@ -895,13 +923,13 @@ export class NetworkTreeService {
       const rightBV = sumSubtreeBV(sub.right);
       const directSponsored = allEnrollees.filter(
         (e) =>
-          !['KV1001', 'KV0001'].includes(e.distributorId.toUpperCase().replace(/[^A-Z0-9]/g, '')) &&
+          !['KK0001', 'KV1001', 'KV0001'].includes(e.distributorId.toUpperCase().replace(/[^A-Z0-9]/g, '')) &&
           (e.paymentStatus === 'PAID' || e.status === 'ACTIVE') &&
-          (!e.sponsor || ['KV1001', 'KV0001'].includes(e.sponsor.toUpperCase().replace(/[^A-Z0-9]/g, '')))
+          (!e.sponsor || ['KK0001', 'KV1001', 'KV0001'].includes(e.sponsor.toUpperCase().replace(/[^A-Z0-9]/g, '')))
       ).length;
 
       const rootEnrollee = allEnrollees.find(
-        (m) => ['KV1001', 'KV0001'].includes(m.distributorId.toUpperCase().replace(/[^A-Z0-9]/g, ''))
+        (m) => ['KK0001', 'KV1001', 'KV0001'].includes(m.distributorId.toUpperCase().replace(/[^A-Z0-9]/g, ''))
       );
 
       return {
@@ -909,13 +937,15 @@ export class NetworkTreeService {
           id: rootEnrollee?.id || 'node-root-uuid',
           treeId: rootEnrollee?.treeId || 'tree-root-admin',
           distributorId: rootId,
-          name: rootEnrollee?.name || (rootId === 'KV-0001' ? 'System Admin' : 'Rahul Kaushal'),
+          name: rootEnrollee?.name || 'Super Admin',
           status: rootEnrollee?.status || 'ACTIVE',
           paymentStatus: rootEnrollee?.paymentStatus || 'PAID',
-          rank: rootEnrollee?.rank || 'Business Center',
+          isPaid: true,
+          accountStatus: 'ACTIVE',
+          rank: rootEnrollee?.rank || 'Super Admin',
           position: 'ROOT',
           joinedDate: '15 Sep 2026',
-          sponsor: 'KV-1000',
+          sponsor: 'ROOT',
           sponsorName: 'Corporate System',
           businessCenter: 'BC-001',
           directMembers: directSponsored,

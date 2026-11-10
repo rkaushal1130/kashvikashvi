@@ -123,8 +123,60 @@
 
 .node-id {
   font-size: 11px;
-  font-family: monospace;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   color: #64748b;
+  padding: 1px 6px;
+  border-radius: 4px;
+  display: inline-block;
+  margin-top: 2px;
+  transition: all 0.2s ease;
+}
+
+/* Green ID: Verified paid member */
+.node-id.id-active-paid {
+  color: #15803d !important;
+  background-color: #dcfce7 !important;
+  border: 1px solid #86efac !important;
+  font-weight: 700;
+}
+
+/* Default Inactive / Pending ID: Neutral inactive styling (NOT green) */
+.node-id.id-pending {
+  color: #64748b !important;
+  background-color: #f1f5f9 !important;
+  border: 1px solid #cbd5e1 !important;
+  font-weight: 600;
+}
+
+/* Failed ID: Red indicator */
+.node-id.id-failed {
+  color: #b91c1c !important;
+  background-color: #fee2e2 !important;
+  border: 1px solid #fca5a5 !important;
+  font-weight: 600;
+}
+
+.payment-pill {
+  font-size: 9px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.payment-pill-paid {
+  background-color: #bbf7d0;
+  color: #166534;
+}
+
+.payment-pill-pending {
+  background-color: #fef3c7;
+  color: #92400e;
+}
+
+.payment-pill-failed {
+  background-color: #fecaca;
+  color: #991b1b;
 }
 
 .node-footer {

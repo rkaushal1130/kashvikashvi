@@ -15,21 +15,21 @@ describe('MEMBER REGISTRATION, UNIQUE ID GENERATION & PAYMENT VERIFICATION SYSTE
     PaymentService.clearProcessedWebhookEvents();
   });
 
-  // 1. UNIQUE KV-XXXX MEMBER ID GENERATION
+  // 1. UNIQUE KK-XXXX MEMBER ID GENERATION
   describe('1. Concurrency-Safe Sequential Member ID Generation', () => {
-    it('should generate sequential IDs starting at KV-1001 or higher', async () => {
+    it('should generate sequential IDs starting at KK-0002 or higher', async () => {
       const id1 = await MemberIdService.generateNextMemberId();
       const id2 = await MemberIdService.generateNextMemberId();
       const id3 = await MemberIdService.generateNextMemberId();
 
-      expect(id1).toMatch(/^KV-\d{4,}$/);
-      expect(id2).toMatch(/^KV-\d{4,}$/);
-      expect(id3).toMatch(/^KV-\d{4,}$/);
+      expect(id1).toMatch(/^KK-\d{4,}$/);
+      expect(id2).toMatch(/^KK-\d{4,}$/);
+      expect(id3).toMatch(/^KK-\d{4,}$/);
 
       // Verify strict sequential ordering and uniqueness
-      const num1 = parseInt(id1.replace('KV-', ''), 10);
-      const num2 = parseInt(id2.replace('KV-', ''), 10);
-      const num3 = parseInt(id3.replace('KV-', ''), 10);
+      const num1 = parseInt(id1.replace('KK-', ''), 10);
+      const num2 = parseInt(id2.replace('KK-', ''), 10);
+      const num3 = parseInt(id3.replace('KK-', ''), 10);
 
       expect(num2).toBe(num1 + 1);
       expect(num3).toBe(num2 + 1);
@@ -44,20 +44,20 @@ describe('MEMBER REGISTRATION, UNIQUE ID GENERATION & PAYMENT VERIFICATION SYSTE
       const uniqueSet = new Set(generatedIds);
       expect(uniqueSet.size).toBe(10);
       generatedIds.forEach((id) => {
-        expect(id).toMatch(/^KV-\d{4,}$/);
+        expect(id).toMatch(/^KK-\d{4,}$/);
       });
     });
 
     it('should validate and normalize valid and invalid member IDs correctly', () => {
-      expect(MemberIdService.isValidMemberId('KV-1001')).toBe(true);
-      expect(MemberIdService.isValidMemberId('KV1001')).toBe(true);
-      expect(MemberIdService.isValidMemberId('KV-99999')).toBe(true);
+      expect(MemberIdService.isValidMemberId('KK-0001')).toBe(true);
+      expect(MemberIdService.isValidMemberId('KK0001')).toBe(true);
+      expect(MemberIdService.isValidMemberId('KK-99999')).toBe(true);
       expect(MemberIdService.isValidMemberId('INVALID-123')).toBe(false);
       expect(MemberIdService.isValidMemberId('')).toBe(false);
 
-      expect(MemberIdService.normalizeMemberId('kv1005')).toBe('KV-1005');
-      expect(MemberIdService.normalizeMemberId('KV-1005')).toBe('KV-1005');
-      expect(MemberIdService.normalizeMemberId('  kv-2020  ')).toBe('KV-2020');
+      expect(MemberIdService.normalizeMemberId('kk0005')).toBe('KK-0005');
+      expect(MemberIdService.normalizeMemberId('KK-0005')).toBe('KK-0005');
+      expect(MemberIdService.normalizeMemberId('  kk-2020  ')).toBe('KK-2020');
     });
   });
 
@@ -75,8 +75,8 @@ describe('MEMBER REGISTRATION, UNIQUE ID GENERATION & PAYMENT VERIFICATION SYSTE
           city: 'Mumbai',
           state: 'Maharashtra',
           pincode: '400001',
-          sponsorId: 'KV-1001',
-          placementParentId: 'KV-1001',
+          sponsorId: 'KK-0001',
+          placementParentId: 'KK-0001',
           placementPosition: 'RIGHT',
           starterKitId: 'kit_pro',
           password: 'Password123!',
@@ -90,9 +90,9 @@ describe('MEMBER REGISTRATION, UNIQUE ID GENERATION & PAYMENT VERIFICATION SYSTE
       expect(res.body.success).toBe(true);
       const data = res.body.data;
 
-      // Unique KV ID assigned
+      // Unique KK/KV ID assigned
       const assignedId = data.distributor?.distributorId || data.distributor?.distributorCode || data.memberId;
-      expect(assignedId).toMatch(/^KV-\d{4,}$/);
+      expect(assignedId).toMatch(/^(?:KK|KV)-\d{4,}$/);
 
       // Status must be PENDING / INACTIVE, NOT PAID / ACTIVE
       expect(data.distributor?.status).toBe('PENDING');
@@ -101,7 +101,7 @@ describe('MEMBER REGISTRATION, UNIQUE ID GENERATION & PAYMENT VERIFICATION SYSTE
     });
 
     it('should generate an enrollment payment order without activating the account', async () => {
-      const testMemberId = `KV-${Date.now().toString().slice(-4)}`;
+      const testMemberId = `KK-${Date.now().toString().slice(-4)}`;
       const orderRes = await request(app)
         .post('/api/v1/payments/enrollment/order')
         .send({
@@ -120,7 +120,7 @@ describe('MEMBER REGISTRATION, UNIQUE ID GENERATION & PAYMENT VERIFICATION SYSTE
   // 3. CRYPTOGRAPHIC PAYMENT SIGNATURE VERIFICATION
   describe('3. Cryptographic HMAC-SHA256 Signature Verification', () => {
     it('should reject tampered or invalid payment signatures and mark paymentStatus as FAILED', async () => {
-      const testMemberId = `KV-${Date.now().toString().slice(-4)}`;
+      const testMemberId = `KK-${Date.now().toString().slice(-4)}`;
       const orderId = `order_test_${Date.now()}`;
       const paymentId = `pay_tampered_${Date.now()}`;
       const fakeSignature = 'bad_tampered_signature_hex_value_1234567890';
@@ -140,7 +140,7 @@ describe('MEMBER REGISTRATION, UNIQUE ID GENERATION & PAYMENT VERIFICATION SYSTE
     });
 
     it('should successfully verify payment with a valid cryptographic signature and activate the account', async () => {
-      const testMemberId = `KV-${Date.now().toString().slice(-4)}`;
+      const testMemberId = `KK-${Date.now().toString().slice(-4)}`;
       const orderId = `order_valid_${Date.now()}`;
       const paymentId = `pay_valid_${Date.now()}`;
 
@@ -173,7 +173,7 @@ describe('MEMBER REGISTRATION, UNIQUE ID GENERATION & PAYMENT VERIFICATION SYSTE
     });
 
     it('should accept valid dev/test signature tokens during testing and activate member', async () => {
-      const testMemberId = `KV-${Date.now().toString().slice(-4)}`;
+      const testMemberId = `KK-${Date.now().toString().slice(-4)}`;
       const orderId = `order_dev_${Date.now()}`;
       const paymentId = `pay_dev_${Date.now()}`;
       const testSig = `test_sig_${Date.now()}`;
@@ -200,7 +200,7 @@ describe('MEMBER REGISTRATION, UNIQUE ID GENERATION & PAYMENT VERIFICATION SYSTE
     });
 
     it('should be idempotent and safely handle duplicate payment verification callbacks without double-crediting', async () => {
-      const testMemberId = `KV-${Date.now().toString().slice(-4)}`;
+      const testMemberId = `KK-${Date.now().toString().slice(-4)}`;
       const orderId = `order_dup_${Date.now()}`;
       const paymentId = `pay_idempotent_${Date.now()}`;
       const testSig = `test_sig_${Date.now()}`;
@@ -266,7 +266,7 @@ describe('MEMBER REGISTRATION, UNIQUE ID GENERATION & PAYMENT VERIFICATION SYSTE
         .post('/api/v1/payments/admin/verify-manual')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({
-          memberId: 'KV-1001',
+          memberId: 'KK-0001',
           referenceNumber: `BANK-UTR-${Date.now()}`,
           reason: 'Verified direct NEFT transfer for starter pack activation',
         });
@@ -287,7 +287,7 @@ describe('MEMBER REGISTRATION, UNIQUE ID GENERATION & PAYMENT VERIFICATION SYSTE
         .post('/api/v1/payments/admin/verify-manual')
         .set('Authorization', `Bearer ${memberToken}`)
         .send({
-          memberId: 'KV-1002',
+          memberId: 'KK-0002',
           referenceNumber: 'REF123',
           reason: 'Unauthorized bypass attempt',
         });

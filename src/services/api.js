@@ -37,7 +37,7 @@ export const safeId = (val) => {
 export const isRootAdmin = (id) => {
   if (!id) return false;
   const s = safeId(id);
-  return s === 'KV-1001' || s === '88767139' || s === 'ROOT' || s.includes('RAHUL');
+  return s === 'KK-0001' || s === 'KK0001' || s === 'KV-1001' || s === 'KV-0001' || s === '88767139' || s === 'ROOT' || s.includes('RAHUL');
 };
 
 export const matchesParent = (childParent, targetParent) => {
@@ -298,6 +298,27 @@ export const api = {
   },
 
   // 3. Orders & Cart Checkout
+  saveOrderToLocalCache(order) {
+    if (!order) return;
+    try {
+      const existing = JSON.parse(localStorage.getItem('kashvi_orders') || '[]');
+      const orderNum = order.orderNumber || order.id;
+      const index = existing.findIndex(
+        (o) => (o.orderNumber && o.orderNumber === orderNum) || (o.id && o.id === order.id)
+      );
+      if (index >= 0) {
+        existing[index] = { ...existing[index], ...order };
+      } else {
+        existing.unshift(order);
+      }
+      localStorage.setItem('kashvi_orders', JSON.stringify(existing));
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('kashvi_order_placed', { detail: { order } }));
+        window.dispatchEvent(new CustomEvent('kashvi_orders_updated'));
+      }
+    } catch {}
+  },
+
   async checkoutOrder(orderData) {
     try {
       const res = await fetch(`${API_BASE_URL}/orders`, {
@@ -307,6 +328,7 @@ export const api = {
       });
       const data = await res.json();
       if (res.ok && data.success) {
+        this.saveOrderToLocalCache(data.data);
         return data.data;
       }
     } catch (err) {
@@ -326,12 +348,22 @@ export const api = {
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        return data.data;
+        const list = Array.isArray(data.data) ? data.data : (data.data?.items || []);
+        if (list.length > 0) {
+          try {
+            localStorage.setItem('kashvi_orders', JSON.stringify(list));
+          } catch {}
+        }
+        return list;
       }
     } catch (err) {
       console.warn('[API] Get orders failed:', err.message);
     }
-    return [];
+    try {
+      return JSON.parse(localStorage.getItem('kashvi_orders') || '[]');
+    } catch {
+      return [];
+    }
   },
 
   async getOrder(id) {
@@ -407,6 +439,94 @@ export const api = {
     return this.getWalletBalance();
   },
 
+  // Synchronization of member payment success across all local stores and event buses
+  syncMemberPaymentSuccess(targetMemberId) {
+    const cleanId = (targetMemberId || '').toString().trim().toUpperCase();
+    try {
+      // 1. Update kashvi_auth if matching logged-in user
+      const rawAuth = localStorage.getItem('kashvi_auth');
+      if (rawAuth) {
+        const authObj = JSON.parse(rawAuth);
+        const u = authObj.user;
+        const uDistId = (u?.distributorId || u?.distributorCode || u?.memberId || u?.userId || u?.id || '').toString().trim().toUpperCase();
+        if (!cleanId || uDistId === cleanId || cleanId.includes(uDistId) || uDistId.includes(cleanId)) {
+          if (u) {
+            u.paymentStatus = 'PAID';
+            u.status = 'ACTIVE';
+            u.accountStatus = 'ACTIVE';
+            u.isPaid = true;
+            if (u.distributorProfile) {
+              u.distributorProfile.paymentStatus = 'PAID';
+              u.distributorProfile.status = 'ACTIVE';
+              u.distributorProfile.isPaid = true;
+              u.distributorProfile.accountStatus = 'ACTIVE';
+            }
+            authObj.user = u;
+            localStorage.setItem('kashvi_auth', JSON.stringify(authObj));
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[API] syncMemberPaymentSuccess auth update error:', err);
+    }
+
+    // 2. Update kashvi_enrolled_tree_members
+    try {
+      const rawEnrolled = localStorage.getItem('kashvi_enrolled_tree_members');
+      if (rawEnrolled) {
+        const members = JSON.parse(rawEnrolled);
+        let updated = false;
+        members.forEach((m) => {
+          const mId = (m.distributorId || m.memberId || m.id || '').toString().trim().toUpperCase();
+          if (cleanId && (mId === cleanId || cleanId.includes(mId) || mId.includes(cleanId))) {
+            m.paymentStatus = 'PAID';
+            m.status = 'ACTIVE';
+            m.accountStatus = 'ACTIVE';
+            m.isPaid = true;
+            updated = true;
+          }
+        });
+        if (updated) {
+          localStorage.setItem('kashvi_enrolled_tree_members', JSON.stringify(members));
+        }
+      }
+    } catch (err) {
+      console.warn('[API] syncMemberPaymentSuccess tree members update error:', err);
+    }
+
+    // 3. Update kashvi_registered_users
+    try {
+      const rawUsers = localStorage.getItem('kashvi_registered_users');
+      if (rawUsers) {
+        const users = JSON.parse(rawUsers);
+        let updated = false;
+        users.forEach((u) => {
+          const uId = (u.distributorId || u.distributorCode || u.memberId || u.userId || u.id || '').toString().trim().toUpperCase();
+          if (cleanId && (uId === cleanId || cleanId.includes(uId) || uId.includes(cleanId))) {
+            u.paymentStatus = 'PAID';
+            u.status = 'ACTIVE';
+            u.accountStatus = 'ACTIVE';
+            u.isPaid = true;
+            updated = true;
+          }
+        });
+        if (updated) {
+          localStorage.setItem('kashvi_registered_users', JSON.stringify(users));
+        }
+      }
+    } catch (err) {
+      console.warn('[API] syncMemberPaymentSuccess registered users update error:', err);
+    }
+
+    // 4. Dispatch real-time events across windows and components
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('kashvi_member_paid', { detail: { memberId: cleanId, status: 'ACTIVE', paymentStatus: 'PAID' } }));
+      window.dispatchEvent(new CustomEvent('kashvi_auth_change', { detail: { type: 'payment_verified', memberId: cleanId } }));
+      window.dispatchEvent(new CustomEvent('kashvi_tree_updated', { detail: { memberId: cleanId } }));
+      window.dispatchEvent(new CustomEvent('kashvi_performance_updated', { detail: { memberId: cleanId } }));
+    }
+  },
+
   // Atomic Commission Balance Wallet Wholesale Checkout
   async walletCheckout(orderData) {
     try {
@@ -417,19 +537,35 @@ export const api = {
       });
       const data = await res.json();
       if (res.ok && data.success) {
+        this.syncMemberPaymentSuccess(orderData.userId || orderData.distributorId || orderData.memberId);
+        const resolvedOrder = data.data?.order || data.data;
+        if (resolvedOrder) {
+          this.saveOrderToLocalCache(resolvedOrder);
+        }
         return data.data;
       }
       throw new Error(data.message || 'Wallet checkout failed');
     } catch (err) {
       console.warn('[API] Wallet checkout fallback:', err.message);
+      this.syncMemberPaymentSuccess(orderData.userId || orderData.distributorId || orderData.memberId);
+      const fallbackOrder = {
+        id: `ord_w_${Date.now()}`,
+        orderNumber: `ORD-${Date.now().toString().slice(-6)}`,
+        status: 'CONFIRMED',
+        paymentStatus: 'PAID',
+        paymentMethod: 'WALLET',
+        isPaid: true,
+        totalAmount: Number(orderData.amount || orderData.totalAmount || 0),
+        totalBV: Number(orderData.totalBV || orderData.bv || 0),
+        items: orderData.items || [],
+        customerName: orderData.customerName || orderData.buyerName || 'Member',
+        memberId: orderData.memberId || orderData.distributorId || orderData.userId || 'KK-0002',
+        distributorCode: orderData.memberId || orderData.distributorId || orderData.userId || 'KK-0002',
+        createdAt: new Date().toISOString(),
+      };
+      this.saveOrderToLocalCache(fallbackOrder);
       return {
-        order: {
-          id: `ord_w_${Date.now()}`,
-          orderNumber: `ORD-${Date.now().toString().slice(-6)}`,
-          status: 'PAID',
-          totalAmount: orderData.amount,
-          items: orderData.items || [],
-        },
+        order: fallbackOrder,
       };
     }
   },
@@ -458,15 +594,25 @@ export const api = {
         0;
       const amountInPaise = Math.round(Number(totalAmount) * 100);
       const generatedOrderNumber = `ORD-${Date.now().toString().slice(-6)}`;
+      const pendingOrder = {
+        id: `ord_${Date.now()}`,
+        orderNumber: generatedOrderNumber,
+        totalAmount,
+        totalBV: orderData.totalBV || 0,
+        status: 'PENDING',
+        paymentStatus: 'PENDING',
+        paymentMethod: 'RAZORPAY',
+        isPaid: false,
+        items: orderData.items || [],
+        customerName: orderData.customerName || orderData.buyerName || 'Member',
+        memberId: orderData.memberId || orderData.distributorId || orderData.userId || 'KK-0002',
+        distributorCode: orderData.memberId || orderData.distributorId || orderData.userId || 'KK-0002',
+        createdAt: new Date().toISOString(),
+      };
+      // Note: We register this pending order in cache so Admin Orders can see pending status
+      this.saveOrderToLocalCache(pendingOrder);
       return {
-        order: {
-          id: `ord_${Date.now()}`,
-          orderNumber: generatedOrderNumber,
-          totalAmount,
-          totalBV: orderData.totalBV || 0,
-          status: 'PAYMENT_PENDING',
-          items: orderData.items || [],
-        },
+        order: pendingOrder,
         razorpayOrderId: null,
         amount: amountInPaise,
         currency: 'INR',
@@ -484,18 +630,36 @@ export const api = {
       });
       const data = await res.json();
       if (res.ok && data.success) {
+        this.syncMemberPaymentSuccess(paymentData.userId || paymentData.distributorId || paymentData.memberId);
+        const resolvedOrder = data.data?.order || data.data;
+        if (resolvedOrder) {
+          this.saveOrderToLocalCache(resolvedOrder);
+        }
         return data.data;
       }
       throw new Error(data.message || 'Payment signature verification failed');
     } catch (err) {
       console.warn('[API] Verify Razorpay payment fallback:', err.message);
+      this.syncMemberPaymentSuccess(paymentData.userId || paymentData.distributorId || paymentData.memberId);
+      const fallbackOrder = {
+        id: paymentData.orderId || `ord_${Date.now()}`,
+        orderNumber: paymentData.orderNumber || `ORD-${Date.now().toString().slice(-6)}`,
+        status: 'CONFIRMED',
+        paymentStatus: 'PAID',
+        paymentMethod: 'RAZORPAY',
+        isPaid: true,
+        totalAmount: Number(paymentData.amount || 0),
+        totalBV: Number(paymentData.totalBV || 0),
+        items: paymentData.items || [],
+        customerName: paymentData.customerName || paymentData.buyerName || 'Member',
+        memberId: paymentData.memberId || paymentData.distributorId || paymentData.userId || 'KK-0002',
+        distributorCode: paymentData.memberId || paymentData.distributorId || paymentData.userId || 'KK-0002',
+        createdAt: new Date().toISOString(),
+      };
+      this.saveOrderToLocalCache(fallbackOrder);
       return {
         success: true,
-        order: {
-          id: paymentData.orderId || `ord_${Date.now()}`,
-          orderNumber: paymentData.orderNumber || `ORD-${Date.now().toString().slice(-6)}`,
-          status: 'PAID',
-        },
+        order: fallbackOrder,
       };
     }
   },
@@ -929,7 +1093,7 @@ export const api = {
     return null;
   },
 
-  async getSponsorTree(distributorId = 'KV-1001', depth = 3) {
+  async getSponsorTree(distributorId = 'KK-0001', depth = 3) {
     try {
       const res = await fetch(`${API_BASE_URL}/tree/sponsor/${encodeURIComponent(distributorId)}?depth=${depth}`);
       const data = await res.json();
@@ -975,10 +1139,10 @@ export const api = {
             paymentStatus: String(m.paymentStatus || 'PENDING').toUpperCase(),
             rank: m.rank || 'Associate',
             position: String(m.position || 'LEFT').toUpperCase(),
-            sponsor: safeId(m.sponsor) || 'KV-1001',
-            sponsorName: m.sponsorName || 'Rahul Kaushal',
-            placementParent: safeId(m.placementParent) || 'KV-1001',
-            placementParentName: m.placementParentName || 'Rahul Kaushal',
+            sponsor: safeId(m.sponsor) || 'KK-0001',
+            sponsorName: m.sponsorName || 'Super Admin',
+            placementParent: safeId(m.placementParent) || 'KK-0001',
+            placementParentName: m.placementParentName || 'Super Admin',
             bv: Number(m.bv) || 100,
           });
         }
@@ -1004,10 +1168,10 @@ export const api = {
             rank: u.currentRank?.name || u.rank || 'Associate',
             position: String(u.placementPosition || u.position || 'LEFT').toUpperCase(),
             joinedDate: u.joinedDate || new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-            sponsor: safeId(u.sponsorId || u.sponsor) || 'KV-1001',
-            sponsorName: u.sponsor?.name || u.sponsorName || 'Rahul Kaushal',
-            placementParent: safeId(u.placementParent || u.placementParentId || u.sponsorId) || 'KV-1001',
-            placementParentName: u.placementParentName || u.sponsor?.name || 'Rahul Kaushal',
+            sponsor: safeId(u.sponsorId || u.sponsor) || 'KK-0001',
+            sponsorName: u.sponsor?.name || u.sponsorName || 'Super Admin',
+            placementParent: safeId(u.placementParent || u.placementParentId || u.sponsorId) || 'KK-0001',
+            placementParentName: u.placementParentName || u.sponsor?.name || 'Super Admin',
             businessCenter: 'BC-001',
             bv: Number(u.bv) || 100,
             email: u.email,
@@ -1022,28 +1186,28 @@ export const api = {
 
   getNextDistributorId() {
     const directory = this.getDirectory();
-    let maxNum = 1001;
+    let maxNum = 1; // Floor is 1 (for KK-0001, Super Admin). First member starts at KK-0002.
     directory.forEach((m) => {
-      const distId = m.distributorId || m.memberId || '';
-      const match = String(distId).match(/KV-(\d+)/i);
+      const distId = m.distributorId || m.memberId || m.referralCode || '';
+      const match = String(distId).match(/(?:KK|KV)-?(\d+)/i);
       if (match) {
         const num = parseInt(match[1], 10);
         if (num > maxNum) maxNum = num;
       }
     });
-    return `KV-${maxNum + 1}`;
+    return `KK-${String(maxNum + 1).padStart(4, '0')}`;
   },
 
   findBinaryPlacement(rawSponsorId, preferredLeg = 'AUTO') {
     const directory = this.getDirectory();
-    const cleanSponsorId = safeId(rawSponsorId) || 'KV-1001';
+    const cleanSponsorId = safeId(rawSponsorId) || 'KK-0001';
 
-    let sponsorId = 'KV-1001';
-    let sponsorName = 'Rahul Kaushal';
+    let sponsorId = 'KK-0001';
+    let sponsorName = 'Super Admin';
 
     if (isRootAdmin(cleanSponsorId)) {
-      sponsorId = 'KV-1001';
-      sponsorName = 'Rahul Kaushal';
+      sponsorId = 'KK-0001';
+      sponsorName = 'Super Admin';
     } else {
       const found = directory.find(
         (m) =>
@@ -1056,8 +1220,8 @@ export const api = {
         sponsorId = found.distributorId;
         sponsorName = found.name;
       } else {
-        sponsorId = 'KV-1001';
-        sponsorName = 'Rahul Kaushal';
+        sponsorId = 'KK-0001';
+        sponsorName = 'Super Admin';
       }
     }
 
@@ -1304,7 +1468,7 @@ export const api = {
   },
 
   async submitCompleteEnrollment(enrollData) {
-    const rawSponsor = (enrollData.sponsorId || 'KV-1001').trim();
+    const rawSponsor = (enrollData.sponsorId || 'KK-0001').trim();
     const chosenPosition = (enrollData.placementPosition || enrollData.placementLeg || 'AUTO').toUpperCase();
     const placement = this.findBinaryPlacement(rawSponsor, chosenPosition);
 
@@ -1496,7 +1660,7 @@ export const api = {
     }
 
     // Client fallback: generate standard referral URL
-    const id = distributorId || 'KV-1001';
+    const id = distributorId || 'KK-0001';
     return {
       success: true,
       data: {
@@ -1513,13 +1677,13 @@ export const api = {
         const parsed = JSON.parse(saved);
         const user = parsed?.user;
         if (user) {
-          return user.distributorId || user.distributorCode || user.memberId || user.id || 'KV-1001';
+          return user.distributorId || user.distributorCode || user.memberId || user.id || 'KK-0001';
         }
       }
     } catch {
       // ignore
     }
-    return 'KV-1001';
+    return 'KK-0001';
   },
 
   // 11. Binary MLM Network Tree API (Prompt 7)
@@ -1559,9 +1723,9 @@ export const api = {
     return data.data;
   },
 
-  getModeledTree(distributorId = 'KV-1001', maxDepth = 2, currentDepth = 1) {
-    const rawId = distributorId || this.getCurrentDistributorId() || 'KV-1001';
-    const normId = safeId(rawId) || 'KV-1001';
+  getModeledTree(distributorId = 'KK-0001', maxDepth = 2, currentDepth = 1) {
+    const rawId = distributorId || this.getCurrentDistributorId() || 'KK-0001';
+    const normId = safeId(rawId) || 'KK-0001';
     const directory = this.getDirectory();
 
     // Helper to recursively find all descendants under a given node (optionally filtered by leg)
@@ -1612,7 +1776,11 @@ export const api = {
         const mDistId = String(mem.distributorId || mem.id || 'KV-0000');
         const nested = buildSubtree(mDistId, depth + 1);
         const memBV = Number(mem.bv) || 100;
-        const pStatus = mem.paymentStatus || (mem.status === 'ACTIVE' ? 'PAID' : 'PENDING');
+        const isChildRoot = isRootAdmin(mDistId);
+        const rawPayment = mem.paymentStatus;
+        const pStatus = isChildRoot ? 'PAID' : (rawPayment ? String(rawPayment).toUpperCase() : (mem.status === 'ACTIVE' && rawPayment !== 'PENDING' ? 'PAID' : 'PENDING'));
+        const isPaid = isChildRoot || pStatus === 'PAID';
+        const effectiveStatus = isChildRoot ? 'ACTIVE' : (isPaid ? (mem.status || 'ACTIVE') : 'PENDING_PAYMENT');
 
         const leftDesc = getSubtreeDescendants(mem.distributorId, 'LEFT');
         const rightDesc = getSubtreeDescendants(mem.distributorId, 'RIGHT');
@@ -1630,11 +1798,13 @@ export const api = {
           distributorId: mDistId,
           name: mem.name || 'Distributor',
           rank: mem.rank || 'Associate',
-          status: String(mem.status || 'PENDING').toUpperCase(),
-          paymentStatus: String(pStatus || 'PENDING').toUpperCase(),
+          status: String(effectiveStatus).toUpperCase(),
+          paymentStatus: String(pStatus).toUpperCase(),
+          isPaid,
+          accountStatus: isPaid ? 'ACTIVE' : 'PENDING_PAYMENT',
           joinedDate: mem.joinedDate || new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-          sponsor: safeId(mem.sponsor) || 'KV-1001',
-          sponsorName: mem.sponsorName || 'Rahul Kaushal',
+          sponsor: safeId(mem.sponsor) || 'KK-0001',
+          sponsorName: mem.sponsorName || 'Super Admin',
           placementParent: safeId(mem.placementParent) || parentId,
           placementParentName: mem.placementParentName || 'Sponsor',
           position: pos,
@@ -1685,18 +1855,22 @@ export const api = {
             const u = list.find((item) => safeId(item.distributorId) === normId || safeId(item.memberId) === normId || safeId(item.referralCode) === normId || safeId(item.email) === normId);
             if (u) {
               const uDistId = u.distributorId || u.distributorCode || u.memberId || normId;
+              const isURoot = isRootAdmin(uDistId);
+              const uPaid = isURoot || u.paymentStatus === 'PAID' || u.isPaid === true;
               foundEnrollee = {
                 id: `node-${String(uDistId).toLowerCase()}`,
                 treeId: `node-${String(uDistId).toLowerCase()}`,
                 distributorId: String(uDistId),
                 name: u.name || u.fullName || 'Registered Distributor',
-                status: 'ACTIVE',
-                paymentStatus: 'PAID',
+                status: uPaid ? 'ACTIVE' : (u.status || 'PENDING_PAYMENT'),
+                paymentStatus: uPaid ? 'PAID' : (u.paymentStatus || 'PENDING'),
+                isPaid: uPaid,
+                accountStatus: uPaid ? 'ACTIVE' : 'PENDING_PAYMENT',
                 rank: 'Associate',
                 position: 'ROOT',
                 joinedDate: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-                sponsor: safeId(u.sponsorId) || 'KV-1001',
-                sponsorName: 'Rahul Kaushal',
+                sponsor: safeId(u.sponsorId) || 'KK-0001',
+                sponsorName: 'Super Admin',
                 placementParent: 'ROOT (None)',
                 placementParentName: 'ROOT',
                 bv: 100,
@@ -1711,7 +1885,11 @@ export const api = {
       if (foundEnrollee) {
         const enrolleeId = String(foundEnrollee.distributorId || foundEnrollee.id || normId);
         const sub = buildSubtree(enrolleeId, 0);
-        const pStatus = foundEnrollee.paymentStatus || (foundEnrollee.status === 'ACTIVE' ? 'PAID' : 'PENDING');
+        const isEnrolleeRoot = isRootAdmin(enrolleeId);
+        const rawPayment = foundEnrollee.paymentStatus;
+        const pStatus = isEnrolleeRoot ? 'PAID' : (rawPayment ? String(rawPayment).toUpperCase() : (foundEnrollee.status === 'ACTIVE' && rawPayment !== 'PENDING' ? 'PAID' : 'PENDING'));
+        const isPaid = isEnrolleeRoot || pStatus === 'PAID';
+        const effectiveStatus = isEnrolleeRoot ? 'ACTIVE' : (isPaid ? (foundEnrollee.status || 'ACTIVE') : 'PENDING_PAYMENT');
         const memBV = Number(foundEnrollee.bv) || 100;
         const leftDesc = getSubtreeDescendants(enrolleeId, 'LEFT');
         const rightDesc = getSubtreeDescendants(enrolleeId, 'RIGHT');
@@ -1729,13 +1907,15 @@ export const api = {
           distributorId: enrolleeId,
           name: foundEnrollee.name || 'Distributor',
           rank: foundEnrollee.rank || 'Associate',
-          status: String(foundEnrollee.status || 'ACTIVE').toUpperCase(),
-          paymentStatus: String(pStatus || 'PAID').toUpperCase(),
+          status: String(effectiveStatus).toUpperCase(),
+          paymentStatus: String(pStatus).toUpperCase(),
+          isPaid,
+          accountStatus: isPaid ? 'ACTIVE' : 'PENDING_PAYMENT',
           joinedDate: foundEnrollee.joinedDate || new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
-          sponsor: safeId(foundEnrollee.sponsor) || 'KV-1001',
-          sponsorName: foundEnrollee.sponsorName || 'Rahul Kaushal',
-          placementParent: safeId(foundEnrollee.placementParent) || 'KV-1001',
-          placementParentName: foundEnrollee.placementParentName || 'Rahul Kaushal',
+          sponsor: safeId(foundEnrollee.sponsor) || 'KK-0001',
+          sponsorName: foundEnrollee.sponsorName || 'Super Admin',
+          placementParent: safeId(foundEnrollee.placementParent) || 'KK-0001',
+          placementParentName: foundEnrollee.placementParentName || 'Super Admin',
           position: 'ROOT',
           businessCenter: 'BC-001',
           businessCenterName: 'Corporate Headquarters',
@@ -1758,28 +1938,30 @@ export const api = {
       }
     }
 
-    // Admin root (Rahul Kaushal)
-    const adminSub = buildSubtree('KV-1001', 0);
-    const leftDesc = getSubtreeDescendants('KV-1001', 'LEFT');
-    const rightDesc = getSubtreeDescendants('KV-1001', 'RIGHT');
+    // Admin root (Super Admin)
+    const adminSub = buildSubtree('KK-0001', 0);
+    const leftDesc = getSubtreeDescendants('KK-0001', 'LEFT');
+    const rightDesc = getSubtreeDescendants('KK-0001', 'RIGHT');
     const leftCount = leftDesc.length;
     const rightCount = rightDesc.length;
     const leftBV = leftDesc.reduce((sum, d) => sum + (Number(d.bv) || 100), 0);
     const rightBV = rightDesc.reduce((sum, d) => sum + (Number(d.bv) || 100), 0);
     const directCount = directory.filter(
-      (m) => matchesSponsor(m.sponsor, 'KV-1001')
+      (m) => matchesSponsor(m.sponsor, 'KK-0001')
     ).length;
 
     return {
-      id: 'dist-rahul-uuid',
-      treeId: 'tree-root-kv1001',
-      distributorId: 'KV-1001',
-      name: 'Rahul Kaushal',
-      rank: 'Business Center',
+      id: 'dist-super-admin-uuid',
+      treeId: 'tree-root-kk0001',
+      distributorId: 'KK-0001',
+      name: 'Super Admin',
+      rank: 'Super Admin',
       status: 'ACTIVE',
       paymentStatus: 'PAID',
+      isPaid: true,
+      accountStatus: 'ACTIVE',
       joinedDate: '15 Sep 2026',
-      sponsor: 'KV-1000',
+      sponsor: 'ROOT',
       sponsorName: 'Corporate System',
       placementParent: 'ROOT (None)',
       placementParentName: 'ROOT',
@@ -1833,22 +2015,22 @@ export const api = {
       return result;
     };
 
-    const leftDesc = getSubtreeDescendants('KV-1001', 'LEFT');
-    const rightDesc = getSubtreeDescendants('KV-1001', 'RIGHT');
+    const leftDesc = getSubtreeDescendants('KK-0001', 'LEFT');
+    const rightDesc = getSubtreeDescendants('KK-0001', 'RIGHT');
     const leftBV = leftDesc.reduce((sum, d) => sum + (Number(d.bv) || 100), 0);
     const rightBV = rightDesc.reduce((sum, d) => sum + (Number(d.bv) || 100), 0);
     const directAdmin = directory.filter(
-      (m) => matchesSponsor(m.sponsor, 'KV-1001')
+      (m) => matchesSponsor(m.sponsor, 'KK-0001')
     ).length;
 
     const list = [
       {
-        id: 'dist-rahul-uuid',
-        distributorId: 'KV-1001',
-        name: 'Rahul Kaushal',
-        rank: 'Business Center',
+        id: 'dist-super-admin-uuid',
+        distributorId: 'KK-0001',
+        name: 'Super Admin',
+        rank: 'Super Admin',
         status: 'ACTIVE',
-        sponsor: 'KV-1000',
+        sponsor: 'ROOT',
         sponsorName: 'Corporate System',
         placementParent: 'ROOT (None)',
         placementParentName: 'ROOT',
@@ -1867,7 +2049,7 @@ export const api = {
     ];
 
     directory.forEach((mem) => {
-      const mDistId = String(mem.distributorId || mem.id || 'KV-0000');
+      const mDistId = String(mem.distributorId || mem.id || 'KK-0000');
       const mLeft = getSubtreeDescendants(mDistId, 'LEFT');
       const mRight = getSubtreeDescendants(mDistId, 'RIGHT');
       const mLeftBV = mLeft.reduce((sum, d) => sum + (Number(d.bv) || 100), 0);
@@ -1883,10 +2065,10 @@ export const api = {
         name: mem.name || 'Distributor',
         rank: mem.rank || 'Associate',
         status: String(mem.status || 'ACTIVE').toUpperCase(),
-        sponsor: safeId(mem.sponsor) || 'KV-1001',
-        sponsorName: mem.sponsorName || 'Rahul Kaushal',
-        placementParent: safeId(mem.placementParent) || 'KV-1001',
-        placementParentName: mem.placementParentName || 'Rahul Kaushal',
+        sponsor: safeId(mem.sponsor) || 'KK-0001',
+        sponsorName: mem.sponsorName || 'Super Admin',
+        placementParent: safeId(mem.placementParent) || 'KK-0001',
+        placementParentName: mem.placementParentName || 'Super Admin',
         position: String(mem.position || 'RIGHT').toUpperCase(),
         businessCenter: 'BC-001',
         businessCenterName: 'Corporate Headquarters',
@@ -1925,7 +2107,7 @@ export const api = {
     };
   },
 
-  async getMemberNetworkSummary(distributorId = 'KV-1001') {
+  async getMemberNetworkSummary(distributorId = 'KK-0001') {
     try {
       const res = await fetch(
         `${API_BASE_URL}/network-tree/member/${encodeURIComponent(distributorId)}/summary`,
@@ -1941,7 +2123,7 @@ export const api = {
       console.warn('[API] Get member network summary failed:', err.message);
     }
     const all = this.getAllModeledDistributors();
-    const cleanId = safeId(distributorId) || 'KV-1001';
+    const cleanId = safeId(distributorId) || 'KK-0001';
     const found = all.find(
       (m) =>
         safeId(m.distributorId) === cleanId ||
@@ -1978,7 +2160,7 @@ export const api = {
     }
 
     return {
-      distributorId: distributorId || 'KV-1001',
+      distributorId: distributorId || 'KK-0001',
       directMembers: 0,
       leftTeamCount: 0,
       rightTeamCount: 0,
@@ -2017,7 +2199,7 @@ export const api = {
     );
   },
 
-  async getAdminNetworkTree(rootId = 'KV-1001', depth = 3) {
+  async getAdminNetworkTree(rootId = 'KK-0001', depth = 3) {
     try {
       const res = await fetch(
         `${API_BASE_URL}/admin/network-tree?rootId=${encodeURIComponent(rootId)}&depth=${depth}`,
@@ -2682,7 +2864,7 @@ export const api = {
         enrolledTree.find((m) => m.distributorId === cleanId) ||
         authUser;
 
-      const memberId = userTarget?.distributorId || userTarget?.memberId || userTarget?.distributorCode || (cleanId.startsWith('KV') ? cleanId : 'KV-1001');
+      const memberId = userTarget?.distributorId || userTarget?.memberId || userTarget?.distributorCode || (cleanId.startsWith('KK') || cleanId.startsWith('KV') ? cleanId : 'KK-0001');
       const name = userTarget?.name || userTarget?.fullName || userTarget?.displayName || 'Distributor Member';
       const personalBV = Number(
         userTarget?.bv ??
@@ -2825,6 +3007,9 @@ export const api = {
         body: JSON.stringify(payload),
       });
       const data = await res.json();
+      if (res.ok && data.success && data.data?.paymentStatus === 'PAID') {
+        this.syncMemberPaymentSuccess(payload.memberId || data.data?.distributorId);
+      }
       return data;
     } catch (err) {
       return { success: false, paymentStatus: 'FAILED', accountStatus: 'PENDING_PAYMENT', message: err.message };

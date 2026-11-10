@@ -29,7 +29,7 @@ export function NetworkPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const isAdmin = currentUser?.role === 'ADMIN' || currentUser?.role === 'SUPER_ADMIN' || Boolean(currentUser?.isOwner);
 
-  const userRootId = currentUser?.memberId || currentUser?.distributorId || 'KV-1001';
+  const userRootId = currentUser?.memberId || currentUser?.distributorId || (isAdmin ? 'KK-0001' : 'KK-0002');
   const urlMemberParam = searchParams.get('root') || searchParams.get('member');
   const [currentRootId, setCurrentRootId] = useState((isAdmin && urlMemberParam) ? urlMemberParam : userRootId);
   const [depth, setDepth] = useState(2);
@@ -477,7 +477,7 @@ export function NetworkPage() {
               </div>
               <div className="drawer-attr-row">
                 <span className="attr-lbl">Direct Sponsor</span>
-                <span className="attr-val">{selectedNode.sponsor || 'KV-1000'}</span>
+                <span className="attr-val">{selectedNode.sponsor || 'KK-0001'}</span>
               </div>
               <div className="drawer-attr-row">
                 <span className="attr-lbl">Placement Parent</span>

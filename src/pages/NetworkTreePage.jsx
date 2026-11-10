@@ -94,7 +94,7 @@ function NetworkTreePage({ embedded = false }) {
     Boolean(currentUser?.isOwner) ||
     Boolean(adminAccountId);
   const initialDistributorId = isAdmin
-    ? adminAccountId || 'KV-1001'
+    ? adminAccountId || 'KK-0001'
     : distributorAccountId || currentUser?.distributorCode || currentUser?.distributorId || currentUser?.memberId || currentUser?.id || 'DST-0001';
 
   // Keep the authenticated account as the persistent tree root.
@@ -221,7 +221,7 @@ function NetworkTreePage({ embedded = false }) {
     setMoveError(null);
     setMoveSuccess(null);
     const mId = member?.distributorId || member?.id || '';
-    const oldP = member?.sponsor || member?.parentId || (mId === 'KV-1002' ? 'KV-1001' : 'KV-1002');
+    const oldP = member?.sponsor || member?.parentId || (mId === 'KK-0002' ? 'KK-0001' : 'KK-0002');
     const oldPos = (member?.position || 'LEFT').toUpperCase();
 
     setMoveFormData({
@@ -591,10 +591,10 @@ function NetworkTreePage({ embedded = false }) {
                     type="button"
                     className="btn-tree-audit-trail"
                     onClick={() => {
-                      setCurrentRootId('KV-1001');
-                      setBreadcrumbs([{ id: 'KV-1001', name: 'Company Root (KV-1001)' }]);
-                      setSearchParams({ member: 'KV-1001' });
-                      fetchTreeData('KV-1001');
+                      setCurrentRootId('KK-0001');
+                      setBreadcrumbs([{ id: 'KK-0001', name: 'Company Root (KK-0001)' }]);
+                      setSearchParams({ member: 'KK-0001' });
+                      fetchTreeData('KK-0001');
                     }}
                     title="View Company Root Organization (Admin/Owner Only)"
                     style={{ background: '#fef3c7', borderColor: '#fcd34d', color: '#92400e', fontWeight: 600 }}
@@ -1124,7 +1124,7 @@ function NetworkTreePage({ embedded = false }) {
                   type="text"
                   className="admin-move-input"
                   required
-                  placeholder="e.g. KV-1007"
+                  placeholder="e.g. KK-0007"
                   value={moveFormData.memberId}
                   onChange={(e) =>
                     setMoveFormData({ ...moveFormData, memberId: e.target.value })
@@ -1142,7 +1142,7 @@ function NetworkTreePage({ embedded = false }) {
                     type="text"
                     className="admin-move-input"
                     required
-                    placeholder="e.g. KV-1002"
+                    placeholder="e.g. KK-0002"
                     value={moveFormData.oldParent}
                     onChange={(e) =>
                       setMoveFormData({ ...moveFormData, oldParent: e.target.value })
@@ -1176,7 +1176,7 @@ function NetworkTreePage({ embedded = false }) {
                     type="text"
                     className="admin-move-input"
                     required
-                    placeholder="e.g. KV-1003"
+                    placeholder="e.g. KK-0003"
                     value={moveFormData.newParent}
                     onChange={(e) =>
                       setMoveFormData({ ...moveFormData, newParent: e.target.value })
@@ -1359,7 +1359,7 @@ function NetworkTreePage({ embedded = false }) {
                   <li>All enrolled downline members will be removed</li>
                   <li>Total team count and BV will reset to 0</li>
                   <li>Left &amp; Right legs will be reset to open (+ Available)</li>
-                  <li>Rahul Kaushal (KV-1001) will remain as root organization</li>
+                  <li>Super Admin (KK-0001) will remain as root organization</li>
                 </ul>
               </div>
             </div>

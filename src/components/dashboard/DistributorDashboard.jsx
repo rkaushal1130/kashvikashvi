@@ -183,12 +183,16 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
     window.addEventListener('kashvi_performance_updated', handleRefresh);
     window.addEventListener('kashvi_tree_updated', handleRefresh);
     window.addEventListener('kashvi_auth_updated', handleRefresh);
+    window.addEventListener('kashvi_member_paid', handleRefresh);
+    window.addEventListener('kashvi_auth_change', handleRefresh);
 
     return () => {
       mounted = false;
       window.removeEventListener('kashvi_performance_updated', handleRefresh);
       window.removeEventListener('kashvi_tree_updated', handleRefresh);
       window.removeEventListener('kashvi_auth_updated', handleRefresh);
+      window.removeEventListener('kashvi_member_paid', handleRefresh);
+      window.removeEventListener('kashvi_auth_change', handleRefresh);
     };
   }, [effectiveUser?.memberId, effectiveUser?.distributorId, effectiveUser?.referralCode, effectiveUser?.distributorCode, effectiveUser?.id]);
 
@@ -377,12 +381,13 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
     'NA';
   const memberId = typeof rawMemberId === 'object' ? (rawMemberId?.code || rawMemberId?.id || 'NA') : rawMemberId;
 
-  const userStatus = (effectiveUser?.status || effectiveUser?.distributorProfile?.status || 'PENDING').toUpperCase();
-  const rawPayment = effectiveUser?.paymentStatus || effectiveUser?.distributorProfile?.paymentStatus || 'PENDING';
+  const isRootAdmin = memberId === 'KK-0001' || effectiveUser?.role === 'SUPER_ADMIN' || effectiveUser?.role === 'ADMIN' || effectiveUser?.memberId === 'KK-0001';
+  const userStatus = (isRootAdmin ? 'ACTIVE' : (effectiveUser?.status || effectiveUser?.distributorProfile?.status || 'PENDING')).toUpperCase();
+  const rawPayment = isRootAdmin ? 'PAID' : (effectiveUser?.paymentStatus || effectiveUser?.distributorProfile?.paymentStatus || 'PENDING');
   const paymentStatus = rawPayment.toUpperCase();
-  const isPaid = paymentStatus === 'PAID';
-  const isFailed = paymentStatus === 'FAILED' || paymentStatus === 'CANCELLED';
-  const idColorClass = (userStatus === 'ACTIVE' && isPaid) ? 'id-active-paid' : isFailed ? 'id-failed' : 'id-pending';
+  const isPaid = isRootAdmin || paymentStatus === 'PAID';
+  const isFailed = !isRootAdmin && (paymentStatus === 'FAILED' || paymentStatus === 'CANCELLED');
+  const idColorClass = isPaid ? 'id-active-paid' : isFailed ? 'id-failed' : 'id-pending';
   const treeId = effectiveUser?.treeId || effectiveUser?.distributorProfile?.treeId;
 
   const rawMemberSince =
@@ -408,8 +413,9 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
   // Authoritative Member Performance Display Values (PROMPT: Performance Card)
   const displayMemberName = performance?.name || (memberName !== 'NA' ? memberName : (effectiveUser?.name || 'Distributor'));
   const displayMemberId = performance?.distributorCode || performance?.memberId || effectiveUser?.distributorCode || effectiveUser?.referralCode || effectiveUser?.memberId || effectiveUser?.distributorId || '...';
-  const displayPaymentStatus = (performance?.paymentStatus || paymentStatus || effectiveUser?.paymentStatus || 'PENDING').toUpperCase();
-  const displayUserStatus = (performance?.accountStatus || userStatus || effectiveUser?.status || (displayPaymentStatus === 'PAID' ? 'ACTIVE' : 'PENDING_PAYMENT')).toUpperCase();
+  const isDisplayRootAdmin = isRootAdmin || displayMemberId === 'KK-0001' || displayMemberId === 'KV-1001';
+  const displayPaymentStatus = (isDisplayRootAdmin ? 'PAID' : (performance?.paymentStatus || paymentStatus || effectiveUser?.paymentStatus || 'PENDING')).toUpperCase();
+  const displayUserStatus = (isDisplayRootAdmin ? 'ACTIVE' : (performance?.accountStatus || userStatus || effectiveUser?.status || (displayPaymentStatus === 'PAID' ? 'ACTIVE' : 'PENDING_PAYMENT'))).toUpperCase();
   const displayMemberSince = performance?.brandPartnerSince || (memberSince !== 'NA' ? memberSince : 'Today');
   const displayRankName = performance?.currentRank || currentRankName || 'Base';
   const currentRankCode = performance?.currentRankCode || cumulativeRank?.currentRank || (displayRankName ? displayRankName.toUpperCase() : 'BASE');
@@ -600,7 +606,7 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
                   <div className="dropdown-avatar">{memberName.charAt(0)}</div>
                   <div>
                     <h4 className="dropdown-user-name">{memberName}</h4>
-                    <span className="dropdown-user-id">ID: {memberId}</span>
+                    <span className={`dropdown-user-id ${isPaid ? 'id-paid-green' : 'id-unpaid-inactive'}`}>ID: {memberId}</span>
                   </div>
                 </div>
                 <div className="dropdown-divider" />

@@ -158,7 +158,7 @@ function Join() {
 
   // Handle Copy Referral Link
   const handleCopyReferralLink = (targetId) => {
-    const id = targetId || sponsorData?.sponsor?.distributorId || refParam || 'KV-1001';
+    const id = targetId || sponsorData?.sponsor?.distributorId || refParam || 'KK-0001';
     const domain = window.location.origin;
     const url = `${domain}/join?ref=${encodeURIComponent(id)}`;
 
@@ -469,9 +469,9 @@ function Join() {
                     <button
                       type="button"
                       className="btn-pill-link"
-                      onClick={() => setSearchParams({ ref: 'KV-1001' })}
+                      onClick={() => setSearchParams({ ref: 'KK-0001' })}
                     >
-                      KV-1001 (Rahul Kaushal)
+                      KK-0001 (Super Admin)
                     </button>
                   </div>
                 </form>
@@ -496,7 +496,7 @@ function Join() {
                     <input
                       type="text"
                       className="form-input"
-                      placeholder="e.g. KV-1001"
+                      placeholder="e.g. KK-0001"
                       value={manualSponsorInput}
                       onChange={(e) => setManualSponsorInput(e.target.value)}
                     />
@@ -510,9 +510,9 @@ function Join() {
                     <button
                       type="button"
                       className="btn-pill-link"
-                      onClick={() => setSearchParams({ ref: 'KV-1001' })}
+                      onClick={() => setSearchParams({ ref: 'KK-0001' })}
                     >
-                      Use KV-1001 (Admin)
+                      Use KK-0001 (Admin)
                     </button>
                   </div>
                 </form>

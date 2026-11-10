@@ -1072,3 +1072,112 @@
   font-weight: 600;
   box-shadow: 0 4px 12px rgba(22, 163, 74, 0.25);
 }
+
+/* Distributor ID Link Green vs Inactive Status */
+.distributor-id-link {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  cursor: pointer;
+  padding: 2px 7px;
+  border-radius: 4px;
+  display: inline-block;
+  font-size: 13px;
+  transition: all 0.2s ease;
+}
+
+.distributor-id-link.id-paid-green {
+  color: #15803d !important;
+  background-color: #dcfce7 !important;
+  border: 1px solid #86efac !important;
+  font-weight: 700 !important;
+}
+
+.distributor-id-link.id-unpaid-inactive {
+  color: #64748b !important;
+  background-color: #f1f5f9 !important;
+  border: 1px solid #cbd5e1 !important;
+  font-weight: 500 !important;
+}
+
+/* Order Member ID Green vs Inactive Status */
+.order-member-id {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 12px;
+  letter-spacing: 0.4px;
+  font-weight: 700;
+}
+
+.order-member-id.id-paid-green {
+  color: #15803d !important;
+  background-color: #dcfce7 !important;
+  border: 1px solid #86efac !important;
+}
+
+.order-member-id.id-unpaid-inactive {
+  color: #64748b !important;
+  background-color: #f1f5f9 !important;
+  border: 1px solid #cbd5e1 !important;
+}
+
+/* Payment Status Badges (Requirement 4) */
+.payment-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 9999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.payment-status-badge.paid {
+  background-color: #dcfce7 !important;
+  color: #15803d !important;
+  border: 1px solid #86efac !important;
+}
+
+.payment-status-badge.pending {
+  background-color: #fef3c7 !important;
+  color: #b45309 !important;
+  border: 1px solid #fde68a !important;
+}
+
+.payment-status-badge.failed {
+  background-color: #fee2e2 !important;
+  color: #b91c1c !important;
+  border: 1px solid #fecaca !important;
+}
+
+.payment-status-badge.processing {
+  background-color: #dbeafe !important;
+  color: #1d4ed8 !important;
+  border: 1px solid #93c5fd !important;
+}
+
+.member-id-pill {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+}
+
+.member-id-pill.id-paid-green {
+  color: #15803d !important;
+  background-color: #dcfce7 !important;
+  border: 1px solid #86efac !important;
+  font-weight: 700 !important;
+}
+
+.member-id-pill.id-unpaid-inactive {
+  color: #64748b !important;
+  background-color: #f1f5f9 !important;
+  border: 1px solid #cbd5e1 !important;
+  font-weight: 500 !important;
+}

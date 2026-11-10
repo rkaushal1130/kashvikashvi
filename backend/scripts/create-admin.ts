@@ -20,9 +20,9 @@ async function main() {
 
   const email = 'admin@kashvimlm.com';
   const plainPassword = 'Admin@Kashvimlm#1001';
-  const fullName = 'Admin';
+  const fullName = 'Super Admin';
   const phone = '9876543210';
-  const referralCode = 'KV-1001';
+  const referralCode = 'KK-0001';
 
   console.log('Hashing password with Argon2id...');
   const passwordHash = await hashPassword(plainPassword);
@@ -33,6 +33,7 @@ async function main() {
     update: {
       fullName,
       phone,
+      userId: referralCode,
       referralCode,
       passwordHash,
       roleId: adminRole.id,
@@ -47,6 +48,7 @@ async function main() {
       fullName,
       email,
       phone,
+      userId: referralCode,
       referralCode,
       passwordHash,
       roleId: adminRole.id,
@@ -64,15 +66,15 @@ async function main() {
     },
   });
 
-  console.log('Upserting admin distributor profile (KV-1001)...');
+  console.log('Upserting admin distributor profile (KK-0001)...');
   const adminProfile = await prisma.distributorProfile.upsert({
     where: { userId: user.id },
     update: {
       distributorId: referralCode,
       distributorCode: referralCode,
-      firstName: 'Admin',
-      lastName: '',
-      displayName: 'Admin',
+      firstName: 'Super',
+      lastName: 'Admin',
+      displayName: 'Super Admin',
       status: 'ACTIVE',
       paymentStatus: 'PAID',
     },
@@ -80,23 +82,23 @@ async function main() {
       userId: user.id,
       distributorId: referralCode,
       distributorCode: referralCode,
-      firstName: 'Admin',
-      lastName: '',
-      displayName: 'Admin',
+      firstName: 'Super',
+      lastName: 'Admin',
+      displayName: 'Super Admin',
       status: 'ACTIVE',
       paymentStatus: 'PAID',
     },
   });
 
   const adminBC1 = await prisma.businessCenter.upsert({
-    where: { centerCode: 'KV-1001-BC1' },
+    where: { centerCode: 'KK-0001-BC1' },
     update: {
       status: 'ACTIVE',
     },
     create: {
       distributorId: adminProfile.id,
       centerNumber: 1,
-      centerCode: 'KV-1001-BC1',
+      centerCode: 'KK-0001-BC1',
       status: 'ACTIVE',
       leftVolume: 0,
       rightVolume: 0,
