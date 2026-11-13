@@ -4,6 +4,8 @@ import { AppError } from '../utils/appError';
 import { SafeDecimal } from '../utils/safeDecimal';
 import { maskAccountNumber, maskIfsc } from '../utils/masking';
 import { PnbBankingAdapterFactory, PnbBeneficiaryItem } from '../providers/banking';
+import { AdminFundingCommissionService } from './adminFundingCommission.service';
+import { CumulativeRankCommissionService } from './cumulativeRankCommission.service';
 import {
   CommissionDistributionSummary,
   EligibleBeneficiaryPreviewItem,
@@ -39,87 +41,48 @@ export class AdminCommissionDistributionService {
   // =========================================================================
 
   public static async getSummary(periodId?: string): Promise<CommissionDistributionSummary> {
-    const cycleCode = periodId || `CYCLE-${new Date().toISOString().slice(0, 7)}`;
     const corporateAccountNumber = process.env.PNB_CORPORATE_ACCOUNT_NUMBER || '1923102100000382';
     const corporateIfsc = process.env.PNB_CORPORATE_IFSC || 'PUNB0192310';
 
-    let eligibleTotal = 0;
-    let readyTotal = 0;
-    let quarantinedTotal = 0;
-    let verifiedCount = 0;
-    let unverifiedCount = 0;
-
-    try {
-      // 1. Fetch all approved and unpaid commissions
-      const approvedCommissions = await prisma.commission.findMany({
-        where: {
-          status: { in: ['APPROVED', 'CALCULATED', 'QUALIFIED'] },
-        },
-        select: { distributorId: true, amount: true },
-      });
-
-      // Group commissions by distributor
-      const distributorAmounts = new Map<string, number>();
-      for (const comm of approvedCommissions) {
-        const current = distributorAmounts.get(comm.distributorId) || 0;
-        distributorAmounts.set(comm.distributorId, current + Number(comm.amount));
-      }
-
-      // 2. Query distributor profiles and bank accounts
-      const distributorIds = Array.from(distributorAmounts.keys());
-      const distributors = await prisma.distributorProfile.findMany({
-        where: { id: { in: distributorIds } },
-        include: {
-          bankAccounts: {
-            where: { deletedAt: null },
-            orderBy: { isPrimary: 'desc' },
-          },
-        },
-      });
-
-      const distMap = new Map<string, any>();
-      for (const d of distributors) {
-        distMap.set(d.id, d);
-      }
-
-      for (const [distId, amount] of distributorAmounts.entries()) {
-        eligibleTotal += amount;
-        const dist = distMap.get(distId);
-        const primaryBank = dist?.bankAccounts?.[0];
-        const isVerified = primaryBank?.status === 'VERIFIED';
-
-        if (isVerified && dist?.status === 'ACTIVE') {
-          readyTotal += amount;
-          verifiedCount++;
-        } else {
-          quarantinedTotal += amount;
-          unverifiedCount++;
-        }
-      }
-    } catch {
-      // Fallback defaults for test isolation
-      eligibleTotal = 0;
-      readyTotal = 0;
-    }
-
-    if (eligibleTotal === 0) {
-      eligibleTotal = 392500.0;
-      readyTotal = 392500.0;
-      verifiedCount = 5;
-      unverifiedCount = 0;
-    }
+    // Same numbers as the beneficiary table: the rank-based split of the approved commission pool.
+    const preview = await this.getEligibleCommissionsPreview(periodId);
 
     return {
-      eligibleCommissionsTotal: SafeDecimal.round(eligibleTotal, 2),
-      readyForPnbDisbursalTotal: SafeDecimal.round(readyTotal, 2),
-      quarantinedTotal: SafeDecimal.round(quarantinedTotal, 2),
-      totalBeneficiariesCount: verifiedCount + unverifiedCount,
-      verifiedBankCount: verifiedCount,
-      unverifiedBankCount: unverifiedCount,
-      corporatePnbBalance: 1500000.0, // Authoritative float or sandbox float
+      eligibleCommissionsTotal: preview.totalEligibleAmount,
+      readyForPnbDisbursalTotal: preview.readyAmount,
+      quarantinedTotal: preview.quarantinedAmount,
+      totalBeneficiariesCount: preview.totalCount,
+      verifiedBankCount: preview.readyCount,
+      unverifiedBankCount: preview.quarantinedCount,
+      corporatePnbBalance: 1500000.0, // Sandbox float: no live bank balance integration
       corporateAccountNumber,
       corporateIfsc,
-      activeCycleCode: cycleCode,
+      activeCycleCode: preview.periodId,
+      poolAmount: preview.poolAmount,
+      remainingInPool: preview.remainingInPool,
+    } as CommissionDistributionSummary;
+  }
+
+  // =========================================================================
+  // 1b. CALCULATE: RECORD + APPROVE POOL CONTRIBUTIONS FOR THE PERIOD
+  // =========================================================================
+
+  public static async calculatePeriod(periodId: string | undefined, adminUserId: string) {
+    const cycleCode = periodId || `CYCLE-${new Date().toISOString().slice(0, 10)}`;
+    const calculation = await CumulativeRankCommissionService.calculatePeriodCommissions(cycleCode);
+    const approval = await CumulativeRankCommissionService.approveCommissions(cycleCode, adminUserId);
+    const preview = await this.getEligibleCommissionsPreview(cycleCode);
+
+    return {
+      periodId: cycleCode,
+      contributingMembers: calculation.contributingMembers,
+      totalContributionAmount: calculation.totalContributionAmount,
+      approvedCount: approval.approvedCount,
+      approvedAmount: approval.approvedAmount,
+      poolAmount: preview.poolAmount ?? 0,
+      distributableAmount: preview.totalEligibleAmount,
+      remainingInPool: preview.remainingInPool ?? 0,
+      beneficiaryCount: preview.totalCount,
     };
   }
 
@@ -127,241 +90,77 @@ export class AdminCommissionDistributionService {
   // 2. ELIGIBLE COMMISSIONS PREVIEW (FILTERABLE BENEFICIARY MATRIX)
   // =========================================================================
 
+  /**
+   * Beneficiaries and amounts come from the commission pool split by rank tier slices
+   * (AdminFundingCommissionService.buildPoolPlan). No sample data is ever returned:
+   * an empty pool or no eligible ranked members yields an empty list.
+   */
   public static async getEligibleCommissionsPreview(
     periodId?: string
   ): Promise<DistributionPreviewResponse> {
-    const cycleCode = periodId || `CYCLE-${new Date().toISOString().slice(0, 10)}`;
+    const plan = await AdminFundingCommissionService.buildPoolPlan(prisma, periodId);
+    const { distribution, tiers } = plan;
 
-    let commissions: any[] = [];
-    let distributors: any[] = [];
-
-    try {
-      commissions = await prisma.commission.findMany({
-        where: {
-          status: { in: ['APPROVED', 'CALCULATED', 'QUALIFIED'] },
-        },
-        include: {
-          period: true,
-        },
-      });
-
-      const distIds = Array.from(new Set(commissions.map((c) => c.distributorId)));
-      distributors = await prisma.distributorProfile.findMany({
-        where: { id: { in: distIds } },
-        include: {
-          user: true,
-          currentLevel: true,
-          currentRank: true,
-          bankAccounts: {
-            where: { deletedAt: null },
-            orderBy: { isPrimary: 'desc' },
-          },
-        },
-      });
-    } catch {
-      // Fallback for tests
-      commissions = [];
-      distributors = [];
+    // Cumulative % per rank for display, e.g. Ruby = 24 + 8 + 13 + 5 + 4 = 54
+    const cumulativePct = new Map<string, number>();
+    let running = 0;
+    for (const t of [...tiers].sort((a, b) => a.order - b.order)) {
+      if (t.order < 1) continue;
+      running += t.commissionPercent;
+      cumulativePct.set(String(t.code).toUpperCase(), running);
     }
 
-    const distMap = new Map<string, any>();
-    for (const d of distributors) {
-      distMap.set(d.id, d);
-    }
-
-    const memberCommMap = new Map<string, { total: number; count: number; commIds: string[] }>();
-    for (const comm of commissions) {
-      const dId = comm.distributorId;
-      const cur = memberCommMap.get(dId) || { total: 0, count: 0, commIds: [] };
-      cur.total += Number(comm.amount);
-      cur.count += 1;
-      cur.commIds.push(comm.id);
-      memberCommMap.set(dId, cur);
-    }
-
-    let totalEligible = 0;
     let readyAmount = 0;
     let quarantinedAmount = 0;
-    const beneficiaries: EligibleBeneficiaryPreviewItem[] = [];
-
-    for (const [distId, data] of memberCommMap.entries()) {
-      const dist = distMap.get(distId);
+    const beneficiaries: EligibleBeneficiaryPreviewItem[] = distribution.allocations.map((alloc) => {
+      const dist = plan.distById.get(alloc.distributorId);
       const primaryBank = dist?.bankAccounts?.[0];
       const isVerified = primaryBank?.status === 'VERIFIED';
-      const isActive = dist?.status === 'ACTIVE';
-
-      const amount = SafeDecimal.round(data.total, 2);
-      totalEligible += amount;
-
-      const eligibilityStatus = isVerified && isActive
+      const eligibilityStatus = isVerified
         ? 'READY_FOR_PNB'
         : primaryBank
         ? 'REQUIRES_BANK_VERIFICATION'
         : 'QUARANTINED';
 
-      if (eligibilityStatus === 'READY_FOR_PNB') {
-        readyAmount += amount;
-      } else {
-        quarantinedAmount += amount;
-      }
+      if (eligibilityStatus === 'READY_FOR_PNB') readyAmount += alloc.amount;
+      else quarantinedAmount += alloc.amount;
 
-      beneficiaries.push({
-        distributorId: distId,
-        distributorCode: dist?.distributorCode || dist?.distributorId || distId,
-        name:
-          dist?.user?.fullName ||
-          `${dist?.firstName || ''} ${dist?.lastName || ''}`.trim() ||
-          'Distributor',
-        rankCode: dist?.currentLevel?.code || dist?.currentRank?.rankCode || 'SILVER',
-        rankName: dist?.currentLevel?.name || dist?.currentRank?.name || 'Silver',
-        rankPercentage: Number(dist?.currentLevel?.commissionPercent ?? 24),
+      return {
+        distributorId: alloc.distributorId,
+        distributorCode: alloc.distributorCode,
+        name: alloc.name,
+        rankCode: alloc.rankCode,
+        rankName: dist?.currentLevel?.name || dist?.currentRank?.name || alloc.rankCode,
+        rankPercentage: cumulativePct.get(alloc.rankCode) ?? 0,
         qualifyingBV: Number(dist?.currentBB ?? dist?.lifetimePV ?? 0),
         matchingVolume: Number(dist?.currentMatching ?? 0),
-        approvedCommissionAmount: amount,
-        commissionCount: data.count,
+        approvedCommissionAmount: alloc.amount,
+        commissionCount: alloc.tierBreakdown.length,
         bankAccount: {
           id: primaryBank?.id,
           bankName: primaryBank?.bankName || 'Not Provided',
-          accountHolderName: primaryBank?.accountHolderName || dist?.user?.fullName || 'Beneficiary',
-          maskedAccountNumber: primaryBank?.accountNumber
-            ? maskAccountNumber(primaryBank.accountNumber)
-            : 'NO_ACCOUNT',
+          accountHolderName: primaryBank?.accountHolderName || alloc.name,
+          maskedAccountNumber: primaryBank?.accountNumber ? maskAccountNumber(primaryBank.accountNumber) : 'NO_ACCOUNT',
           ifscCode: primaryBank?.routingNumber ? maskIfsc(primaryBank.routingNumber) : 'NO_IFSC',
           status: primaryBank?.status || 'NO_ACCOUNT',
           isVerified: !!isVerified,
         },
         eligibilityStatus,
-      });
-    }
-
-    if (beneficiaries.length === 0) {
-      beneficiaries.push(
-        {
-          distributorId: 'dist-001',
-          distributorCode: 'DST-10001',
-          name: 'Vikram Malhotra',
-          rankCode: 'RUBY',
-          rankName: 'Ruby',
-          rankPercentage: 54,
-          qualifyingBV: 1250,
-          matchingVolume: 120000,
-          approvedCommissionAmount: 150000.0,
-          commissionCount: 12,
-          bankAccount: {
-            id: 'bank-001',
-            bankName: 'Punjab National Bank',
-            accountHolderName: 'Vikram Malhotra',
-            maskedAccountNumber: 'XXXXXX0382',
-            ifscCode: 'PUNB0192310',
-            status: 'VERIFIED',
-            isVerified: true,
-          },
-          eligibilityStatus: 'READY_FOR_PNB',
-        },
-        {
-          distributorId: 'dist-002',
-          distributorCode: 'DST-10002',
-          name: 'Anita Roy',
-          rankCode: 'DIAMOND',
-          rankName: 'Diamond',
-          rankPercentage: 50,
-          qualifyingBV: 850,
-          matchingVolume: 80000,
-          approvedCommissionAmount: 110000.0,
-          commissionCount: 8,
-          bankAccount: {
-            id: 'bank-002',
-            bankName: 'State Bank of India',
-            accountHolderName: 'Anita Roy',
-            maskedAccountNumber: 'XXXXXX5412',
-            ifscCode: 'SBIN0001234',
-            status: 'VERIFIED',
-            isVerified: true,
-          },
-          eligibilityStatus: 'READY_FOR_PNB',
-        },
-        {
-          distributorId: 'dist-003',
-          distributorCode: 'DST-10003',
-          name: 'Rahul Kaushal',
-          rankCode: 'PLATINUM',
-          rankName: 'Platinum',
-          rankPercentage: 45,
-          qualifyingBV: 600,
-          matchingVolume: 55000,
-          approvedCommissionAmount: 85000.0,
-          commissionCount: 6,
-          bankAccount: {
-            id: 'bank-003',
-            bankName: 'Punjab National Bank',
-            accountHolderName: 'Rahul Kaushal',
-            maskedAccountNumber: 'XXXXXX9821',
-            ifscCode: 'PUNB0192310',
-            status: 'VERIFIED',
-            isVerified: true,
-          },
-          eligibilityStatus: 'READY_FOR_PNB',
-        },
-        {
-          distributorId: 'dist-004',
-          distributorCode: 'DST-10004',
-          name: 'Neha Kapoor',
-          rankCode: 'GOLD',
-          rankName: 'Gold',
-          rankPercentage: 32,
-          qualifyingBV: 350,
-          matchingVolume: 12000,
-          approvedCommissionAmount: 47500.0,
-          commissionCount: 4,
-          bankAccount: {
-            id: 'bank-004',
-            bankName: 'HDFC Bank',
-            accountHolderName: 'Neha Kapoor',
-            maskedAccountNumber: 'XXXXXX3310',
-            ifscCode: 'HDFC0000128',
-            status: 'VERIFIED',
-            isVerified: true,
-          },
-          eligibilityStatus: 'READY_FOR_PNB',
-        },
-        {
-          distributorId: 'dist-005',
-          distributorCode: 'DST-10005',
-          name: 'Vikas Gupta',
-          rankCode: 'SILVER',
-          rankName: 'Silver',
-          rankPercentage: 24,
-          qualifyingBV: 260,
-          matchingVolume: 2500,
-          approvedCommissionAmount: 40000.0,
-          commissionCount: 2,
-          bankAccount: {
-            id: 'bank-005',
-            bankName: 'ICICI Bank',
-            accountHolderName: 'Vikas Gupta',
-            maskedAccountNumber: 'XXXXXX7741',
-            ifscCode: 'ICIC0000052',
-            status: 'PENDING_VERIFICATION',
-            isVerified: false,
-          },
-          eligibilityStatus: 'REQUIRES_BANK_VERIFICATION',
-        }
-      );
-      totalEligible = 432500;
-      readyAmount = 392500;
-      quarantinedAmount = 40000;
-    }
+      } as EligibleBeneficiaryPreviewItem;
+    });
 
     return {
-      periodId: cycleCode,
-      totalEligibleAmount: SafeDecimal.round(totalEligible, 2),
+      periodId: plan.cyclePeriod,
+      totalEligibleAmount: distribution.totalDistributed,
       readyAmount: SafeDecimal.round(readyAmount, 2),
       quarantinedAmount: SafeDecimal.round(quarantinedAmount, 2),
       totalCount: beneficiaries.length,
       readyCount: beneficiaries.filter((b) => b.eligibilityStatus === 'READY_FOR_PNB').length,
       quarantinedCount: beneficiaries.filter((b) => b.eligibilityStatus !== 'READY_FOR_PNB').length,
       beneficiaries,
-    };
+      poolAmount: plan.poolAmount,
+      remainingInPool: distribution.remainingInPool,
+    } as DistributionPreviewResponse;
   }
 
   // =========================================================================

@@ -287,7 +287,7 @@ function EnrollmentView({ user, onNavigate }) {
         console.warn('Backend order generation:', e);
       }
 
-      const rzpKey = import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_live_ToerZRsvekgL2z';
+      const rzpKey = await api.getRazorpayKeyId();
 
       const startCheckout = () => {
         try {

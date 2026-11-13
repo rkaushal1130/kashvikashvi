@@ -131,6 +131,7 @@ function ProductManagerView({ user, catalog = [], onUpdateCatalog, onNavigate })
     mrp: '0',
     distributorPrice: '0',
     volumeBV: '0',
+    gstRate: '18',
     stock: 0,
     status: 'In Stock',
     servingSize: '',
@@ -354,6 +355,11 @@ function ProductManagerView({ user, catalog = [], onUpdateCatalog, onNavigate })
     const distVal = newProduct.distributorPrice !== '' ? (parseFloat(newProduct.distributorPrice) || 0) : 0;
     const bvVal = newProduct.volumeBV !== '' ? (parseFloat(newProduct.volumeBV) || 0) : 0;
     const stockVal = parseInt(newProduct.stock, 10) || 0;
+    const gstVal = Number(newProduct.gstRate);
+    if (![0, 5, 18].includes(gstVal)) {
+      alert('Please select a GST rate: 0%, 5% or 18%.');
+      return;
+    }
 
     const benefitsArray = newProduct.benefits
       ? (Array.isArray(newProduct.benefits)
@@ -387,6 +393,7 @@ function ProductManagerView({ user, catalog = [], onUpdateCatalog, onNavigate })
       bv: bvVal,
       volumeBv: bvVal,
       volumeBV: bvVal,
+      gstRate: Math.round(gstVal * 100) / 100,
       stock: stockVal,
       stockQuantity: stockVal,
       status: newProduct.status === 'In Stock' || newProduct.status === 'Active' ? 'ACTIVE' : 'DRAFT',
@@ -426,6 +433,7 @@ function ProductManagerView({ user, catalog = [], onUpdateCatalog, onNavigate })
         mrp: '0',
         distributorPrice: '0',
         volumeBV: '0',
+        gstRate: '18',
         stock: 0,
         status: 'In Stock',
         servingSize: '',
@@ -465,6 +473,22 @@ function ProductManagerView({ user, catalog = [], onUpdateCatalog, onNavigate })
     const changes = overrideChanges || inlinePrices[productId];
     if (!changes || Object.keys(changes).length === 0) return;
 
+    if (changes.gstRate !== undefined) {
+      const gst = Number(changes.gstRate);
+      if (![0, 5, 18].includes(gst)) {
+        showToast('GST must be 0%, 5% or 18%.');
+        setInlinePrices((prev) => {
+          const copy = { ...prev };
+          if (copy[productId]) {
+            const { gstRate: _discard, ...rest } = copy[productId];
+            copy[productId] = rest;
+          }
+          return copy;
+        });
+        return;
+      }
+    }
+
     const updatedCatalog = productsList.map((p) => {
       if (p.id === productId) {
         const newDist =
@@ -481,6 +505,7 @@ function ProductManagerView({ user, catalog = [], onUpdateCatalog, onNavigate })
           bv: changes.volumeBV !== undefined ? parseFloat(changes.volumeBV) : (p.bv || p.volumeBV),
           stock: changes.stock !== undefined ? parseInt(changes.stock, 10) : p.stock,
           status: changes.status !== undefined ? changes.status : p.status,
+          gstRate: changes.gstRate !== undefined ? Math.round(Number(changes.gstRate) * 100) / 100 : p.gstRate,
         };
       }
       return p;
@@ -501,6 +526,7 @@ function ProductManagerView({ user, catalog = [], onUpdateCatalog, onNavigate })
         volumeBV: changes.volumeBV !== undefined ? parseFloat(changes.volumeBV) : undefined,
         stock: changes.stock !== undefined ? parseInt(changes.stock, 10) : undefined,
         status: changes.status !== undefined ? changes.status : undefined,
+        gstRate: changes.gstRate !== undefined ? Math.round(Number(changes.gstRate) * 100) / 100 : undefined,
       });
       showToast(`Updated product in database!`);
     } catch (err) {
@@ -723,7 +749,7 @@ function ProductManagerView({ user, catalog = [], onUpdateCatalog, onNavigate })
             <h4 className="form-section-heading" style={{ marginTop: '24px' }}>
               2. Price Structure &amp; Commission Volume Points (BV)
             </h4>
-            <div className="pm-fields-grid four-cols">
+            <div className="pm-fields-grid five-cols">
               <div className="pm-form-group">
                 <label className="field-label">
                   DP(₹) <span className="req">*</span>
@@ -778,6 +804,23 @@ function ProductManagerView({ user, catalog = [], onUpdateCatalog, onNavigate })
               </div>
 
               <div className="pm-form-group">
+                <label className="field-label">
+                  GST (%) <span className="req">*</span>
+                </label>
+                <select
+                  required
+                  value={newProduct.gstRate}
+                  onChange={(e) => setNewProduct({ ...newProduct, gstRate: e.target.value })}
+                  className="pm-input"
+                >
+                  <option value="0">0%</option>
+                  <option value="5">5%</option>
+                  <option value="18">18%</option>
+                </select>
+                <span className="field-hint">Included in DP &amp; MRP (prices stay the same)</span>
+              </div>
+
+              <div className="pm-form-group">
                 <label className="field-label">Initial Warehouse Stock</label>
                 <input
                   type="number"
@@ -790,6 +833,30 @@ function ProductManagerView({ user, catalog = [], onUpdateCatalog, onNavigate })
                 <span className="field-hint">Units available</span>
               </div>
             </div>
+
+            {/* GST Breakup Preview (prices are GST-inclusive) */}
+            {Number(newProduct.distributorPrice) > 0 && newProduct.gstRate !== '' && !Number.isNaN(Number(newProduct.gstRate)) && (() => {
+              const price = Number(newProduct.distributorPrice);
+              const rate = Number(newProduct.gstRate);
+              const base = Math.round(((price * 100) / (100 + rate)) * 100) / 100;
+              const gst = Math.round((price - base) * 100) / 100;
+              return (
+                <div className="pm-margin-preview-banner">
+                  <div className="margin-col">
+                    <span>DP without GST:</span>
+                    <strong>₹{base.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
+                  </div>
+                  <div className="margin-col">
+                    <span>GST ({rate}%):</span>
+                    <strong>₹{gst.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
+                  </div>
+                  <div className="margin-col">
+                    <span>Total Price (customer pays):</span>
+                    <strong className="text-green font-bold">₹{price.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</strong>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Profit Margin Preview Bar */}
             {calculatedMargin.marginRs > 0 && (
@@ -1159,6 +1226,7 @@ function ProductManagerView({ user, catalog = [], onUpdateCatalog, onNavigate })
                     <th>DP(₹)</th>
                     <th>MRP (₹)</th>
                     <th>Volume (BV)</th>
+                    <th>GST (%)</th>
                     <th>Stock</th>
                     <th>Status</th>
                     <th>Actions</th>
@@ -1276,6 +1344,22 @@ function ProductManagerView({ user, catalog = [], onUpdateCatalog, onNavigate })
                             />
                             <span className="inline-bv-label">BV</span>
                           </div>
+                        </td>
+
+                        {/* GST % (Editable dropdown: 0 / 5 / 18, saved on change) */}
+                        <td>
+                          <select
+                            value={String(Number(product.gstRate ?? 18))}
+                            onChange={(e) =>
+                              handleSaveInlineUpdate(product.id, { gstRate: e.target.value })
+                            }
+                            className="inline-price-input"
+                            aria-label={`GST percent for ${product.name}`}
+                          >
+                            <option value="0">0%</option>
+                            <option value="5">5%</option>
+                            <option value="18">18%</option>
+                          </select>
                         </td>
 
                         {/* Stock (Editable) */}

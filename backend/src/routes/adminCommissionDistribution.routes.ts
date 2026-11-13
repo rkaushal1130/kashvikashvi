@@ -15,6 +15,12 @@ adminCommissionDistributionRouter.get(
   AdminCommissionDistributionController.getSummary
 );
 
+// 1b. Calculate: record + approve the period's pool contributions
+adminCommissionDistributionRouter.post(
+  '/calculate',
+  AdminCommissionDistributionController.calculate
+);
+
 // 2. Eligible Commissions Preview
 adminCommissionDistributionRouter.get(
   '/preview',

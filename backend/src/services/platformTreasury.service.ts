@@ -230,7 +230,7 @@ export class PlatformTreasuryService {
           status: 'COMPLETED',
           description: input.description.trim(),
           metadata: input.metadata ? (input.metadata as Prisma.InputJsonValue) : Prisma.JsonNull,
-          performedById: input.performedById?.trim() || null,
+          performedById: input.performedById || null, // do not trim: user IDs are opaque (admin id has a leading tab)
         },
       });
 
@@ -379,7 +379,7 @@ export class PlatformTreasuryService {
           status: 'COMPLETED',
           description: input.description.trim(),
           metadata: input.metadata ? (input.metadata as Prisma.InputJsonValue) : Prisma.JsonNull,
-          performedById: input.performedById?.trim() || null,
+          performedById: input.performedById || null, // do not trim: user IDs are opaque (admin id has a leading tab)
         },
       });
 

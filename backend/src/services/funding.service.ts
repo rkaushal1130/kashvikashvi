@@ -400,7 +400,7 @@ export class FundingService {
     const created = await db.fundingTransaction.create({
       data: {
         fundingAccountId: account.id,
-        initiatedByAdminId: input.initiatedByAdminId.trim(),
+        initiatedByAdminId: input.initiatedByAdminId, // do not trim: user IDs are opaque
         amount: amountDecimal,
         currency: (input.currency || account.currency || 'INR').trim().toUpperCase(),
         status: 'CREATED',

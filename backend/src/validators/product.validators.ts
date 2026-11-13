@@ -31,6 +31,7 @@ export const createProductSchema = z.object({
   dp: z.coerce.number().min(0, 'DP cannot be negative').optional(),
   mrp: z.coerce.number().min(0, 'MRP cannot be negative'),
   bv: z.coerce.number().min(0, 'BV cannot be negative').default(0),
+  gstRate: z.coerce.number().refine((v) => [0, 5, 18].includes(v), 'GST rate must be 0, 5 or 18%').optional(),
   stock: z.coerce.number().int().min(0, 'Stock cannot be negative').default(0),
   lowStockThreshold: z.coerce.number().int().min(0).default(10),
   status: productStatusEnum.default('DRAFT'),

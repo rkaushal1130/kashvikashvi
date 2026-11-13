@@ -120,9 +120,11 @@ export class AuthController {
       }
 
       const userAny = result.user as any;
+      // Prefer the distributor profile code (same precedence as GET /auth/me) so the
+      // member ID is identical right after login and after a page refresh.
       const loginMemberCode =
-        userAny.referralCode ||
         userAny.distributorCode ||
+        userAny.referralCode ||
         userAny.distributorId ||
         userAny.memberId ||
         userAny.userId;

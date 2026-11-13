@@ -455,6 +455,13 @@
   background-color: #dcfce7;
   padding: 2px 6px;
   border-radius: 4px;
+  white-space: nowrap;
+}
+
+.price-gst-note {
+  font-size: 11px;
+  color: #64748b;
+  margin: -4px 0 10px;
 }
 
 .product-card-footer {

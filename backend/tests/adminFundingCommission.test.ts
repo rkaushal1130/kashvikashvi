@@ -310,76 +310,109 @@ describe('Admin Funding Portal & One-Click Commission Distribution Test Suite', 
     });
   });
 
-  describe('4. One-Click Commission Distribution Preview & Starter Kit Gating', () => {
-    it('should include only active members with verified Starter Kit payment in preview', async () => {
-      // Setup: 1 paid member and 1 unpaid starter kit member
-      const paidMember = createMockDistributor({ id: 'dist-paid', distributorCode: 'EMP-PAID', paymentStatus: 'PAID' });
-      const unpaidMember = createMockDistributor({ id: 'dist-unpaid', distributorCode: 'EMP-UNPAID', paymentStatus: 'PENDING' });
+  // Pool = all APPROVED commissions; findMany is queried per status.
+  const mockCommissionsByStatus = (approved: any[]) =>
+    vi.spyOn(prisma.commission, 'findMany').mockImplementation((async (args: any) =>
+      args?.where?.status === 'APPROVED' ? approved : []) as any);
 
-      vi.spyOn(prisma.distributorProfile, 'findMany').mockResolvedValue([paidMember, unpaidMember] as any);
+  const rankedMember = (id: string, rank: string, overrides?: any) =>
+    createMockDistributor({
+      id,
+      distributorCode: id.toUpperCase(),
+      currentLevel: { code: rank, name: rank },
+      currentRank: { rankCode: `RANK_${rank}`, name: rank },
+      ...overrides,
+    });
 
-      const commPaid = createMockCommission({
-        id: 'comm-p1',
-        distributorId: 'dist-paid',
-        distributor: paidMember,
-        amount: 2000,
-        status: 'APPROVED',
-      });
-      const commUnpaid = createMockCommission({
-        id: 'comm-u1',
-        distributorId: 'dist-unpaid',
-        distributor: unpaidMember,
-        amount: 800,
-        status: 'APPROVED',
-      });
-
-      vi.spyOn(prisma.commission, 'findMany').mockResolvedValue([commPaid, commUnpaid] as any);
+  describe('4. Commission Pool Preview: Tier-Slice Split by Rank', () => {
+    it('splits a 1000 pool across 3 Diamond, 2 Platinum, 2 Silver and keeps the remainder in the pool', async () => {
+      vi.spyOn((prisma as any).level, 'findMany').mockResolvedValue([]);
+      vi.spyOn(prisma.distributorProfile, 'findMany').mockResolvedValue([
+        ...['d1', 'd2', 'd3'].map((id) => rankedMember(id, 'DIAMOND')),
+        ...['p1', 'p2'].map((id) => rankedMember(id, 'PLATINUM')),
+        ...['s1', 's2'].map((id) => rankedMember(id, 'SILVER')),
+        rankedMember('unpaid', 'RUBY', { paymentStatus: 'PENDING' }),
+        rankedMember('admin', 'SILVER', { user: { fullName: 'Admin', roleName: 'ADMIN' } }),
+      ] as any);
+      mockCommissionsByStatus([
+        createMockCommission({ id: 'c1', amount: 600 }),
+        createMockCommission({ id: 'c2', amount: 400 }),
+      ]);
 
       const preview = await AdminFundingCommissionService.getDistributionPreview();
 
-      // Unpaid starter kit member must be excluded from payout!
-      expect(preview.eligibleEmployeeCount).toBe(1);
-      expect(preview.totalCommissionAmount).toBe(2000);
-      expect(preview.excludedCommissionsAmount).toBe(800);
+      expect(preview.poolAmount).toBe(1000);
+      expect(preview.eligibleEmployeeCount).toBe(7);
+      expect(preview.excludedEmployeesCount).toBe(2); // unpaid starter kit + admin account
+      expect(preview.totalCommissionAmount).toBe(499.94);
+      expect(preview.remainingInPool).toBe(500.06);
+      const byId = Object.fromEntries(preview.eligibleEmployees.map((e) => [e.distributorId, e.approvedAmount]));
+      expect(byId).toMatchObject({ s1: 34.28, p1: 76.28, d1: 92.94 });
     });
   });
 
-  describe('5. One-Click Distribution Execution & Idempotency', () => {
-    it('should atomically credit member wallet and prevent duplicate payout runs', async () => {
+  describe('5. Commission Pool Distribution Execution', () => {
+    it('credits wallets, marks the pool PAID and carries the remainder over as an APPROVED commission', async () => {
+      vi.spyOn((prisma as any).level, 'findMany').mockResolvedValue([]);
+      vi.spyOn(prisma.distributorProfile, 'findMany').mockResolvedValue([
+        rankedMember('dist-001', 'SILVER'),
+        rankedMember('admin', 'SILVER', { user: { fullName: 'Admin', roleName: 'ADMIN' } }),
+      ] as any);
+      mockCommissionsByStatus([createMockCommission({ id: 'comm-001', amount: 1000 })]);
+      const commCreateSpy = vi.spyOn(prisma.commission, 'create').mockResolvedValue({ id: 'carry-1' } as any);
       const walletUpdateSpy = vi.spyOn(prisma.wallet, 'update');
       const wtxCreateSpy = vi.spyOn(prisma.walletTransaction, 'create');
-      const commUpdateSpy = vi.spyOn(prisma.commission, 'updateMany');
+      const commUpdateSpy = vi.spyOn(prisma.commission, 'updateMany').mockResolvedValue({ count: 1 } as any);
 
       const result = await AdminFundingCommissionService.executeOneClickDistribution('admin-user-001', {});
 
-      expect(result).toBeDefined();
       expect(result.batchNumber).toMatch(/^PB-/);
-      expect(result.successfulCount).toBe(1);
-      expect(result.successfulAmount).toBe(1500);
-      expect(result.failedCount).toBe(0);
       expect(result.status).toBe('COMPLETED');
+      expect(result.successfulCount).toBe(1);
+      expect(result.successfulAmount).toBe(240);
+      expect(result.remainingInPool).toBe(760);
 
-      // Member wallet was credited
-      expect(walletUpdateSpy).toHaveBeenCalled();
-      const walletCallArg = walletUpdateSpy.mock.calls[0][0];
-      expect(walletCallArg.where.id).toBe('wallet-001');
-      expect(Number(walletCallArg.data.balance)).toBe(6500);
-
-      // Wallet transaction recorded
-      expect(wtxCreateSpy).toHaveBeenCalled();
-      const wtxCallArg = wtxCreateSpy.mock.calls[0][0];
-      expect(wtxCallArg.data.walletId).toBe('wallet-001');
-      expect(wtxCallArg.data.type).toBe('COMMISSION_CREDIT');
-      expect(Number(wtxCallArg.data.amount)).toBe(1500);
-
-      // Commissions transitioned to PAID
+      // Whole pool claimed
       expect(commUpdateSpy).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({
-            status: 'PAID',
-          }),
+          where: { id: { in: ['comm-001'] }, status: 'APPROVED' },
+          data: expect.objectContaining({ status: 'PAID' }),
         })
       );
+
+      // Silver member wallet credited with the 24% slice
+      expect(Number(walletUpdateSpy.mock.calls[0][0].data.balance)).toBe(5240);
+      expect(wtxCreateSpy.mock.calls[0][0].data.type).toBe('COMMISSION_CREDIT');
+      expect(Number(wtxCreateSpy.mock.calls[0][0].data.amount)).toBe(240);
+
+      // Remainder stays in the pool as an APPROVED carry-over held by the admin root profile
+      const carry = commCreateSpy.mock.calls[0][0].data as any;
+      expect(carry.status).toBe('APPROVED');
+      expect(Number(carry.amount)).toBe(760);
+      expect(carry.distributorId).toBe('admin');
+      expect(carry.details.kind).toBe('POOL_CARRYOVER');
+    });
+
+    it('rejects distribution when the pool is empty', async () => {
+      vi.spyOn((prisma as any).level, 'findMany').mockResolvedValue([]);
+      mockCommissionsByStatus([]);
+      await expect(
+        AdminFundingCommissionService.executeOneClickDistribution('admin-user-001', {})
+      ).rejects.toThrow('The commission pool is empty');
+    });
+
+    it('rejects distribution when no ranked member is eligible, leaving the pool unchanged', async () => {
+      vi.spyOn((prisma as any).level, 'findMany').mockResolvedValue([]);
+      vi.spyOn(prisma.distributorProfile, 'findMany').mockResolvedValue([
+        createMockDistributor({ currentLevel: null, currentRank: null }),
+      ] as any);
+      mockCommissionsByStatus([createMockCommission({ amount: 1000 })]);
+      const commUpdateSpy = vi.spyOn(prisma.commission, 'updateMany');
+
+      await expect(
+        AdminFundingCommissionService.executeOneClickDistribution('admin-user-001', {})
+      ).rejects.toThrow('No active, paid distributors with a rank are eligible');
+      expect(commUpdateSpy).not.toHaveBeenCalled();
     });
 
     it('should reject simultaneous double-click distribution runs via mutex guard', async () => {

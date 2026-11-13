@@ -40,6 +40,27 @@ export class AdminCommissionDistributionController {
     }
   }
 
+  /**
+   * POST /api/v1/admin/commission-distribution/calculate
+   * Records and approves the period's pool contributions, then returns the rank-based split.
+   */
+  public static async calculate(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const result = await AdminCommissionDistributionService.calculatePeriod(
+        req.body?.periodId as string | undefined,
+        req.user?.id || 'admin'
+      );
+      sendSuccess(res, {
+        message: `Commission pool for ${result.periodId}: ₹${result.poolAmount.toFixed(2)}. ` +
+          `${result.beneficiaryCount} members receive ₹${result.distributableAmount.toFixed(2)}; ` +
+          `₹${result.remainingInPool.toFixed(2)} stays in the pool.`,
+        data: result,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
   public static async createBatch(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       if (!req.user) {

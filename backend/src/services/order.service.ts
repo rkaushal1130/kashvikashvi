@@ -9,6 +9,7 @@ import { LevelCommissionService } from './levelCommission.service';
 import { LevelPromotionService } from './level';
 import { OrderCommissionLifecycleService } from './orderCommissionLifecycle.service';
 import { CommissionReversalService } from './commissionReversal.service';
+import { exclusiveLineGst, gstRateOf } from '../utils/gst';
 
 function isDbConnectionError(err: any): boolean {
   if (!err) return false;
@@ -711,6 +712,7 @@ export class OrderService {
 
       let orderSubtotal = new Prisma.Decimal(0);
       let orderTotalBV = new Prisma.Decimal(0);
+      let orderTax = new Prisma.Decimal(0);
 
       for (const item of itemsToProcess) {
         // Step 1: Validate product - supports UUID, SKU, KASH placeholder codes, or auto-provisioning
@@ -816,6 +818,10 @@ export class OrderService {
 
         orderSubtotal = orderSubtotal.add(totalPrice);
         orderTotalBV = orderTotalBV.add(totalBV);
+        // DP is GST-exclusive: add GST on top for distributor orders (MRP is GST-inclusive)
+        if (isDistributor) {
+          orderTax = orderTax.add(exclusiveLineGst(totalPrice, gstRateOf(product)));
+        }
 
         validatedItems.push({
           product,
@@ -881,10 +887,10 @@ export class OrderService {
           customerId,
           status: orderStatus,
           subtotal: orderSubtotal,
-          taxAmount: new Prisma.Decimal(0),
+          taxAmount: orderTax,
           shippingAmount: new Prisma.Decimal(0),
           discountAmount: new Prisma.Decimal(0),
-          totalAmount: orderSubtotal,
+          totalAmount: orderSubtotal.add(orderTax), // DP + GST
           totalBV: orderTotalBV,
           commissionableBusinessVolume: orderTotalBV,
           shippingAddressId: shippingId,
@@ -905,6 +911,7 @@ export class OrderService {
             totalPrice: vi.totalPrice,
             totalBV: vi.totalBV,
             commissionableBV: vi.totalBV,
+            gstRate: vi.product.gstRate ?? 18,
           },
         });
 
@@ -931,8 +938,8 @@ export class OrderService {
           paymentNumber: `PAY-${Date.now().toString().slice(-6)}-${Math.floor(1000 + Math.random() * 9000)}`,
           method: paymentMethod as PaymentMethod,
           status: markPaid ? 'COMPLETED' : 'PENDING',
-          amount: orderSubtotal,
-          currency: 'USD',
+          amount: orderSubtotal.add(orderTax),
+          currency: 'INR',
           paidAt: markPaid ? new Date() : null,
         },
       });

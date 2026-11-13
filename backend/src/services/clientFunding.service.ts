@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { getRazorpayCredentials } from '../utils/razorpay';
 import { FundingTransactionStatus, Prisma, WalletTransactionStatus, WalletTransactionType } from '@prisma/client';
 import { prisma } from '../config/database';
 import { env, isDev, isTest } from '../config/env';
@@ -25,24 +26,10 @@ export class ClientFundingService {
   }
 
   private static getRazorpayCredentials() {
-    const keyId =
-      env.RAZORPAY_KEY_ID ||
-      env.FUNDING_PROVIDER_KEY_ID ||
-      process.env.RAZORPAY_KEY_ID ||
-      'rzp_live_ToerZRsvekgL2z';
-    const keySecret =
-      env.RAZORPAY_KEY_SECRET ||
-      env.FUNDING_PROVIDER_KEY_SECRET ||
-      process.env.RAZORPAY_KEY_SECRET ||
-      '4mq7WOEx4mxvpkX6LOkSK32p';
-    const webhookSecret =
-      env.RAZORPAY_WEBHOOK_SECRET ||
-      env.FUNDING_PROVIDER_WEBHOOK_SECRET ||
-      process.env.RAZORPAY_WEBHOOK_SECRET ||
-      'your_webhook_secret_min_32_chars';
-
-    return { keyId, keySecret, webhookSecret };
+    // Credentials come only from backend/.env (see utils/razorpay.ts) — never hardcoded.
+    return getRazorpayCredentials();
   }
+
 
   /**
    * Format raw order into clean DTO.
@@ -138,6 +125,11 @@ export class ClientFundingService {
       } catch (err: any) {
         logger.warn({ error: err.message }, 'Razorpay client funding order fetch exception');
       }
+    }
+
+    // Never let the client open Checkout without a real Razorpay order (payment would be unverifiable).
+    if (!razorpayOrderId && process.env.NODE_ENV !== 'test') {
+      throw new AppError('Could not create payment order with Razorpay. Please try again.', 502, 'PAYMENT_GATEWAY_ERROR');
     }
 
     // Try DB creation

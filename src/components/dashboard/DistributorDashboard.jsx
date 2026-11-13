@@ -434,7 +434,7 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
         starterKitId: 'kit_pro',
       });
 
-      const rzpKey = import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_live_ToerZRsvekgL2z';
+      const rzpKey = orderRes?.data?.keyId || orderRes?.keyId || (await api.getRazorpayKeyId());
       const orderData = orderRes?.data || orderRes;
       const orderId = orderData?.razorpayOrderId || orderData?.id || `order_kmlm_${Date.now()}`;
       const amountPaise = orderData?.amount || 100; // ₹1 = 100 paise (testing price)

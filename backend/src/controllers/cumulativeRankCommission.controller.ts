@@ -194,7 +194,7 @@ export class CumulativeRankCommissionController {
 
       res.json({
         success: true,
-        message: `Period commissions calculated successfully for ${result.membersQualified} qualified members`,
+        message: `Recorded pool contributions of ₹${result.totalContributionAmount.toFixed(2)} from ${result.contributingMembers} members. Approve them, then distribute the pool by rank.`,
         data: result,
       });
     } catch (err) {

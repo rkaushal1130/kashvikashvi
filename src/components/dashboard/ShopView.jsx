@@ -19,6 +19,19 @@ import { useAuth } from '../../context/AuthContext.jsx';
 import { api } from '../../services/api.js';
 import './ShopView.css';
 
+// Pricing: DP (distributor price) is GST-exclusive. Final price = DP + GST, 2 decimals.
+// GST is computed per cart line (DP x qty x rate%), matching the backend order calculation.
+const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+const fmtINR = (n) =>
+  Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const gstRateOf = (p) => Number(p?.gstRate ?? 18);
+// Computed in integer paise so half-paisa values round up exactly like the backend (Decimal ROUND_HALF_UP)
+const lineGst = (p, qty = 1) => {
+  const linePaise = Math.round(Number(p?.distributorPrice || 0) * 100) * qty;
+  return Math.round((linePaise * gstRateOf(p)) / 100) / 100;
+};
+const finalPriceOf = (p, qty = 1) => round2(Number(p?.distributorPrice || 0) * qty + lineGst(p, qty));
+
 /**
  * Ensures Razorpay Checkout script is loaded dynamically in the browser
  */
@@ -163,23 +176,29 @@ function ShopView({ user, catalog, onNavigate }) {
   // Cart Calculations
   const cartSummary = useMemo(() => {
     let totalItems = 0;
-    let totalPrice = 0;
+    let totalWithoutGst = 0; // sum of DP x qty
     let totalBV = 0;
     let totalMrp = 0;
+    let totalGst = 0;
 
     Object.entries(cartItems).forEach(([pId, qty]) => {
       const item = catalog.find((p) => p.id === pId);
       if (item) {
         totalItems += qty;
-        totalPrice += item.distributorPrice * qty;
+        // DP is GST-exclusive: GST is added on top of DP x qty
+        totalWithoutGst += item.distributorPrice * qty;
+        totalGst += lineGst(item, qty);
         totalBV += item.volumeBV * qty;
         totalMrp += (item.mrp || item.distributorPrice * 1.25) * qty;
       }
     });
 
-    const totalSavings = Math.max(0, totalMrp - totalPrice);
+    totalWithoutGst = round2(totalWithoutGst);
+    totalGst = round2(totalGst);
+    const totalPrice = round2(totalWithoutGst + totalGst); // Payable = DP + GST
+    const totalSavings = round2(Math.max(0, totalMrp - totalPrice));
 
-    return { totalItems, totalPrice, totalBV, totalMrp, totalSavings };
+    return { totalItems, totalPrice, totalBV, totalMrp, totalSavings, totalGst, totalWithoutGst };
   }, [cartItems, catalog]);
 
   // Handle Checkout submission
@@ -189,12 +208,13 @@ function ShopView({ user, catalog, onNavigate }) {
 
     const items = Object.entries(cartItems).map(([productId, quantity]) => {
       const prod = catalog.find((p) => p.id === productId);
+      // BV is NOT sent: the backend derives BV from the product table, and the
+      // MLM field guard rejects any client-supplied bv/totalBV fields.
       return {
         productId,
         quantity,
         unitPrice: prod?.distributorPrice || prod?.wholesalePrice || 0,
         totalPrice: (prod?.distributorPrice || prod?.wholesalePrice || 0) * quantity,
-        bv: prod?.volumeBV || 0,
       };
     });
 
@@ -212,7 +232,7 @@ function ShopView({ user, catalog, onNavigate }) {
       if (selectedPaymentMethod === 'WALLET') {
         if (walletBalance < cartSummary.totalPrice) {
           showToast(
-            `Insufficient wallet balance (₹${walletBalance.toLocaleString('en-IN')} available, ₹${cartSummary.totalPrice.toLocaleString('en-IN')} required)`
+            `Insufficient wallet balance (₹${fmtINR(walletBalance)} available, ₹${fmtINR(cartSummary.totalPrice)} required)`
           );
           setIsProcessingOrder(false);
           return;
@@ -221,7 +241,6 @@ function ShopView({ user, catalog, onNavigate }) {
         const res = await api.walletCheckout({
           items,
           amount: cartSummary.totalPrice,
-          totalBV: cartSummary.totalBV,
           shippingAddress,
         });
         const order = res?.order || res;
@@ -248,42 +267,43 @@ function ShopView({ user, catalog, onNavigate }) {
       } else {
         // Option B (UPI) or Option C (CARD) via Razorpay
         await ensureRazorpayLoaded();
+        if (typeof window === 'undefined' || !window.Razorpay) {
+          throw new Error('Razorpay checkout could not be loaded. No payment was taken — please try again.');
+        }
 
         const rzpMethod = selectedPaymentMethod === 'CARD' ? 'CREDIT_CARD' : 'UPI';
         const rzpOrderData = await api.createRazorpayOrder({
           items,
           amount: cartSummary.totalPrice,
-          totalBV: cartSummary.totalBV,
           shippingAddress,
           paymentMethod: rzpMethod,
         });
 
-        const keyId =
-          rzpOrderData?.keyId ||
-          import.meta.env?.VITE_RAZORPAY_KEY_ID ||
-          'rzp_live_ToerZRsvekgL2z';
         const order = rzpOrderData?.order;
-        const amountInPaise = rzpOrderData?.amount || Math.round(cartSummary.totalPrice * 100);
+        const razorpayOrderId = rzpOrderData?.razorpayOrderId;
+        // Never open Checkout without a real Razorpay order bound to a saved backend order:
+        // otherwise money is collected for an order that does not exist and cannot be verified.
+        if (!order?.id || !razorpayOrderId || razorpayOrderId.startsWith('order_mock')) {
+          throw new Error('Could not create the payment order. No payment was taken — please try again.');
+        }
+        const keyId = rzpOrderData?.keyId || (await api.getRazorpayKeyId());
+        const amountInPaise = rzpOrderData?.amount;
 
-        if (typeof window !== 'undefined' && window.Razorpay) {
+        {
           const options = {
             key: keyId,
             amount: amountInPaise,
             currency: 'INR',
             name: 'Kashvi International',
             description: `Wholesale Order ${order?.orderNumber || ''}`,
-            ...(rzpOrderData?.razorpayOrderId &&
-            !rzpOrderData.razorpayOrderId.startsWith('order_mock') &&
-            !rzpOrderData.razorpayOrderId.startsWith('order_fallback')
-              ? { order_id: rzpOrderData.razorpayOrderId }
-              : {}),
+            order_id: razorpayOrderId,
             prefill: {
               name: memberName || user?.fullName || 'Distributor',
               contact: user?.phone || '9876543210',
               email: user?.email || 'distributor@kashvimlm.com',
             },
             notes: {
-              orderNumber: order?.orderNumber || `ORD-${Date.now().toString().slice(-6)}`,
+              orderNumber: order.orderNumber,
               distributorId: memberId,
               distributorName: memberName,
             },
@@ -299,10 +319,10 @@ function ShopView({ user, catalog, onNavigate }) {
             handler: async function (response) {
               try {
                 const verifyRes = await api.verifyRazorpayPayment({
-                  razorpayOrderId: response.razorpay_order_id || rzpOrderData?.razorpayOrderId || 'order_direct',
+                  razorpayOrderId: response.razorpay_order_id || razorpayOrderId,
                   razorpayPaymentId: response.razorpay_payment_id,
-                  razorpaySignature: response.razorpay_signature || 'valid_signature',
-                  orderId: order?.id,
+                  razorpaySignature: response.razorpay_signature,
+                  orderId: order.id,
                 });
                 const confirmedOrder = verifyRes?.order || order;
                 setOrderConfirmed({
@@ -333,35 +353,13 @@ function ShopView({ user, catalog, onNavigate }) {
                 setCheckoutModal(false);
                 showToast('Payment verified & Wholesale order confirmed!');
               } catch (err) {
-                console.warn('Payment verification notice:', err);
-                if (response.razorpay_payment_id) {
-                  setOrderConfirmed({
-                    orderId: order?.id || `ORD-${Date.now()}`,
-                    orderNumber: order?.orderNumber || `ORD-${Date.now().toString().slice(-6)}`,
-                    date: new Date().toLocaleDateString('en-IN', {
-                      day: '2-digit',
-                      month: 'short',
-                      year: 'numeric',
-                    }),
-                    itemsCount: cartSummary.totalItems,
-                    totalAmount: Number(cartSummary.totalPrice),
-                    creditedBV: Number(cartSummary.totalBV),
-                    memberId,
-                    memberName,
-                    paymentMethod:
-                      selectedPaymentMethod === 'UPI'
-                        ? 'Razorpay (UPI / Instant QR)'
-                        : 'Razorpay (Debit/Credit Card/NetBanking)',
-                    paymentStatus: 'PAID',
-                    deliveryEta: '2-4 Business Days via Bluedart Express',
-                    paymentId: response.razorpay_payment_id,
-                  });
-                  setCartItems({});
-                  setCheckoutModal(false);
-                  showToast('Payment captured & Wholesale order confirmed!');
-                } else {
-                  showToast('Payment verification failed: ' + (err.message || err));
-                }
+                // Do NOT show a confirmed order: the backend has not verified this payment.
+                console.error('Payment verification failed:', err);
+                showToast(
+                  `Payment ${response.razorpay_payment_id || ''} received but could not be verified (${
+                    err.message || err
+                  }). Order ${order.orderNumber} is pending — please contact support and do not pay again.`
+                );
               } finally {
                 setIsProcessingOrder(false);
               }
@@ -374,41 +372,6 @@ function ShopView({ user, catalog, onNavigate }) {
             showToast('Payment failed: ' + (resp.error?.description || 'Declined'));
           });
           rzp.open();
-        } else {
-          // Fallback when Razorpay checkout.js script is unavailable
-          const verifyRes = await api.verifyRazorpayPayment({
-            razorpayOrderId: rzpOrderData?.razorpayOrderId || `order_${Date.now()}`,
-            razorpayPaymentId: `pay_test_${Date.now()}`,
-            razorpaySignature: 'valid_mock_signature',
-            orderId: order?.id,
-          });
-          const confirmedOrder = verifyRes?.order || order;
-          setOrderConfirmed({
-            orderId: confirmedOrder?.id || order?.id || `ORD-${Date.now()}`,
-            orderNumber:
-              confirmedOrder?.orderNumber ||
-              order?.orderNumber ||
-              `ORD-${Date.now().toString().slice(-6)}`,
-            date: new Date().toLocaleDateString('en-IN', {
-              day: '2-digit',
-              month: 'short',
-              year: 'numeric',
-            }),
-            itemsCount: cartSummary.totalItems,
-            totalAmount: Number(confirmedOrder?.totalAmount || cartSummary.totalPrice),
-            creditedBV: Number(confirmedOrder?.totalBV || cartSummary.totalBV),
-            memberId,
-            memberName,
-            paymentMethod:
-              selectedPaymentMethod === 'UPI'
-                ? 'Razorpay (UPI / Instant QR)'
-                : 'Razorpay (Debit/Credit Card/NetBanking)',
-            paymentStatus: 'PAID',
-            deliveryEta: '2-4 Business Days via Bluedart Express',
-          });
-          setCartItems({});
-          setCheckoutModal(false);
-          showToast('Payment verified & order confirmed successfully!');
         }
       }
     } catch (err) {
@@ -472,7 +435,7 @@ function ShopView({ user, catalog, onNavigate }) {
             </div>
             <div className="cart-box-text">
               <span className="cart-box-label">Your Order Cart</span>
-              <span className="cart-box-val">₹{cartSummary.totalPrice.toLocaleString('en-IN')}</span>
+              <span className="cart-box-val">₹{fmtINR(cartSummary.totalPrice)}</span>
             </div>
             <span className="cart-bv-bubble">+{cartSummary.totalBV} BV</span>
           </button>
@@ -555,9 +518,11 @@ function ShopView({ user, catalog, onNavigate }) {
         <div className="shop-products-grid">
           {filteredProducts.map((product) => {
             const qtyInCart = cartItems[product.id] || 0;
+            const finalPrice = finalPriceOf(product);
+            // MRP is tax-inclusive, so compare it against the final (DP + GST) price
             const discountPct =
-              product.mrp > 0 && product.mrp > product.distributorPrice
-                ? Math.round(((product.mrp - product.distributorPrice) / product.mrp) * 100)
+              product.mrp > 0 && product.mrp > finalPrice
+                ? Math.round(((product.mrp - finalPrice) / product.mrp) * 100)
                 : 0;
 
             return (
@@ -615,16 +580,19 @@ function ShopView({ user, catalog, onNavigate }) {
                 {/* Pricing Display */}
                 <div className="product-price-section">
                   <div className="price-values-wrap">
-                    <span className="distributor-price">
-                      ₹{product.distributorPrice.toLocaleString('en-IN')}
+                    <span className="distributor-price" title="Final price (DP + GST)">
+                      ₹{fmtINR(finalPrice)}
                     </span>
-                    {product.mrp && (
+                    {product.mrp > 0 && (
                       <span className="mrp-price">
-                        ₹{product.mrp.toLocaleString('en-IN')}
+                        ₹{fmtINR(product.mrp)}
                       </span>
                     )}
                   </div>
-                  <span className="wholesale-tag">Wholesale Rate</span>
+                  <span className="wholesale-tag">DP ₹{fmtINR(product.distributorPrice)}</span>
+                </div>
+                <div className="price-gst-note">
+                  DP ₹{fmtINR(product.distributorPrice)} + {gstRateOf(product)}% GST ₹{fmtINR(lineGst(product))}
                 </div>
 
                 {/* Action Buttons */}
@@ -704,13 +672,17 @@ function ShopView({ user, catalog, onNavigate }) {
                 <div className="qv-serving">{activeQuickView.servingSize}</div>
 
                 <div className="qv-price-row">
-                  <span className="qv-distributor-price">
-                    ₹{activeQuickView.distributorPrice.toLocaleString('en-IN')}
+                  <span className="qv-distributor-price" title="Final price (DP + GST)">
+                    ₹{fmtINR(finalPriceOf(activeQuickView))}
                   </span>
-                  {activeQuickView.mrp && (
-                    <span className="qv-mrp">MRP ₹{activeQuickView.mrp.toLocaleString('en-IN')}</span>
+                  {activeQuickView.mrp > 0 && (
+                    <span className="qv-mrp">MRP ₹{fmtINR(activeQuickView.mrp)}</span>
                   )}
                   <span className="qv-status-pill">{activeQuickView.status || 'In Stock'}</span>
+                </div>
+                <div className="price-gst-note">
+                  DP ₹{fmtINR(activeQuickView.distributorPrice)} + {gstRateOf(activeQuickView)}% GST ₹
+                  {fmtINR(lineGst(activeQuickView))} = ₹{fmtINR(finalPriceOf(activeQuickView))}
                 </div>
 
                 <p className="qv-desc">{activeQuickView.shortDesc}</p>
@@ -797,7 +769,9 @@ function ShopView({ user, catalog, onNavigate }) {
                       <div className="cart-item-meta">
                         <h4 className="cart-item-title">{item.name}</h4>
                         <div className="cart-item-price-line">
-                          <span>₹{item.distributorPrice} each</span>
+                          <span>
+                            DP ₹{fmtINR(item.distributorPrice)} + {gstRateOf(item)}% GST each
+                          </span>
                           <span className="meta-sep">•</span>
                           <span className="item-bv">+{item.volumeBV * qty} BV</span>
                         </div>
@@ -820,7 +794,7 @@ function ShopView({ user, catalog, onNavigate }) {
                       </div>
 
                       <div className="cart-item-total">
-                        ₹{(item.distributorPrice * qty).toLocaleString('en-IN')}
+                        ₹{fmtINR(finalPriceOf(item, qty))}
                       </div>
                     </div>
                   );
@@ -839,14 +813,24 @@ function ShopView({ user, catalog, onNavigate }) {
                 <div className="cart-calc-row">
                   <span>Distributor Savings:</span>
                   <span className="text-green font-semibold">
-                    -₹{cartSummary.totalSavings.toLocaleString('en-IN')}
+                    -₹{fmtINR(cartSummary.totalSavings)}
                   </span>
                 </div>
 
+                <div className="cart-calc-row">
+                  <span>DP Subtotal:</span>
+                  <span>₹{fmtINR(cartSummary.totalWithoutGst)}</span>
+                </div>
+
+                <div className="cart-calc-row">
+                  <span>GST:</span>
+                  <span>+₹{fmtINR(cartSummary.totalGst)}</span>
+                </div>
+
                 <div className="cart-calc-row total">
-                  <span>Payable Total:</span>
+                  <span>Payable Total (DP + GST):</span>
                   <strong className="total-amount">
-                    ₹{cartSummary.totalPrice.toLocaleString('en-IN')}
+                    ₹{fmtINR(cartSummary.totalPrice)}
                   </strong>
                 </div>
 
@@ -926,7 +910,7 @@ function ShopView({ user, catalog, onNavigate }) {
                         Pay directly from accumulated weekly commission balance (
                         {isLoadingWallet
                           ? 'Checking balance...'
-                          : `₹${walletBalance.toLocaleString('en-IN')} available`}
+                          : `₹${fmtINR(walletBalance)} available`}
                         )
                       </span>
                     </div>
@@ -978,29 +962,24 @@ function ShopView({ user, catalog, onNavigate }) {
                     <strong>{cartSummary.totalItems} units</strong>
                   </div>
                   <div className="summary-line">
-                    <span>Wholesale Subtotal:</span>
-                    <span>₹{cartSummary.totalPrice.toLocaleString('en-IN')}</span>
+                    <span>DP Subtotal:</span>
+                    <span>₹{fmtINR(cartSummary.totalWithoutGst)}</span>
+                  </div>
+                  <div className="summary-line">
+                    <span>GST:</span>
+                    <span>+₹{fmtINR(cartSummary.totalGst)}</span>
                   </div>
                   <div className="summary-line">
                     <span>Shipping & Handling:</span>
                     <span className="text-green font-semibold">FREE (Distributor Perk)</span>
-                  </div>
-                  <div className="summary-line">
-                    <span>GST (18% Included):</span>
-                    <span>
-                      ₹
-                      {Math.round(
-                        cartSummary.totalPrice - cartSummary.totalPrice / 1.18
-                      ).toLocaleString('en-IN')}
-                    </span>
                   </div>
                   <div className="summary-line highlight-bv">
                     <span>Volume Credited:</span>
                     <strong>+{cartSummary.totalBV} BV Points</strong>
                   </div>
                   <div className="summary-line grand-total">
-                    <span>Total Payable:</span>
-                    <strong>₹{cartSummary.totalPrice.toLocaleString('en-IN')}</strong>
+                    <span>Total Payable (DP + GST):</span>
+                    <strong>₹{fmtINR(cartSummary.totalPrice)}</strong>
                   </div>
                 </div>
 
@@ -1099,7 +1078,7 @@ function ShopView({ user, catalog, onNavigate }) {
               <div className="inv-row">
                 <span>Total Amount Paid:</span>
                 <strong className="inv-price">
-                  ₹{Number(orderConfirmed.totalAmount).toLocaleString('en-IN')}
+                  ₹{fmtINR(orderConfirmed.totalAmount)}
                 </strong>
               </div>
               <div className="inv-row">

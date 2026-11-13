@@ -1,8 +1,38 @@
 import { NextFunction, Request, Response } from 'express';
+import { prisma } from '../config/database';
 import { AuditService } from '../services/audit.service';
 import { NetworkTreeService } from '../services/networkTree.service';
 import { sendSuccess } from '../utils/apiResponse';
 import { AppError } from '../utils/appError';
+
+// Root (Super Admin) distributor code. Matches the code used when the admin account is seeded.
+const SUPER_ADMIN_DISTRIBUTOR_ID = (
+  process.env.INITIAL_ADMIN_REFERRAL_CODE ||
+  process.env.ADMIN_REFERRAL_CODE ||
+  'KK-0001'
+).trim();
+
+/**
+ * Resolves the tree root for an admin caller: the admin's own distributor profile
+ * code from the database (e.g. KV-1001 or KK-0001), falling back to the configured code.
+ */
+async function resolveAdminRootId(req: Request): Promise<string> {
+  const userId = req.user?.id;
+  if (userId) {
+    try {
+      // Exact (untrimmed) match: some seeded user IDs contain leading whitespace.
+      const profile = await prisma.distributorProfile.findFirst({
+        where: { userId },
+        select: { distributorId: true, distributorCode: true },
+      });
+      const code = profile?.distributorCode || profile?.distributorId;
+      if (code) return code;
+    } catch {
+      // fall through to configured root
+    }
+  }
+  return SUPER_ADMIN_DISTRIBUTOR_ID;
+}
 
 export class NetworkTreeController {
   /**
@@ -18,8 +48,8 @@ export class NetworkTreeController {
         (req.user as any)?.distributorCode ||
         (req.user as any)?.memberId ||
         req.user?.id ||
-        'KV-1001';
-      const targetId = isAdmin ? 'KV-1001' : await NetworkTreeService.resolveDistributorCode(callerId);
+        SUPER_ADMIN_DISTRIBUTOR_ID;
+      const targetId = isAdmin ? await resolveAdminRootId(req) : await NetworkTreeService.resolveDistributorCode(callerId);
 
       const tree = await NetworkTreeService.getNetworkTree(targetId, depth);
 
@@ -215,8 +245,8 @@ export class NetworkTreeController {
         (req.user as any)?.distributorCode ||
         (req.user as any)?.memberId ||
         req.user?.id ||
-        'KV-1001';
-      const targetId = isAdmin ? 'KV-1001' : await NetworkTreeService.resolveDistributorCode(callerId);
+        SUPER_ADMIN_DISTRIBUTOR_ID;
+      const targetId = isAdmin ? await resolveAdminRootId(req) : await NetworkTreeService.resolveDistributorCode(callerId);
 
       const summary = await NetworkTreeService.getNetworkSummary(targetId);
 
@@ -273,7 +303,7 @@ export class NetworkTreeController {
     try {
       const { distributorId, sponsorId, preferredLeg } = req.body;
       const targetDistId = distributorId || req.user?.id;
-      const targetSponsorId = sponsorId || (req.user as any)?.sponsorId || 'KV-1001';
+      const targetSponsorId = sponsorId || (req.user as any)?.sponsorId || SUPER_ADMIN_DISTRIBUTOR_ID;
 
       if (!targetDistId) {
         throw AppError.badRequest('Distributor ID is required for placement.', 'DISTRIBUTOR_ID_REQUIRED');

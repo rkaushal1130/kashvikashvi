@@ -4,6 +4,7 @@ import { logger } from '../config/logger';
 import { AppError } from '../utils/appError';
 import { SafeDecimal } from '../utils/safeDecimal';
 import { FundingProviderFactory } from '../providers/funding';
+import { getRazorpayCredentials } from '../utils/razorpay';
 import { PlatformTreasuryService } from './platformTreasury.service';
 import { FundingService } from './funding.service';
 import {
@@ -16,6 +17,7 @@ export interface FundingWorkflowResult {
   transaction: FundingTransactionDTO;
   paymentLinkUrl?: string;
   virtualAccountDetails?: any;
+  checkout?: { keyId: string; razorpayOrderId: string; amountInPaise: number; currency: string };
 }
 
 export interface VerifyAndSettleResult {
@@ -169,7 +171,7 @@ export class FundingWorkflowService {
     const createdTx = await prisma.fundingTransaction.create({
       data: {
         fundingAccountId: account.id,
-        initiatedByAdminId: adminId.trim(),
+        initiatedByAdminId: adminId, // do not trim: user IDs are opaque (admin id contains a leading tab)
         amount: amountDecimal,
         currency: input.currency || account.currency || 'INR',
         status: 'PENDING',
@@ -220,6 +222,16 @@ export class FundingWorkflowService {
       transaction: FundingService.formatTransaction(createdTx),
       paymentLinkUrl: providerReq.paymentLinkUrl,
       virtualAccountDetails: providerReq.virtualAccountDetails,
+      // Razorpay Checkout parameters (key ID is public; the secret never leaves the server)
+      checkout:
+        account.provider === 'RAZORPAYX'
+          ? {
+              keyId: getRazorpayCredentials().keyId,
+              razorpayOrderId: providerReq.providerTransactionId,
+              amountInPaise: Math.round(amountDecimal.toNumber() * 100),
+              currency: createdTx.currency,
+            }
+          : undefined,
     };
   }
 

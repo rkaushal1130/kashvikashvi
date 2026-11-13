@@ -188,129 +188,9 @@ export default function CommissionDistributionPage() {
       const rawPreview = previewRes.status === 'fulfilled' ? (previewRes.value?.data || previewRes.value) : null;
       const rawBatches = batchesRes.status === 'fulfilled' ? (batchesRes.value?.data || batchesRes.value) : null;
 
-      // Authoritative 5-distributor default list matching ₹3,92,500.00
-      const defaultBeneficiaries = [
-        {
-          distributorId: 'dist-001',
-          distributorCode: 'DST-10001',
-          name: 'Vikram Malhotra',
-          rankCode: 'RUBY',
-          rankName: 'Ruby',
-          rankPercentage: 54,
-          commissionPeriod: periodId || `CYCLE-${todayStr}`,
-          qualifyingBV: 1250,
-          matchingVolume: 120000,
-          approvedCommissionAmount: 150000.0,
-          commissionCount: 12,
-          payoutStatus: 'READY_FOR_APPROVAL',
-          bankAccount: {
-            bankName: 'Punjab National Bank',
-            accountHolderName: 'Vikram Malhotra',
-            maskedAccountNumber: 'XXXXXX0382',
-            ifscCode: 'PUNB0192310',
-            status: 'VERIFIED',
-            isVerified: true,
-          },
-          eligibilityStatus: 'READY_FOR_PNB',
-        },
-        {
-          distributorId: 'dist-002',
-          distributorCode: 'DST-10002',
-          name: 'Anita Roy',
-          rankCode: 'DIAMOND',
-          rankName: 'Diamond',
-          rankPercentage: 50,
-          commissionPeriod: periodId || `CYCLE-${todayStr}`,
-          qualifyingBV: 1000,
-          matchingVolume: 75000,
-          approvedCommissionAmount: 110000.0,
-          commissionCount: 8,
-          payoutStatus: 'READY_FOR_APPROVAL',
-          bankAccount: {
-            bankName: 'State Bank of India',
-            accountHolderName: 'Anita Roy',
-            maskedAccountNumber: 'XXXXXX5412',
-            ifscCode: 'SBIN0001234',
-            status: 'VERIFIED',
-            isVerified: true,
-          },
-          eligibilityStatus: 'READY_FOR_PNB',
-        },
-        {
-          distributorId: 'dist-003',
-          distributorCode: 'DST-10003',
-          name: 'Rahul Kaushal',
-          rankCode: 'PLATINUM',
-          rankName: 'Platinum',
-          rankPercentage: 45,
-          commissionPeriod: periodId || `CYCLE-${todayStr}`,
-          qualifyingBV: 600,
-          matchingVolume: 55000,
-          approvedCommissionAmount: 85000.0,
-          commissionCount: 6,
-          payoutStatus: 'READY_FOR_APPROVAL',
-          bankAccount: {
-            bankName: 'Punjab National Bank',
-            accountHolderName: 'Rahul Kaushal',
-            maskedAccountNumber: 'XXXXXX9821',
-            ifscCode: 'PUNB0192310',
-            status: 'VERIFIED',
-            isVerified: true,
-          },
-          eligibilityStatus: 'READY_FOR_PNB',
-        },
-        {
-          distributorId: 'dist-004',
-          distributorCode: 'DST-10004',
-          name: 'Neha Kapoor',
-          rankCode: 'GOLD',
-          rankName: 'Gold',
-          rankPercentage: 32,
-          commissionPeriod: periodId || `CYCLE-${todayStr}`,
-          qualifyingBV: 350,
-          matchingVolume: 12000,
-          approvedCommissionAmount: 27500.0,
-          commissionCount: 4,
-          payoutStatus: 'READY_FOR_APPROVAL',
-          bankAccount: {
-            bankName: 'HDFC Bank',
-            accountHolderName: 'Neha Kapoor',
-            maskedAccountNumber: 'XXXXXX3310',
-            ifscCode: 'HDFC0000240',
-            status: 'VERIFIED',
-            isVerified: true,
-          },
-          eligibilityStatus: 'READY_FOR_PNB',
-        },
-        {
-          distributorId: 'dist-005',
-          distributorCode: 'DST-10005',
-          name: 'Vikas Gupta',
-          rankCode: 'SILVER',
-          rankName: 'Silver',
-          rankPercentage: 24,
-          commissionPeriod: periodId || `CYCLE-${todayStr}`,
-          qualifyingBV: 150,
-          matchingVolume: 2500,
-          approvedCommissionAmount: 20000.0,
-          commissionCount: 2,
-          payoutStatus: 'READY_FOR_APPROVAL',
-          bankAccount: {
-            bankName: 'ICICI Bank',
-            accountHolderName: 'Vikas Gupta',
-            maskedAccountNumber: 'XXXXXX7741',
-            ifscCode: 'ICIC0000052',
-            status: 'VERIFIED',
-            isVerified: true,
-          },
-          eligibilityStatus: 'READY_FOR_PNB',
-        },
-      ];
-
       // 1. Process Beneficiaries Preview
-      const beneficiaries = Array.isArray(rawPreview?.beneficiaries) && rawPreview.beneficiaries.length > 0
-        ? rawPreview.beneficiaries
-        : defaultBeneficiaries;
+      // Real data only: an empty pool shows an empty table.
+      const beneficiaries = Array.isArray(rawPreview?.beneficiaries) ? rawPreview.beneficiaries : [];
 
       const readyMembers = beneficiaries.filter((b) => b.eligibilityStatus === 'READY_FOR_PNB');
       const readySum = readyMembers.reduce((sum, b) => sum + Number(b.approvedCommissionAmount || 0), 0);
@@ -318,8 +198,8 @@ export default function CommissionDistributionPage() {
 
       setPreviewData({
         periodId: rawPreview?.periodId || periodId,
-        totalEligibleAmount: Number(rawPreview?.totalEligibleAmount || totalSum || 392500.0),
-        readyAmount: Number(rawPreview?.readyAmount || readySum || 392500.0),
+        totalEligibleAmount: Number(rawPreview?.totalEligibleAmount ?? totalSum),
+        readyAmount: Number(rawPreview?.readyAmount ?? readySum),
         quarantinedAmount: Number(rawPreview?.quarantinedAmount || (totalSum - readySum) || 0),
         totalCount: rawPreview?.totalCount || beneficiaries.length,
         readyCount: rawPreview?.readyCount || readyMembers.length,
@@ -329,8 +209,8 @@ export default function CommissionDistributionPage() {
 
       // 2. Process Summary Cards
       const d = rawSummary && typeof rawSummary === 'object' ? rawSummary : {};
-      const totalPayable = Number(d.totalCommissionPayable ?? d.eligibleCommissionsTotal ?? (totalSum || 392500.0));
-      const readyPayable = Number(d.readyForApprovalAmount ?? d.readyForPnbDisbursalTotal ?? (readySum || 392500.0));
+      const totalPayable = Number(d.totalCommissionPayable ?? d.eligibleCommissionsTotal ?? totalSum);
+      const readyPayable = Number(d.readyForApprovalAmount ?? d.readyForPnbDisbursalTotal ?? readySum);
       const eligibleCount = Number(d.eligibleMembersCount ?? d.totalBeneficiariesCount ?? beneficiaries.length);
       const verifiedCount = Number(d.readyForApprovalCount ?? d.verifiedBankCount ?? readyMembers.length);
 
@@ -529,8 +409,8 @@ export default function CommissionDistributionPage() {
         distributeAll: true,
       });
 
-      const totalDist = summary.totalCommissionPayable || previewData.totalEligibleAmount || 392500.0;
-      const countDist = summary.eligibleMembersCount || previewData.totalCount || 5;
+      const totalDist = summary.totalCommissionPayable || previewData.totalEligibleAmount || 0;
+      const countDist = summary.eligibleMembersCount || previewData.totalCount || 0;
 
       // Update local state instantly so user sees the progress bar animate to 100% and members marked as PAID
       setSummary((prev) => ({
@@ -752,7 +632,7 @@ export default function CommissionDistributionPage() {
     const paid = Number(summary.successfullyPaidAmount || 0);
     const ready = Number(summary.readyForApprovalAmount || 0);
     const pending = Number(summary.pendingPayoutsAmount || 0);
-    const total = Number(summary.totalCommissionPayable || (paid + ready + pending) || 392500);
+    const total = Number(summary.totalCommissionPayable || (paid + ready + pending) || 0);
 
     const isFullyPaid = (paid > 0 && ready === 0) || (total > 0 && paid >= total);
     const percent = total > 0 ? Math.min(100, Math.round((paid / total) * 100)) : 0;

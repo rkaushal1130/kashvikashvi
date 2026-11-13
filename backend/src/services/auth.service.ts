@@ -1573,11 +1573,12 @@ export class AuthService {
     const effectiveRole = (user.role?.name || user.roleName || 'DISTRIBUTOR') as UserRole;
 
     const resolvedMemberCode =
-      (user.role?.name === 'ADMIN' || (user as any).role === 'ADMIN' || user.email === 'admin@kashvimlm.com')
+      user.distributorProfile?.distributorCode ||
+      ((user.role?.name === 'ADMIN' || (user as any).role === 'ADMIN' || user.email === 'admin@kashvimlm.com')
         ? 'KV-0001'
         : (user.email === 'distributor@example.com'
           ? 'DST-0001'
-          : (user.distributorProfile?.distributorCode || user.referralCode || 'DST-0001'));
+          : (user.referralCode || 'DST-0001')));
 
     // Create session and issue tokens
     const tokens = await this.createSession(
@@ -1660,10 +1661,20 @@ export class AuthService {
     }
 
     const user = this.inMemoryUsers.get(payload.sub);
-    const userId = user ? user.id : payload.sub;
-    const email = user ? user.email : 'user@kashvimlm.com';
-    const role = user ? (user.roleName || user.role) : 'DISTRIBUTOR';
-    const status = user ? user.status : 'ACTIVE';
+    // Never mint a token with a guessed identity or role: if the database is unreachable and the
+    // user is not in the in-memory store, the session cannot be refreshed (the client must log in
+    // again). Previously this issued role DISTRIBUTOR, silently demoting admins.
+    if (!user) {
+      throw new AppError(
+        'Session could not be refreshed because the database is temporarily unavailable. Please log in again.',
+        401,
+        'AUTH_REFRESH_UNAVAILABLE'
+      );
+    }
+    const userId = user.id;
+    const email = user.email;
+    const role = user.roleName || user.role;
+    const status = user.status;
 
     const accessToken = signAccessToken({
       sub: userId,

@@ -1197,7 +1197,7 @@ export class AdminController {
 
   public static async getNetworkTree(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
-      const rootId = (req.query.memberId || req.query.rootId || 'KV-1001') as string;
+      const rootId = (req.query.memberId || req.query.rootId || (await NetworkTreeService.resolveDistributorCode(req.user?.id || '')) || 'KK-0001') as string;
       const depth = req.query.depth ? parseInt(req.query.depth as string, 10) : 3;
       const tree = await NetworkTreeService.getNetworkTree(rootId, depth);
       sendSuccess(res, {

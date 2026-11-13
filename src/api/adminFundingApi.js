@@ -985,86 +985,40 @@ export const adminFundingApi = {
   },
 
   /**
-   * 18. POST /api/v1/admin/funding/success
-   * Authoritatively records verified external Razorpay payment and credits Platform Treasury.
+   * 18a. POST /api/v1/admin/funding
+   * Creates a PENDING funding transaction + a real Razorpay order on the backend.
+   * Returns { transaction, checkout: { keyId, razorpayOrderId, amountInPaise, currency } }.
+   * No offline/mock fallback: Razorpay must never be opened without a backend record.
    */
-  async recordFundingSuccess(data) {
-    const amount = Number(data.amount) || 0;
-    const paymentId = data.paymentId || `pay_rzp_${Date.now()}`;
-    const bankName = data.bankName || 'Corporate Bank';
-    const bankCode = data.bankCode || 'BANK';
-    const maskedAccount = data.maskedAccountNumber || '•••• 3766';
-
-    try {
-      const res = await apiClient.post('/admin/funding/verify', {
-        providerTransactionId: paymentId,
-        amount,
-        paymentId,
-      });
-      if (res?.data) return res.data;
-    } catch (err) {
-      console.warn('[adminFundingApi] Server verify call failed, recording verified settlement locally:', sanitizeErrorMessage(err));
-    }
-
-    // 1. Credit Treasury Balance
-    mockTreasury.availableBalance += amount;
-    mockTreasury.isSolvent = true;
-
-    // 2. Add SUCCEEDED transaction
-    const newTx = {
-      id: `FTX-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
-      fundingAccountId: data.fundingAccountId || 'acc-corp-primary',
-      initiatedByAdminId: 'CURRENT-ADMIN',
-      amount,
+  async createRazorpayFundingOrder(data) {
+    const res = await apiClient.post('/admin/funding', {
+      amount: Number(data.amount),
       currency: data.currency || 'INR',
-      status: 'SUCCEEDED',
-      provider: 'RAZORPAYX',
-      providerTransactionId: paymentId,
-      idempotencyKey: `IDEMP-FTX-${Date.now()}`,
-      platformWalletTransactionId: `PW-TXN-${Date.now().toString().slice(-6)}`,
-      failureReason: null,
-      initiatedAt: new Date().toISOString(),
-      completedAt: new Date().toISOString(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      fundingAccount: {
-        id: data.fundingAccountId || 'acc-corp-primary',
-        bankName,
-        bankCode,
-        maskedAccountNumber: maskedAccount,
-        accountName: `Corporate Treasury - ${bankName}`,
-      },
-      initiatedByAdmin: { id: 'CURRENT-ADMIN', email: 'admin@kashvimlm.com', fullName: 'Super Administrator' },
-      timeline: [
-        {
-          step: 'SUCCEEDED',
-          label: 'Razorpay Live Settlement Confirmed',
-          timestamp: new Date().toISOString(),
-          detail: `Authoritatively verified Razorpay Payment ID: ${paymentId}. Platform Treasury credited +₹${amount.toLocaleString('en-IN')}. Backed by ${bankName}.`,
-        },
-      ],
-    };
-    mockTransactions.unshift(newTx);
+      fundingAccountId: data.fundingAccountId,
+      description: data.description || 'Platform treasury top-up via Razorpay',
+      idempotencyKey: data.idempotencyKey || `IDEMP-FTX-${Date.now()}`,
+    });
+    const result = res?.data;
+    if (!result?.transaction?.id || !result?.checkout?.razorpayOrderId || !result?.checkout?.keyId) {
+      throw new Error(res?.message || 'Could not create the Razorpay funding order. No payment was taken.');
+    }
+    return result;
+  },
 
-    // 3. Add to Treasury Ledger
-    const newLedgerRow = {
-      id: `TXN-TREAS-${Date.now()}`,
-      type: 'CAPITAL_FUNDING',
-      amount,
-      balanceAfter: mockTreasury.availableBalance,
-      referenceId: `RZPX:${paymentId}`,
-      notes: `Capital injection via ${bankName} (${maskedAccount}) - Razorpay Live Rail`,
-      status: 'COMPLETED',
-      createdAt: new Date().toISOString(),
-    };
-    mockTreasuryTransactions.unshift(newLedgerRow);
-
-    return {
-      success: true,
-      transaction: newTx,
-      treasury: mockTreasury,
-      ledgerEntry: newLedgerRow,
-    };
+  /**
+   * 18b. POST /api/v1/admin/funding/:id/verify
+   * Backend checks Razorpay (server-to-server) for a captured payment of the exact amount
+   * and only then credits the Platform Treasury. Idempotent. No local/mock crediting.
+   */
+  async verifyFundingPayment(transactionId, { razorpayPaymentId, razorpaySignature } = {}) {
+    const res = await apiClient.post(`/admin/funding/${encodeURIComponent(transactionId)}/verify`, {
+      razorpayPaymentId,
+      razorpaySignature,
+    });
+    if (!res?.data) {
+      throw new Error(res?.message || 'Funding verification failed');
+    }
+    return res.data;
   },
 
   /**

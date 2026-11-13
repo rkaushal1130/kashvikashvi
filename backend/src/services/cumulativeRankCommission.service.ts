@@ -14,7 +14,7 @@ import {
   CumulativeCommissionTier,
   RankQualificationDetails,
   TierCommissionCalculation,
-  PeriodCommissionCalculationResult,
+  PeriodPoolContributionResult,
   AdminCommissionReportItem,
   CommissionBaseType,
   CumulativeCommissionStatus,
@@ -611,58 +611,75 @@ export class CumulativeRankCommissionService {
   }
 
   /**
-   * Batch calculates cumulative commissions for all active qualified distributors in a period.
+   * Records each active, paid member's commission base (matched BV or qualifying BV) for the
+   * period as a pool contribution. NO rank percentage is applied here: rank percentages are
+   * applied once, when the approved pool is split by tier slices at distribution time
+   * (AdminFundingCommissionService.executeOneClickDistribution).
+   *
+   * Idempotent per member and period via businessReference. The period is stored in
+   * details.periodCode (commissions.periodId is a foreign key to commission_periods).
    */
   public static async calculatePeriodCommissions(
     periodId: string,
     options?: { baseType?: CommissionBaseType },
     tx?: Prisma.TransactionClient
-  ): Promise<PeriodCommissionCalculationResult> {
+  ): Promise<PeriodPoolContributionResult> {
     const db = tx || prisma;
     const baseType = options?.baseType || this.activeCommissionBaseType;
 
-    // Fetch active distributors
-    let members: any[] = [];
-    try {
-      members = await db.distributorProfile.findMany({
-        where: { status: 'ACTIVE' },
-        include: {
-          user: true,
-          sponsor: true,
-          currentLevel: true,
-          currentRank: true,
-          mlmNodes: true,
-        },
-      });
-    } catch {
-      members = [];
-    }
+    const members = await db.distributorProfile.findMany({
+      where: { status: 'ACTIVE' },
+      select: { id: true },
+    });
 
-    const allCommissions: TierCommissionCalculation[] = [];
-    const tierSummary: Record<string, { count: number; totalAmount: number }> = {
-      SILVER: { count: 0, totalAmount: 0 },
-      GOLD: { count: 0, totalAmount: 0 },
-      PLATINUM: { count: 0, totalAmount: 0 },
-      DIAMOND: { count: 0, totalAmount: 0 },
-      RUBY: { count: 0, totalAmount: 0 },
-    };
-
-    let totalAmount = 0;
-    let qualifiedCount = 0;
+    const contributions: PeriodPoolContributionResult['contributions'] = [];
+    let totalContributionAmount = 0;
 
     for (const mem of members) {
-      const comms = await this.calculateMemberCumulativeCommissions(mem.id, periodId, { baseType }, db);
-      if (comms.length > 0) {
-        qualifiedCount++;
-        for (const c of comms) {
-          allCommissions.push(c);
-          totalAmount += c.calculatedAmount;
-          if (tierSummary[c.rankCode]) {
-            tierSummary[c.rankCode].count++;
-            tierSummary[c.rankCode].totalAmount += c.calculatedAmount;
-          }
-        }
-      }
+      const qualification = await this.getMemberRankQualification(mem.id, undefined, db);
+      if (!qualification.isCommissionEligible) continue;
+
+      const baseAmount = SafeDecimal.round(
+        baseType === 'BINARY_MATCHED_BV' ? qualification.matchedVolume : qualification.qualifyingBV,
+        2
+      );
+      if (baseAmount <= 0) continue;
+
+      const businessReference = `POOL_CONTRIBUTION:${periodId}:${qualification.memberId}`;
+      const existing = await db.commission.findUnique({ where: { businessReference } });
+      const record =
+        existing ||
+        (await db.commission.create({
+          data: {
+            commissionNumber: `PCN-${Date.now().toString().slice(-6)}-${Math.floor(1000 + Math.random() * 9000)}`,
+            businessReference,
+            distributorId: qualification.memberId,
+            type: 'OTHER' as CommissionRuleType,
+            amount: new Prisma.Decimal(baseAmount),
+            status: 'CALCULATED' as CommissionStatus,
+            leftVolumeMatched: new Prisma.Decimal(qualification.leftMatching),
+            rightVolumeMatched: new Prisma.Decimal(qualification.rightMatching),
+            details: {
+              kind: 'POOL_CONTRIBUTION',
+              periodCode: periodId,
+              baseType,
+              eligibleBaseAmount: baseAmount,
+            },
+          },
+        }));
+
+      const amount = Number(record.amount);
+      totalContributionAmount += amount;
+      contributions.push({
+        id: record.id,
+        distributorId: qualification.memberId,
+        distributorCode: qualification.distributorCode,
+        distributorName: qualification.name,
+        amount,
+        status: record.status,
+        businessReference,
+        alreadyRecorded: Boolean(existing),
+      });
     }
 
     return {
@@ -670,10 +687,9 @@ export class CumulativeRankCommissionService {
       periodCode: periodId,
       baseType,
       membersEvaluated: members.length,
-      membersQualified: qualifiedCount,
-      totalCalculatedAmount: SafeDecimal.round(totalAmount, 2),
-      tierSummary,
-      commissions: allCommissions,
+      contributingMembers: contributions.length,
+      totalContributionAmount: SafeDecimal.round(totalContributionAmount, 2),
+      contributions,
     };
   }
 
@@ -692,9 +708,12 @@ export class CumulativeRankCommissionService {
     try {
       const commissions = await db.commission.findMany({
         where: {
-          periodId,
-          type: 'RANK' as CommissionRuleType,
           status: 'CALCULATED' as CommissionStatus,
+          OR: [
+            { periodId, type: 'RANK' as CommissionRuleType },
+            // Pool contributions keep the period in details.periodCode (see calculatePeriodCommissions)
+            { type: 'OTHER' as CommissionRuleType, details: { path: ['periodCode'], equals: periodId } },
+          ],
         },
       });
 

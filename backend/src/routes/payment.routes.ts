@@ -3,6 +3,7 @@ import { PaymentController } from '../controllers/payment.controller';
 import { authenticate } from '../middleware/auth';
 import { authorizeRoles } from '../middleware/role';
 import { validate } from '../middleware/validate';
+import { getRazorpayCredentials } from '../utils/razorpay';
 import {
   createRazorpayOrderSchema,
   verifyRazorpayPaymentSchema,
@@ -10,6 +11,15 @@ import {
 } from '../validators/payment.validators';
 
 const router = Router();
+
+// Public Razorpay Checkout key ID (public by design). The key SECRET is never exposed.
+router.get('/razorpay/key', (_req, res) => {
+  const { keyId } = getRazorpayCredentials();
+  if (!keyId) {
+    return res.status(503).json({ success: false, message: 'Payment gateway is not configured', code: 'PAYMENT_GATEWAY_NOT_CONFIGURED' });
+  }
+  return res.json({ success: true, data: { keyId } });
+});
 
 // Public Webhook endpoints (verified via HMAC signature on rawBody)
 router.post('/razorpay/webhook', PaymentController.handleWebhook);

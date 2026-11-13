@@ -702,8 +702,6 @@ export default function AdminFundingPortalPage() {
         throw new Error('Razorpay Checkout SDK could not be loaded. Please check your internet connection.');
       }
 
-      const keyId = import.meta.env?.VITE_RAZORPAY_KEY_ID || 'rzp_live_ToerZRsvekgL2z';
-      const amountInPaise = Math.round(numericAmount * 100);
       const acc = targetAccount || activeAccount || (accounts.length > 0 ? accounts[0] : null) || {
         bankName: 'Indian Overseas Bank',
         bankCode: 'IOBA',
@@ -711,10 +709,22 @@ export default function AdminFundingPortalPage() {
         accountName: 'Kashvi Technologies Corp - Primary Treasury Float',
       };
 
+      // 1. Create the PENDING funding transaction + real Razorpay order on the backend FIRST.
+      //    (apiClient silently refreshes an expired access token here, before any money moves.)
+      const funding = await adminFundingApi.createRazorpayFundingOrder({
+        amount: numericAmount,
+        currency: 'INR',
+        fundingAccountId: acc.id || undefined,
+        description: `Treasury top-up via ${acc.bankName || 'Razorpay'}`,
+      });
+      const fundingTxId = funding.transaction.id;
+      const { keyId, razorpayOrderId, amountInPaise } = funding.checkout;
+
       const options = {
         key: keyId,
         amount: amountInPaise,
         currency: 'INR',
+        order_id: razorpayOrderId,
         name: 'Kashvi Technologies Corp',
         description: `Treasury Float Injection via ${acc.bankName || 'Corporate Bank'} (${acc.maskedAccountNumber || 'Primary'})`,
         image: 'https://cdn-icons-png.flaticon.com/512/2830/2830284.png',
@@ -744,16 +754,17 @@ export default function AdminFundingPortalPage() {
           try {
             const paymentId = response.razorpay_payment_id;
 
-            await adminFundingApi.recordFundingSuccess({
-              amount: numericAmount,
-              currency: 'INR',
-              paymentId,
-              fundingAccountId: acc.id || 'acc-primary-float',
-              provider: 'RAZORPAYX',
-              bankName: acc.bankName || 'Corporate Bank',
-              bankCode: acc.bankCode || 'BANK',
-              maskedAccountNumber: acc.maskedAccountNumber || '•••• 3766',
+            // 2. Backend verifies the captured payment with Razorpay and credits the treasury (idempotent).
+            const result = await adminFundingApi.verifyFundingPayment(fundingTxId, {
+              razorpayPaymentId: paymentId,
+              razorpaySignature: response.razorpay_signature,
             });
+            if (!result?.isCredited && result?.transaction?.status !== 'SUCCEEDED') {
+              throw new Error(
+                result?.message ||
+                  `Payment ${paymentId} is not yet confirmed by Razorpay. The funding request stays pending; use Verify on the transaction later.`
+              );
+            }
 
             setAddFundsModal(false);
             setConfirmModal({ open: false, amount: 0, currency: 'INR', account: null });
@@ -765,7 +776,10 @@ export default function AdminFundingPortalPage() {
 
             await loadPortalData();
           } catch (err) {
-            setErrorBanner(`Payment succeeded (${response.razorpay_payment_id}) but verification failed: ${sanitizeErrorMessage(err)}`);
+            setErrorBanner(
+              `Payment ${response.razorpay_payment_id} was received but the treasury was NOT credited yet: ${sanitizeErrorMessage(err)}. Do not pay again — re-verify funding transaction ${fundingTxId} from the transactions list.`
+            );
+            await loadPortalData();
           } finally {
             setSubmittingFunding(false);
           }
@@ -3425,7 +3439,7 @@ export default function AdminFundingPortalPage() {
                     <div>
                       <div className="gateway-pill-title">RazorpayX Live Float Rail Active</div>
                       <div className="gateway-pill-desc">
-                        Live Key: <code>rzp_live_ToerZRsvekgL2z</code> &bull; Automated penny drop &amp; beneficiary validation enabled
+                        Live Razorpay gateway connected &bull; Credentials are held securely on the server
                       </div>
                     </div>
                   </div>
@@ -3846,7 +3860,7 @@ export default function AdminFundingPortalPage() {
               }}>
                 <ShieldCheck size={18} style={{ color: '#16a34a', flexShrink: 0 }} />
                 <div>
-                  <strong>Razorpay Live Gateway Active:</strong> Payments are processed directly through live key <code>rzp_live_ToerZRsvekgL2z</code>. Funds instantly reflect in the platform treasury and generate verified double-entry ledger records.
+                  <strong>Razorpay Live Gateway Active:</strong> Payments are processed through Razorpay. The platform treasury is credited only after the server confirms the captured payment with Razorpay, and every credit generates verified double-entry ledger records.
                 </div>
               </div>
             </div>

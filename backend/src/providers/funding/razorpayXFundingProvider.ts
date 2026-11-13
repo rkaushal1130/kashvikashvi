@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { logger } from '../../config/logger';
 import { AppError } from '../../utils/appError';
+import { createRazorpayOrder, fetchRazorpayOrderPayments } from '../../utils/razorpay';
 import {
   AccountStatusResult,
   ConnectAccountInput,
@@ -105,6 +106,11 @@ export class RazorpayXFundingProvider implements IFundingProvider {
     };
   }
 
+  /**
+   * Creates a REAL Razorpay order for the treasury top-up. The returned order id
+   * is stored as the FundingTransaction.providerTransactionId and is passed to
+   * Razorpay Checkout as `order_id`, so the payment is bound to this transaction.
+   */
   public async createFundingRequest(
     input: CreateFundingRequestInput
   ): Promise<FundingRequestResult> {
@@ -112,49 +118,113 @@ export class RazorpayXFundingProvider implements IFundingProvider {
       throw AppError.badRequest('Funding amount must be greater than zero');
     }
 
-    const providerTransactionId = `order_rzp_${Date.now().toString().slice(-8)}_${Math.floor(1000 + Math.random() * 9000)}`;
-
-    return {
-      providerTransactionId,
-      status: 'PENDING',
+    const order = await createRazorpayOrder({
       amount: input.amount,
       currency: input.currency || 'INR',
-      paymentLinkUrl: `https://api.razorpay.com/v1/checkout/${providerTransactionId}`,
-      virtualAccountDetails: {
-        bankName: 'RBL Bank / ICICI Bank (RazorpayX Float Rail)',
-        accountNumber: `RZPX${this.config.accountNumber ? this.config.accountNumber.slice(-6) : '889900'}`,
-        ifsc: 'RAZR0000001',
-        beneficiaryName: 'KashviMLM Corporate Treasury',
+      receipt: input.idempotencyKey,
+      notes: {
+        purpose: 'PLATFORM_TREASURY_FUNDING',
+        idempotencyKey: input.idempotencyKey,
       },
+    });
+
+    return {
+      providerTransactionId: order.id,
+      status: 'PENDING',
+      amount: input.amount,
+      currency: order.currency || input.currency || 'INR',
       expiresAt: new Date(Date.now() + 86400 * 1000), // 24 hours
+      metadata: {
+        razorpayOrderId: order.id,
+        amountInPaise: order.amount,
+      },
     };
   }
 
   public async getFundingStatus(providerTransactionId: string): Promise<FundingStatusResult> {
+    const payments = await fetchRazorpayOrderPayments(providerTransactionId);
+    const captured = payments.find((p) => p.status === 'captured');
+    const authorized = payments.find((p) => p.status === 'authorized');
+    const best = captured || authorized || payments[0];
     return {
       providerTransactionId,
-      status: 'SUCCEEDED',
-      amount: 100000,
-      currency: 'INR',
-      utrNumber: `UTR-RZP-${providerTransactionId.slice(-6)}`,
-      paidAt: new Date(),
+      status: captured ? 'SUCCEEDED' : authorized ? 'PROCESSING' : payments.length ? 'FAILED' : 'PENDING',
+      amount: best ? best.amount / 100 : 0,
+      currency: best?.currency || 'INR',
+      utrNumber: captured?.acquirer_data?.rrn || captured?.acquirer_data?.bank_transaction_id,
+      paidAt: captured?.created_at ? new Date(captured.created_at * 1000) : undefined,
     };
   }
 
+
+  /**
+   * Authoritatively verifies settlement by asking Razorpay (server-to-server) for
+   * the payments made against the funding order. Only a CAPTURED payment whose
+   * amount and currency exactly match the funding transaction counts as success.
+   */
   public async verifyTransaction(
     input: VerifyTransactionInput
   ): Promise<VerifyTransactionResult> {
-    const verified = input.expectedAmount > 0;
+    const expectedPaise = Math.round(Number(input.expectedAmount) * 100);
+    const currency = (input.currency || 'INR').toUpperCase();
+    const payments = await fetchRazorpayOrderPayments(input.providerTransactionId);
 
+    const captured = payments.find(
+      (p) => p.status === 'captured' && p.amount === expectedPaise && p.currency?.toUpperCase() === currency
+    );
+    if (captured) {
+      return {
+        verified: true,
+        providerTransactionId: input.providerTransactionId,
+        status: 'SUCCEEDED',
+        amount: captured.amount / 100,
+        currency: captured.currency,
+        utrNumber:
+          input.utrNumber ||
+          captured.acquirer_data?.rrn ||
+          captured.acquirer_data?.bank_transaction_id ||
+          captured.id,
+        settledAt: captured.created_at ? new Date(captured.created_at * 1000) : new Date(),
+        rawProviderStatus: `captured:${captured.id}`,
+      };
+    }
+
+    // Authorized but not yet captured (auto-capture pending) -> still processing.
+    const authorized = payments.find((p) => p.status === 'authorized' && p.amount === expectedPaise);
+    if (authorized) {
+      return {
+        verified: false,
+        providerTransactionId: input.providerTransactionId,
+        status: 'PROCESSING',
+        amount: authorized.amount / 100,
+        currency: authorized.currency,
+        rawProviderStatus: `authorized:${authorized.id}`,
+      };
+    }
+
+    // No payment attempt yet -> keep PENDING (do not mark FAILED just because the user is still paying).
+    if (payments.length === 0) {
+      return {
+        verified: false,
+        providerTransactionId: input.providerTransactionId,
+        status: 'PENDING',
+        amount: 0,
+        currency,
+        rawProviderStatus: 'no_payments',
+      };
+    }
+
+    const mismatch = payments.find((p) => p.status === 'captured');
     return {
-      verified,
+      verified: false,
       providerTransactionId: input.providerTransactionId,
-      status: verified ? 'SUCCEEDED' : 'FAILED',
-      amount: input.expectedAmount,
-      currency: input.currency || 'INR',
-      utrNumber: input.utrNumber || `UTR-RZP-${Date.now().toString().slice(-6)}`,
-      settledAt: new Date(),
-      rawProviderStatus: verified ? 'captured' : 'failed',
+      status: 'FAILED',
+      amount: mismatch ? mismatch.amount / 100 : 0,
+      currency,
+      rawProviderStatus: payments.map((p) => `${p.status}:${p.id}`).join(','),
+      discrepancyReason: mismatch
+        ? `Captured amount ${mismatch.amount / 100} ${mismatch.currency} does not match expected ${expectedPaise / 100} ${currency}`
+        : 'No captured payment found for this funding order at Razorpay',
     };
   }
 
@@ -223,15 +293,19 @@ export class RazorpayXFundingProvider implements IFundingProvider {
     providerTransactionId: string,
     expectedAmount: number
   ): Promise<ReconciliationResult> {
+    const status = await this.getFundingStatus(providerTransactionId);
+    const actualAmount = status.status === 'SUCCEEDED' ? status.amount : 0;
+    const discrepancy = Math.round((actualAmount - expectedAmount) * 100) / 100;
     return {
       providerTransactionId,
-      isMatched: true,
-      providerStatus: 'SUCCEEDED',
+      isMatched: status.status === 'SUCCEEDED' && discrepancy === 0,
+      providerStatus: status.status,
       expectedAmount,
-      actualAmount: expectedAmount,
-      discrepancy: 0,
-      utrNumber: `UTR-RZP-${providerTransactionId.slice(-6)}`,
-      settledAt: new Date(),
+      actualAmount,
+      discrepancy,
+      utrNumber: status.utrNumber,
+      settledAt: status.paidAt,
     };
   }
+
 }

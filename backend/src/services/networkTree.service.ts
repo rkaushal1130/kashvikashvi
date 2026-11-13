@@ -394,6 +394,11 @@ export class NetworkTreeService {
                 lastName: true,
                 displayName: true,
                 status: true,
+                paymentStatus: true,
+                createdAt: true,
+                sponsor: {
+                  select: { distributorId: true, distributorCode: true },
+                },
                 currentRank: {
                   select: { name: true },
                 },

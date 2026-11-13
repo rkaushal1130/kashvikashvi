@@ -130,8 +130,7 @@ export class MLMSecurityService {
       context?.path?.includes('/levels/evaluate') ||
       context?.path?.includes('/levels/simulate') ||
       context?.path?.includes('/commissions/cumulative/preview') ||
-      context?.userRole === 'ADMIN' ||
-      context?.userRole === 'SUPER_ADMIN'
+      ['ADMIN', 'SUPER_ADMIN'].includes(String(context?.userRole ?? '').trim().toUpperCase())
     ) {
       return;
     }

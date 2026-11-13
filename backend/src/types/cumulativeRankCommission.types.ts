@@ -174,6 +174,25 @@ export interface PeriodCommissionCalculationResult {
   commissions: TierCommissionCalculation[];
 }
 
+export interface PeriodPoolContributionResult {
+  periodId: string;
+  periodCode: string;
+  baseType: CommissionBaseType;
+  membersEvaluated: number;
+  contributingMembers: number;
+  totalContributionAmount: number;
+  contributions: Array<{
+    id: string;
+    distributorId: string;
+    distributorCode: string;
+    distributorName: string;
+    amount: number;
+    status: string;
+    businessReference: string;
+    alreadyRecorded: boolean;
+  }>;
+}
+
 export interface AdminCommissionReportItem {
   distributorId: string;
   distributorCode: string;

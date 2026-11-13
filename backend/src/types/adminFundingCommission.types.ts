@@ -1,3 +1,4 @@
+import type { PoolSliceResult } from '../services/commissionPoolDistribution';
 /**
  * Types and Interfaces for Admin-Only Funding Portal and One-Click Commission Distribution
  */
@@ -97,6 +98,13 @@ export interface DistributionPreview {
   pendingCommissionsAmount: number;
   previouslyPaidAmount: number;
   excludedCommissionsAmount: number;
+  // Commission pool (tier-slice) fields
+  eligibleEmployeesCount?: number;
+  excludedEmployeesCount?: number;
+  poolAmount?: number;
+  remainingInPool?: number;
+  approvedCommissionCount?: number;
+  slices?: PoolSliceResult[];
   eligibleEmployees: Array<{
     distributorId: string;
     distributorCode: string;
@@ -106,6 +114,7 @@ export interface DistributionPreview {
     commissionCount: number;
     paymentStatus: string;
     hasActiveWallet: boolean;
+    tierBreakdown?: Array<{ rankCode: string; amount: number }>;
   }>;
 }
 
@@ -138,4 +147,7 @@ export interface DistributionBatchResult {
   items: BatchItemExecutionResult[];
   createdAt: string;
   completedAt?: string;
+  poolAmount?: number;
+  remainingInPool?: number;
+  slices?: PoolSliceResult[];
 }

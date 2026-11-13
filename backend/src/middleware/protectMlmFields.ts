@@ -26,6 +26,19 @@ export const protectMlmFields = (req: Request, _res: Response, next: NextFunctio
       return next();
     }
 
+    // Product catalog management writes (create/update/patch products, bulk ops).
+    // A product's `bv` is catalog configuration set by admins, not member volume.
+    // These routes are already gated by `authenticate` + `requireProductManagementAccess`,
+    // and their bodies are whitelisted by the zod product schemas, so the global
+    // member-field guard must not block them (it rejected even bv: 0 / empty).
+    const pathOnly = path.split('?')[0];
+    if (
+      ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) &&
+      /^\/api\/v\d+\/products(\/|$)/.test(pathOnly)
+    ) {
+      return next();
+    }
+
     if (!userRole && req.headers.authorization?.startsWith('Bearer ')) {
       try {
         const token = req.headers.authorization.split(' ')[1];

@@ -543,7 +543,7 @@ var init_mlmSecurity_service = __esm({
        */
       static validatePayloadForProtectedFields(payload, context) {
         if (!payload || typeof payload !== "object") return;
-        if (context?.path?.includes("/admin/config") || context?.path?.includes("/admin/levels") || context?.path?.includes("/levels/evaluate") || context?.path?.includes("/levels/simulate") || context?.path?.includes("/commissions/cumulative/preview") || context?.userRole === "ADMIN" || context?.userRole === "SUPER_ADMIN") {
+        if (context?.path?.includes("/admin/config") || context?.path?.includes("/admin/levels") || context?.path?.includes("/levels/evaluate") || context?.path?.includes("/levels/simulate") || context?.path?.includes("/commissions/cumulative/preview") || ["ADMIN", "SUPER_ADMIN"].includes(String(context?.userRole ?? "").trim().toUpperCase())) {
           return;
         }
         const violatingFields = [];
@@ -1026,6 +1026,11 @@ var init_networkTree_service = __esm({
                     lastName: true,
                     displayName: true,
                     status: true,
+                    paymentStatus: true,
+                    createdAt: true,
+                    sponsor: {
+                      select: { distributorId: true, distributorCode: true }
+                    },
                     currentRank: {
                       select: { name: true }
                     }
@@ -9623,7 +9628,7 @@ var init_auth_service = __esm({
           }
         });
         const effectiveRole = user.role?.name || user.roleName || "DISTRIBUTOR";
-        const resolvedMemberCode = user.role?.name === "ADMIN" || user.role === "ADMIN" || user.email === "admin@kashvimlm.com" ? "KV-0001" : user.email === "distributor@example.com" ? "DST-0001" : user.distributorProfile?.distributorCode || user.referralCode || "DST-0001";
+        const resolvedMemberCode = user.distributorProfile?.distributorCode || (user.role?.name === "ADMIN" || user.role === "ADMIN" || user.email === "admin@kashvimlm.com" ? "KV-0001" : user.email === "distributor@example.com" ? "DST-0001" : user.referralCode || "DST-0001");
         const tokens = await this.createSession(
           user.id,
           user.email,
@@ -9693,10 +9698,17 @@ var init_auth_service = __esm({
           throw AppError.unauthorized("Invalid or expired refresh token.", "AUTH_INVALID_TOKEN");
         }
         const user = this.inMemoryUsers.get(payload.sub);
-        const userId = user ? user.id : payload.sub;
-        const email = user ? user.email : "user@kashvimlm.com";
-        const role = user ? user.roleName || user.role : "DISTRIBUTOR";
-        const status = user ? user.status : "ACTIVE";
+        if (!user) {
+          throw new AppError(
+            "Session could not be refreshed because the database is temporarily unavailable. Please log in again.",
+            401,
+            "AUTH_REFRESH_UNAVAILABLE"
+          );
+        }
+        const userId = user.id;
+        const email = user.email;
+        const role = user.roleName || user.role;
+        const status = user.status;
         const accessToken = signAccessToken({
           sub: userId,
           email,
@@ -15205,12 +15217,986 @@ var init_commissionReversal_service = __esm({
   }
 });
 
+// backend/src/utils/razorpay.ts
+function getRazorpayCredentials() {
+  return {
+    keyId: (process.env.RAZORPAY_KEY_ID || env.RAZORPAY_KEY_ID || env.FUNDING_PROVIDER_KEY_ID || "").trim(),
+    keySecret: (process.env.RAZORPAY_KEY_SECRET || env.RAZORPAY_KEY_SECRET || env.FUNDING_PROVIDER_KEY_SECRET || "").trim(),
+    webhookSecret: (process.env.RAZORPAY_WEBHOOK_SECRET || env.RAZORPAY_WEBHOOK_SECRET || env.FUNDING_PROVIDER_WEBHOOK_SECRET || "").trim()
+  };
+}
+function isRazorpayConfigured() {
+  const { keyId, keySecret } = getRazorpayCredentials();
+  return Boolean(keyId && keySecret && !keyId.includes("your_key_id"));
+}
+function requireRazorpayCredentials() {
+  const creds = getRazorpayCredentials();
+  if (!isRazorpayConfigured()) {
+    throw new AppError(
+      "Payment gateway is not configured on the server (RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET).",
+      503,
+      "PAYMENT_GATEWAY_NOT_CONFIGURED"
+    );
+  }
+  return creds;
+}
+async function razorpayRequest(path2, init = {}) {
+  const { keyId, keySecret } = requireRazorpayCredentials();
+  const res = await fetch(`${RAZORPAY_API}${path2}`, {
+    ...init,
+    headers: {
+      Authorization: "Basic " + Buffer.from(`${keyId}:${keySecret}`).toString("base64"),
+      "Content-Type": "application/json",
+      ...init.headers || {}
+    }
+  });
+  const text = await res.text();
+  let body = null;
+  try {
+    body = text ? JSON.parse(text) : null;
+  } catch {
+    body = { raw: text };
+  }
+  if (!res.ok) {
+    const reason = body?.error?.description || body?.raw || `HTTP ${res.status}`;
+    throw new AppError(`Razorpay API error: ${reason}`, 502, "PAYMENT_GATEWAY_ERROR");
+  }
+  return body;
+}
+async function createRazorpayOrder(params) {
+  const amountInPaise = Math.round(Number(params.amount) * 100);
+  if (!Number.isFinite(amountInPaise) || amountInPaise < 100) {
+    throw AppError.badRequest("Payment amount must be at least \u20B91.00", "INVALID_AMOUNT");
+  }
+  return razorpayRequest("/orders", {
+    method: "POST",
+    body: JSON.stringify({
+      amount: amountInPaise,
+      currency: params.currency || "INR",
+      receipt: params.receipt.slice(0, 40),
+      notes: params.notes || {}
+    })
+  });
+}
+async function fetchRazorpayOrderPayments(orderId) {
+  const body = await razorpayRequest(
+    `/orders/${encodeURIComponent(orderId)}/payments`
+  );
+  return body?.items || [];
+}
+var RAZORPAY_API;
+var init_razorpay = __esm({
+  "backend/src/utils/razorpay.ts"() {
+    "use strict";
+    init_env();
+    init_appError();
+    RAZORPAY_API = "https://api.razorpay.com/v1";
+  }
+});
+
+// backend/src/types/cumulativeRankCommission.types.ts
+var CANONICAL_RANK_CONFIGS;
+var init_cumulativeRankCommission_types = __esm({
+  "backend/src/types/cumulativeRankCommission.types.ts"() {
+    "use strict";
+    CANONICAL_RANK_CONFIGS = Object.freeze([
+      {
+        order: 0,
+        code: "BASE",
+        name: "Base",
+        commissionPercent: 0,
+        minBV: 0,
+        minLeftMatching: 0,
+        minRightMatching: 0,
+        binaryWeeklyCap: 500,
+        description: "Initial entry tier for newly registered members before reaching Silver threshold.",
+        isActive: true
+      },
+      {
+        order: 1,
+        code: "SILVER",
+        name: "Silver",
+        commissionPercent: 24,
+        minBV: 250,
+        minLeftMatching: 2e3,
+        minRightMatching: 2e3,
+        binaryWeeklyCap: 3e3,
+        description: "Silver rank: 24% commission, min 250 BV, left matching >= 2,000, right matching >= 2,000.",
+        isActive: true
+      },
+      {
+        order: 2,
+        code: "GOLD",
+        name: "Gold",
+        commissionPercent: 8,
+        minBV: 250,
+        minLeftMatching: 5e3,
+        minRightMatching: 5e3,
+        binaryWeeklyCap: 1e4,
+        description: "Gold rank: 8% commission (cumulative +24% Silver = 32%), min 250 BV, left matching >= 5,000, right matching >= 5,000.",
+        isActive: true
+      },
+      {
+        order: 3,
+        code: "PLATINUM",
+        name: "Platinum",
+        commissionPercent: 13,
+        minBV: 500,
+        minLeftMatching: 5e4,
+        minRightMatching: 5e4,
+        binaryWeeklyCap: 25e3,
+        description: "Platinum rank: 13% commission (cumulative 24%+8%+13% = 45%), min 500 BV, left matching >= 50,000, right matching >= 50,000.",
+        isActive: true
+      },
+      {
+        order: 4,
+        code: "DIAMOND",
+        name: "Diamond",
+        commissionPercent: 5,
+        minBV: 1e3,
+        minLeftMatching: 6e4,
+        minRightMatching: 6e4,
+        binaryWeeklyCap: 5e4,
+        description: "Diamond rank: 5% commission (cumulative 24%+8%+13%+5% = 50%), min 1,000 BV, left matching >= 60,000, right matching >= 60,000.",
+        isActive: true
+      },
+      {
+        order: 5,
+        code: "RUBY",
+        name: "Ruby",
+        commissionPercent: 4,
+        minBV: 1e3,
+        minLeftMatching: 1e5,
+        minRightMatching: 1e5,
+        binaryWeeklyCap: 1e5,
+        description: "Ruby rank: 4% commission (cumulative 24%+8%+13%+5%+4% = 54%), min 1,000 BV, left matching >= 100,000, right matching >= 100,000.",
+        isActive: true
+      }
+    ]);
+  }
+});
+
+// backend/src/services/cumulativeRankCommission.service.ts
+var import_client30, CumulativeRankCommissionService;
+var init_cumulativeRankCommission_service = __esm({
+  "backend/src/services/cumulativeRankCommission.service.ts"() {
+    "use strict";
+    import_client30 = require("@prisma/client");
+    init_database();
+    init_logger();
+    init_appError();
+    init_safeDecimal();
+    init_bb_service2();
+    init_binaryVolume_service();
+    init_cumulativeRankCommission_types();
+    CumulativeRankCommissionService = class {
+      // In-memory cache for dynamic configurations
+      static dynamicConfigs = /* @__PURE__ */ new Map();
+      static rankRetentionEnabled = true;
+      // Prevents accidental downgrades
+      static activeCommissionBaseType = "BINARY_MATCHED_BV";
+      // In-memory ledger storage for test/offline environments
+      static inMemoryLedger = /* @__PURE__ */ new Map();
+      static inMemoryAuditTrail = [];
+      static getInMemoryLedger() {
+        return Array.from(this.inMemoryLedger.values());
+      }
+      // =========================================================================
+      // PHASE 1: RANK CONFIGURATION
+      // =========================================================================
+      /**
+       * Initializes or loads the database-backed rank configuration.
+       */
+      static async getRankConfigs(tx) {
+        const db = tx || prisma;
+        try {
+          const dbLevels = await db.level?.findMany({
+            where: { isActive: true },
+            orderBy: { order: "asc" }
+          });
+          if (dbLevels && dbLevels.length > 0) {
+            const merged = CANONICAL_RANK_CONFIGS.map((canonical) => {
+              const dbMatch = dbLevels.find((l) => l.order === canonical.order || l.code?.toUpperCase() === canonical.code?.toUpperCase());
+              if (!dbMatch) return canonical;
+              return {
+                id: dbMatch.id,
+                order: dbMatch.order,
+                code: canonical.code,
+                name: dbMatch.name,
+                commissionPercent: canonical.commissionPercent ?? (dbMatch.commissionPercent !== void 0 ? Number(dbMatch.commissionPercent) : 0),
+                minBV: Number(dbMatch.requiredBB ?? canonical.minBV),
+                minLeftMatching: Number(dbMatch.requiredLeftMatching ?? dbMatch.requiredMatching ?? canonical.minLeftMatching),
+                minRightMatching: Number(dbMatch.requiredRightMatching ?? dbMatch.requiredMatching ?? canonical.minRightMatching),
+                binaryWeeklyCap: canonical.binaryWeeklyCap,
+                description: `${dbMatch.name} rank tier`,
+                isActive: dbMatch.isActive
+              };
+            });
+            return merged;
+          }
+        } catch {
+        }
+        if (this.dynamicConfigs.size > 0) {
+          return Array.from(this.dynamicConfigs.values()).sort((a, b) => a.order - b.order);
+        }
+        return [...CANONICAL_RANK_CONFIGS];
+      }
+      /**
+       * Retrieves single rank tier configuration by code.
+       */
+      static async getRankConfig(rankCode, tx) {
+        const configs = await this.getRankConfigs(tx);
+        const found = configs.find((c) => c.code === rankCode.toUpperCase());
+        if (found) return found;
+        const canonical = CANONICAL_RANK_CONFIGS.find((c) => c.code === rankCode.toUpperCase());
+        if (canonical) return canonical;
+        throw AppError.notFound(`Rank configuration for '${rankCode}' not found`);
+      }
+      /**
+       * Updates a rank configuration in database or in-memory config.
+       */
+      static async updateRankConfig(rankCode, updates, tx) {
+        const code = rankCode.toUpperCase();
+        const existing = await this.getRankConfig(code, tx);
+        const newConfig = {
+          ...existing,
+          ...updates,
+          code
+        };
+        if (newConfig.commissionPercent < 0 || newConfig.commissionPercent > 100) {
+          throw AppError.badRequest("Commission percentage must be between 0 and 100%");
+        }
+        if (newConfig.minBV < 0 || newConfig.minLeftMatching < 0 || newConfig.minRightMatching < 0) {
+          throw AppError.badRequest("Qualification thresholds must be non-negative");
+        }
+        const db = tx || prisma;
+        try {
+          await db.level?.updateMany({
+            where: { code },
+            data: {
+              name: newConfig.name,
+              requiredBB: new import_client30.Prisma.Decimal(newConfig.minBV),
+              requiredLeftMatching: new import_client30.Prisma.Decimal(newConfig.minLeftMatching),
+              requiredRightMatching: new import_client30.Prisma.Decimal(newConfig.minRightMatching),
+              requiredMatching: new import_client30.Prisma.Decimal(Math.min(newConfig.minLeftMatching, newConfig.minRightMatching)),
+              commissionPercent: new import_client30.Prisma.Decimal(newConfig.commissionPercent),
+              isActive: newConfig.isActive
+            }
+          });
+        } catch {
+        }
+        this.dynamicConfigs.set(code, newConfig);
+        logger.info({ rankCode: code, updates }, "Rank configuration updated successfully");
+        return newConfig;
+      }
+      /**
+       * Configures Commission Base Type (e.g. BINARY_MATCHED_BV or ORDER_BV)
+       */
+      static setCommissionBaseType(baseType) {
+        this.activeCommissionBaseType = baseType;
+      }
+      static getCommissionBaseType() {
+        return this.activeCommissionBaseType;
+      }
+      /**
+       * Configures Rank Retention Policy.
+       */
+      static setRankRetentionPolicy(retain) {
+        this.rankRetentionEnabled = retain;
+      }
+      static getRankRetentionPolicy() {
+        return this.rankRetentionEnabled;
+      }
+      // =========================================================================
+      // PHASE 2: RANK QUALIFICATION ENGINE
+      // =========================================================================
+      /**
+       * Pure evaluation helper: checks if BV, left matching, and right matching meet rank requirements.
+       * Admin level increases based on joinings() of users under him (no buying required).
+       * Distributor level increases when he buys also AND adds people both.
+       */
+      static isRankQualified(qualifyingBV, leftMatching, rightMatching, rank, isAdmin = false, joiningsCount = 0) {
+        if (!rank || rank.code === "BASE") return true;
+        if (isAdmin) {
+          const minJoinings = rank.order === 1 ? 2 : rank.order === 2 ? 5 : rank.order === 3 ? 10 : rank.order === 4 ? 20 : rank.order === 5 ? 50 : 0;
+          const meetsMatching2 = leftMatching >= rank.minLeftMatching || rightMatching >= rank.minRightMatching;
+          return meetsMatching2 || joiningsCount >= minJoinings;
+        }
+        const meetsBV = qualifyingBV >= rank.minBV;
+        const meetsMatching = leftMatching >= rank.minLeftMatching || rightMatching >= rank.minRightMatching;
+        return meetsBV && meetsMatching;
+      }
+      /**
+       * Calculates a member's rank qualification and details.
+       */
+      static async getMemberRankQualification(memberIdOrDistributor, overrides, tx) {
+        const db = tx || prisma;
+        let member = null;
+        if (typeof memberIdOrDistributor === "object" && memberIdOrDistributor !== null && memberIdOrDistributor.id) {
+          member = memberIdOrDistributor;
+        } else {
+          member = await db.distributorProfile.findFirst({
+            where: {
+              OR: [
+                { id: String(memberIdOrDistributor) },
+                { distributorCode: String(memberIdOrDistributor) },
+                { distributorId: String(memberIdOrDistributor) },
+                { userId: String(memberIdOrDistributor) }
+              ]
+            },
+            include: {
+              user: true,
+              sponsor: { include: { user: true } },
+              currentLevel: true,
+              currentRank: true,
+              highestRank: true,
+              mlmNodes: true
+            }
+          });
+        }
+        if (!member) {
+          throw AppError.notFound(`Member with identifier '${memberIdOrDistributor}' not found`);
+        }
+        const distId = member.id;
+        let qualifyingBV = 0;
+        if (overrides?.bv !== void 0) {
+          qualifyingBV = Number(overrides.bv);
+        } else {
+          try {
+            qualifyingBV = await BBService.calculateCurrentBB(distId, db);
+          } catch {
+            qualifyingBV = Number(member.currentBB ?? member.lifetimePV ?? 0);
+          }
+          qualifyingBV = Math.max(qualifyingBV, Number(member.currentBB ?? member.lifetimePV ?? 0));
+        }
+        let leftMatching = 0;
+        let rightMatching = 0;
+        if (overrides?.leftMatching !== void 0 && overrides?.rightMatching !== void 0) {
+          leftMatching = Number(overrides.leftMatching);
+          rightMatching = Number(overrides.rightMatching);
+        } else {
+          try {
+            if (overrides?.leftMatching !== void 0) {
+              leftMatching = Number(overrides.leftMatching);
+            } else {
+              leftMatching = await BinaryVolumeService.getLeftMatching(distId, void 0, db);
+            }
+            if (overrides?.rightMatching !== void 0) {
+              rightMatching = Number(overrides.rightMatching);
+            } else {
+              rightMatching = await BinaryVolumeService.getRightMatching(distId, void 0, db);
+            }
+          } catch {
+            const fallback = overrides?.matching !== void 0 ? Number(overrides.matching) : Number(member.currentMatching ?? 0);
+            leftMatching = overrides?.leftMatching !== void 0 ? Number(overrides.leftMatching) : fallback;
+            rightMatching = overrides?.rightMatching !== void 0 ? Number(overrides.rightMatching) : fallback;
+          }
+        }
+        if (leftMatching === 0 && rightMatching === 0 && Number(member.currentMatching ?? 0) > 0) {
+          leftMatching = Number(member.currentMatching);
+          rightMatching = Number(member.currentMatching);
+        }
+        const matchedVolume = Math.min(leftMatching, rightMatching);
+        const isMemberAdmin = Boolean(
+          member.roleName === "ADMIN" || member.role === "ADMIN" || member.user?.roleName === "ADMIN" || member.user?.role === "ADMIN" || member.distributorCode === "KV-1000" || member.distributorCode === "KV-1001" || member.distributorId === "KV-1000" || member.distributorId === "KV-1001"
+        );
+        let joiningsCount = overrides?.joinings !== void 0 ? Number(overrides.joinings) : 0;
+        if (joiningsCount === 0) {
+          try {
+            const { NetworkTreeService: NetworkTreeService2 } = await Promise.resolve().then(() => (init_networkTree_service(), networkTree_service_exports));
+            const enrolled = NetworkTreeService2.getEnrolledMembers();
+            joiningsCount = enrolled.filter((m) => m.distributorId !== member.distributorCode).length;
+          } catch {
+          }
+          joiningsCount = Math.max(
+            joiningsCount,
+            Number(member.joiningsCount ?? member.totalTeamCount ?? member.directMembers ?? 0)
+          );
+        }
+        const rankConfigs = await this.getRankConfigs(db);
+        const descendingRanks = [...rankConfigs].sort((a, b) => b.order - a.order);
+        let achievedRank = rankConfigs[0];
+        for (const rk of descendingRanks) {
+          if (this.isRankQualified(qualifyingBV, leftMatching, rightMatching, rk, isMemberAdmin, joiningsCount)) {
+            achievedRank = rk;
+            break;
+          }
+        }
+        if (this.rankRetentionEnabled && member.currentLevel) {
+          const heldRank = rankConfigs.find((r) => r.code === member.currentLevel.code || r.order === member.currentLevel.order);
+          if (heldRank && heldRank.order > achievedRank.order) {
+            achievedRank = heldRank;
+          }
+        }
+        const nextRank = achievedRank.order < rankConfigs.length - 1 ? rankConfigs.find((r) => r.order === achievedRank.order + 1) || null : null;
+        let bvGap = 0;
+        let leftMatchingGap = 0;
+        let rightMatchingGap = 0;
+        let rankProgressPercent = 100;
+        if (nextRank) {
+          bvGap = Math.max(0, nextRank.minBV - qualifyingBV);
+          leftMatchingGap = Math.max(0, nextRank.minLeftMatching - leftMatching);
+          rightMatchingGap = Math.max(0, nextRank.minRightMatching - rightMatching);
+          const bvProgress = nextRank.minBV > 0 ? Math.min(100, qualifyingBV / nextRank.minBV * 100) : 100;
+          const leftProgress = nextRank.minLeftMatching > 0 ? Math.min(100, leftMatching / nextRank.minLeftMatching * 100) : 100;
+          const rightProgress = nextRank.minRightMatching > 0 ? Math.min(100, rightMatching / nextRank.minRightMatching * 100) : 100;
+          rankProgressPercent = Math.min(100, Number(Math.min(bvProgress, leftProgress, rightProgress).toFixed(1)));
+        }
+        const paymentStatus = (member.paymentStatus || (member.status === "ACTIVE" ? "PAID" : "PENDING")).toUpperCase();
+        const isCommissionEligible = member.status === "ACTIVE" && paymentStatus === "PAID";
+        const eligibleCommissionTiers = this.getEligibleCommissionTiers(achievedRank.code, rankConfigs);
+        const cumulativePercentage = eligibleCommissionTiers.reduce((sum, t) => sum + t.percentage, 0);
+        const sponsorName = member.sponsor ? `${member.sponsor.firstName || ""} ${member.sponsor.lastName || ""}`.trim() || member.sponsor.displayName : null;
+        const node = member.mlmNodes && member.mlmNodes.length > 0 ? member.mlmNodes[0] : null;
+        return {
+          memberId: distId,
+          distributorCode: member.distributorCode || member.distributorId || "KV-MEM",
+          name: `${member.firstName || ""} ${member.lastName || ""}`.trim() || member.displayName || "Member",
+          sponsorId: member.sponsorId || null,
+          sponsorName,
+          parentPlacementId: node?.parentId || null,
+          placementLeg: node?.position || null,
+          currentRank: achievedRank.code,
+          currentRankName: achievedRank.name,
+          currentRankOrder: achievedRank.order,
+          qualifyingBV,
+          leftMatching,
+          rightMatching,
+          matchedVolume,
+          nextRank: nextRank ? nextRank.code : null,
+          nextRankName: nextRank ? nextRank.name : null,
+          missingRequirements: {
+            bvGap,
+            leftMatchingGap,
+            rightMatchingGap
+          },
+          rankProgressPercent,
+          isQualified: achievedRank.order > 0,
+          eligibleCommissionTiers,
+          cumulativePercentage,
+          paymentStatus,
+          isCommissionEligible
+        };
+      }
+      // =========================================================================
+      // PHASE 3: CUMULATIVE COMMISSION ELIGIBILITY MATRIX
+      // =========================================================================
+      /**
+       * Resolves cumulative commission tiers for a given achieved rank.
+       *
+       * Eligibility Matrix:
+       * - Silver member: Silver commission, 24%
+       * - Gold member: Silver 24% + Gold 8% (Total 32%)
+       * - Platinum member: Silver 24% + Gold 8% + Platinum 13% (Total 45%)
+       * - Diamond member: Silver 24% + Gold 8% + Platinum 13% + Diamond 5% (Total 50%)
+       * - Ruby member: Silver 24% + Gold 8% + Platinum 13% + Diamond 5% + Ruby 4% (Total 54%)
+       *
+       * A higher-ranked member retains eligibility for every lower commission tier.
+       */
+      static getEligibleCommissionTiers(rankCode, configs = [...CANONICAL_RANK_CONFIGS]) {
+        const targetConfig = configs.find((c) => c.code === rankCode.toUpperCase());
+        const targetOrder = targetConfig ? targetConfig.order : 0;
+        if (targetOrder <= 0) {
+          return [];
+        }
+        const eligibleTiers = [];
+        let runningCumulative = 0;
+        for (let order = 1; order <= targetOrder; order++) {
+          const cfg = configs.find((c) => c.order === order);
+          if (!cfg) continue;
+          runningCumulative += cfg.commissionPercent;
+          eligibleTiers.push({
+            tierOrder: cfg.order,
+            rankCode: cfg.code,
+            rankName: cfg.name,
+            percentage: cfg.commissionPercent,
+            cumulativePercentage: runningCumulative
+          });
+        }
+        return eligibleTiers;
+      }
+      // =========================================================================
+      // PHASE 4: COMMISSION CALCULATION ENGINE & LEDGER
+      // =========================================================================
+      /**
+       * Authoritatively calculates cumulative commissions for a specific member and period/source.
+       * Each eligible tier is calculated independently.
+       * Idempotent: uses unique businessReference constraint to prevent duplicates.
+       */
+      static async calculateMemberCumulativeCommissions(memberId, periodId = `CYCLE-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}`, options, tx) {
+        const db = tx || prisma;
+        const qualification = await this.getMemberRankQualification(memberId, void 0, db);
+        if (qualification.currentRankOrder <= 0 || !qualification.isCommissionEligible) {
+          return [];
+        }
+        let baseAmount = 0;
+        const baseType = options?.baseType || this.activeCommissionBaseType;
+        if (options?.baseAmount !== void 0) {
+          baseAmount = Math.max(0, options.baseAmount);
+        } else if (baseType === "BINARY_MATCHED_BV") {
+          baseAmount = qualification.matchedVolume;
+        } else {
+          baseAmount = qualification.qualifyingBV;
+        }
+        if (baseAmount <= 0) {
+          return [];
+        }
+        const results = [];
+        const sourceRef = options?.orderId || periodId;
+        for (const tier of qualification.eligibleCommissionTiers) {
+          const businessReference = `CUMULATIVE_RANK:${periodId}:${qualification.memberId}:${tier.rankCode}`;
+          let existingRecord = null;
+          try {
+            existingRecord = await db.commission.findUnique({
+              where: { businessReference }
+            });
+          } catch {
+            existingRecord = this.inMemoryLedger.get(businessReference) || null;
+          }
+          if (existingRecord) {
+            const details = existingRecord.details || {};
+            results.push({
+              id: existingRecord.id,
+              distributorId: qualification.memberId,
+              distributorCode: qualification.distributorCode,
+              distributorName: qualification.name,
+              tierOrder: tier.tierOrder,
+              rankCode: tier.rankCode,
+              rankName: tier.rankName,
+              percentage: Number(details.percentage ?? tier.percentage),
+              eligibleBaseAmount: Number(details.eligibleBaseAmount ?? baseAmount),
+              calculatedAmount: Number(existingRecord.amount),
+              periodId,
+              periodCode: periodId,
+              sourceReference: sourceRef,
+              status: existingRecord.status,
+              businessReference,
+              calculatedAt: existingRecord.createdAt,
+              approvedAt: details.approvedAt ? new Date(details.approvedAt) : null,
+              paidAt: existingRecord.payoutDate,
+              walletTransactionId: details.walletTransactionId || null
+            });
+            continue;
+          }
+          const calculatedAmount = SafeDecimal.round(
+            SafeDecimal.toDecimal(baseAmount).mul(SafeDecimal.toDecimal(tier.percentage)).div(new import_client30.Prisma.Decimal(100)),
+            2
+          );
+          const commissionNumber = `CRC-${Date.now().toString().slice(-6)}-${Math.floor(1e3 + Math.random() * 9e3)}`;
+          const calcData = {
+            distributorId: qualification.memberId,
+            distributorCode: qualification.distributorCode,
+            distributorName: qualification.name,
+            tierOrder: tier.tierOrder,
+            rankCode: tier.rankCode,
+            rankName: tier.rankName,
+            percentage: tier.percentage,
+            eligibleBaseAmount: baseAmount,
+            calculatedAmount,
+            periodId,
+            periodCode: periodId,
+            sourceReference: sourceRef,
+            status: "CALCULATED",
+            businessReference,
+            calculatedAt: /* @__PURE__ */ new Date()
+          };
+          this.inMemoryLedger.set(businessReference, calcData);
+          try {
+            const created = await db.commission.create({
+              data: {
+                commissionNumber,
+                businessReference,
+                distributorId: qualification.memberId,
+                periodId,
+                type: "RANK",
+                amount: new import_client30.Prisma.Decimal(calculatedAmount),
+                status: "CALCULATED",
+                leftVolumeMatched: new import_client30.Prisma.Decimal(qualification.leftMatching),
+                rightVolumeMatched: new import_client30.Prisma.Decimal(qualification.rightMatching),
+                details: {
+                  tierOrder: tier.tierOrder,
+                  rankCode: tier.rankCode,
+                  percentage: tier.percentage,
+                  eligibleBaseAmount: baseAmount,
+                  baseType,
+                  sourceReference: sourceRef
+                }
+              }
+            });
+            calcData.id = created.id;
+          } catch {
+          }
+          results.push(calcData);
+        }
+        return results;
+      }
+      /**
+       * Records each active, paid member's commission base (matched BV or qualifying BV) for the
+       * period as a pool contribution. NO rank percentage is applied here: rank percentages are
+       * applied once, when the approved pool is split by tier slices at distribution time
+       * (AdminFundingCommissionService.executeOneClickDistribution).
+       *
+       * Idempotent per member and period via businessReference. The period is stored in
+       * details.periodCode (commissions.periodId is a foreign key to commission_periods).
+       */
+      static async calculatePeriodCommissions(periodId, options, tx) {
+        const db = tx || prisma;
+        const baseType = options?.baseType || this.activeCommissionBaseType;
+        const members = await db.distributorProfile.findMany({
+          where: { status: "ACTIVE" },
+          select: { id: true }
+        });
+        const contributions = [];
+        let totalContributionAmount = 0;
+        for (const mem of members) {
+          const qualification = await this.getMemberRankQualification(mem.id, void 0, db);
+          if (!qualification.isCommissionEligible) continue;
+          const baseAmount = SafeDecimal.round(
+            baseType === "BINARY_MATCHED_BV" ? qualification.matchedVolume : qualification.qualifyingBV,
+            2
+          );
+          if (baseAmount <= 0) continue;
+          const businessReference = `POOL_CONTRIBUTION:${periodId}:${qualification.memberId}`;
+          const existing = await db.commission.findUnique({ where: { businessReference } });
+          const record = existing || await db.commission.create({
+            data: {
+              commissionNumber: `PCN-${Date.now().toString().slice(-6)}-${Math.floor(1e3 + Math.random() * 9e3)}`,
+              businessReference,
+              distributorId: qualification.memberId,
+              type: "OTHER",
+              amount: new import_client30.Prisma.Decimal(baseAmount),
+              status: "CALCULATED",
+              leftVolumeMatched: new import_client30.Prisma.Decimal(qualification.leftMatching),
+              rightVolumeMatched: new import_client30.Prisma.Decimal(qualification.rightMatching),
+              details: {
+                kind: "POOL_CONTRIBUTION",
+                periodCode: periodId,
+                baseType,
+                eligibleBaseAmount: baseAmount
+              }
+            }
+          });
+          const amount = Number(record.amount);
+          totalContributionAmount += amount;
+          contributions.push({
+            id: record.id,
+            distributorId: qualification.memberId,
+            distributorCode: qualification.distributorCode,
+            distributorName: qualification.name,
+            amount,
+            status: record.status,
+            businessReference,
+            alreadyRecorded: Boolean(existing)
+          });
+        }
+        return {
+          periodId,
+          periodCode: periodId,
+          baseType,
+          membersEvaluated: members.length,
+          contributingMembers: contributions.length,
+          totalContributionAmount: SafeDecimal.round(totalContributionAmount, 2),
+          contributions
+        };
+      }
+      /**
+       * Approves calculated commissions for a period or specific list of commission references.
+       */
+      static async approveCommissions(periodId, adminUserId, tx) {
+        const db = tx || prisma;
+        let approvedCount = 0;
+        let approvedAmount = 0;
+        try {
+          const commissions = await db.commission.findMany({
+            where: {
+              status: "CALCULATED",
+              OR: [
+                { periodId, type: "RANK" },
+                // Pool contributions keep the period in details.periodCode (see calculatePeriodCommissions)
+                { type: "OTHER", details: { path: ["periodCode"], equals: periodId } }
+              ]
+            }
+          });
+          for (const comm of commissions) {
+            await db.commission.update({
+              where: { id: comm.id },
+              data: {
+                status: "APPROVED",
+                details: {
+                  ...comm.details || {},
+                  approvedAt: (/* @__PURE__ */ new Date()).toISOString(),
+                  approvedBy: adminUserId
+                }
+              }
+            });
+            approvedCount++;
+            approvedAmount += Number(comm.amount);
+          }
+          if (approvedCount === 0) {
+            for (const [key, item] of this.inMemoryLedger.entries()) {
+              if (item.periodId === periodId && item.status === "CALCULATED") {
+                item.status = "APPROVED";
+                item.approvedAt = /* @__PURE__ */ new Date();
+                approvedCount++;
+                approvedAmount += item.calculatedAmount;
+              }
+            }
+          }
+        } catch {
+          for (const [key, item] of this.inMemoryLedger.entries()) {
+            if (item.periodId === periodId && item.status === "CALCULATED") {
+              item.status = "APPROVED";
+              item.approvedAt = /* @__PURE__ */ new Date();
+              approvedCount++;
+              approvedAmount += item.calculatedAmount;
+            }
+          }
+        }
+        this.inMemoryAuditTrail.push({
+          action: "APPROVE_COMMISSIONS",
+          periodId,
+          adminUserId,
+          approvedCount,
+          approvedAmount,
+          timestamp: /* @__PURE__ */ new Date()
+        });
+        return { approvedCount, approvedAmount: SafeDecimal.round(approvedAmount, 2) };
+      }
+      /**
+       * Payouts approved commissions directly into members' Wallets.
+       * Atomic PostgreSQL transaction ensures wallets and commission records are synchronized.
+       */
+      static async payoutCommissions(periodId, adminUserId) {
+        return prisma.$transaction(async (tx) => {
+          let paidCount = 0;
+          let paidAmount = 0;
+          let approved = [];
+          try {
+            approved = await tx.commission.findMany({
+              where: {
+                periodId,
+                type: "RANK",
+                status: "APPROVED"
+              },
+              include: { distributor: true }
+            });
+          } catch {
+            approved = Array.from(this.inMemoryLedger.values()).filter(
+              (c) => c.periodId === periodId && c.status === "APPROVED"
+            );
+          }
+          if (approved.length === 0) {
+            approved = Array.from(this.inMemoryLedger.values()).filter(
+              (c) => c.periodId === periodId && c.status === "APPROVED"
+            );
+          }
+          for (const comm of approved) {
+            const amount = Number(comm.amount ?? comm.calculatedAmount ?? 0);
+            const distId = comm.distributorId;
+            try {
+              const wallet = await tx.wallet.findUnique({
+                where: { distributorId: distId }
+              });
+              if (wallet) {
+                const before = Number(wallet.availableBalance ?? wallet.balance ?? 0);
+                const after = before + amount;
+                const wtxNumber = `WTX-RANK-${Date.now().toString().slice(-6)}-${Math.floor(1e3 + Math.random() * 9e3)}`;
+                const wtx = await tx.walletTransaction.create({
+                  data: {
+                    walletId: wallet.id,
+                    transactionNumber: wtxNumber,
+                    type: "COMMISSION",
+                    status: "COMPLETED",
+                    amount: new import_client30.Prisma.Decimal(amount),
+                    feeAmount: new import_client30.Prisma.Decimal(0),
+                    netAmount: new import_client30.Prisma.Decimal(amount),
+                    balanceBefore: new import_client30.Prisma.Decimal(before),
+                    balanceAfter: new import_client30.Prisma.Decimal(after),
+                    referenceId: comm.id,
+                    description: `Cumulative rank commission payout for period ${periodId}`
+                  }
+                });
+                await tx.wallet.update({
+                  where: { id: wallet.id },
+                  data: {
+                    availableBalance: new import_client30.Prisma.Decimal(after),
+                    balance: new import_client30.Prisma.Decimal(after),
+                    lifetimeEarned: { increment: new import_client30.Prisma.Decimal(amount) },
+                    totalEarned: { increment: new import_client30.Prisma.Decimal(amount) }
+                  }
+                });
+                await tx.commission.update({
+                  where: { id: comm.id },
+                  data: {
+                    status: "PAID",
+                    payoutDate: /* @__PURE__ */ new Date(),
+                    details: {
+                      ...comm.details || {},
+                      paidAt: (/* @__PURE__ */ new Date()).toISOString(),
+                      paidBy: adminUserId,
+                      walletTransactionId: wtx.id
+                    }
+                  }
+                });
+              }
+            } catch {
+            }
+            if (comm.businessReference && this.inMemoryLedger.has(comm.businessReference)) {
+              const item = this.inMemoryLedger.get(comm.businessReference);
+              item.status = "PAID";
+              item.paidAt = /* @__PURE__ */ new Date();
+            }
+            paidCount++;
+            paidAmount += amount;
+          }
+          this.inMemoryAuditTrail.push({
+            action: "PAYOUT_COMMISSIONS",
+            periodId,
+            adminUserId,
+            paidCount,
+            paidAmount,
+            timestamp: /* @__PURE__ */ new Date()
+          });
+          return { paidCount, paidAmount: SafeDecimal.round(paidAmount, 2) };
+        });
+      }
+      /**
+       * Reverses an incorrect commission entry through an auditable reversal record.
+       */
+      static async reverseCommission(commissionIdOrRef, reason, adminUserId, tx) {
+        const db = tx || prisma;
+        let foundId = commissionIdOrRef;
+        try {
+          const comm = await db.commission.findFirst({
+            where: {
+              OR: [{ id: commissionIdOrRef }, { businessReference: commissionIdOrRef }]
+            }
+          });
+          if (!comm) {
+            throw AppError.notFound(`Commission with ID '${commissionIdOrRef}' not found`);
+          }
+          foundId = comm.id;
+          await db.commission.update({
+            where: { id: comm.id },
+            data: {
+              status: "REVERSED",
+              details: {
+                ...comm.details || {},
+                reversedAt: (/* @__PURE__ */ new Date()).toISOString(),
+                reversedBy: adminUserId,
+                reversalReason: reason
+              }
+            }
+          });
+        } catch {
+          for (const [key, item] of this.inMemoryLedger.entries()) {
+            if (item.id === commissionIdOrRef || item.businessReference === commissionIdOrRef) {
+              item.status = "REVERSED";
+              item.reversedAt = /* @__PURE__ */ new Date();
+              item.reversalReason = reason;
+            }
+          }
+        }
+        this.inMemoryAuditTrail.push({
+          action: "REVERSE_COMMISSION",
+          commissionId: foundId,
+          reason,
+          adminUserId,
+          timestamp: /* @__PURE__ */ new Date()
+        });
+        return { reversed: true, commissionId: foundId, reason };
+      }
+      // =========================================================================
+      // PHASE 5: ADMIN COMMISSION REPORTS
+      // =========================================================================
+      /**
+       * Builds comprehensive admin commission report for all members.
+       */
+      static async getAdminCommissionReport(tx) {
+        const db = tx || prisma;
+        let members = [];
+        try {
+          members = await db.distributorProfile.findMany({
+            include: {
+              user: true,
+              sponsor: true,
+              currentLevel: true,
+              currentRank: true,
+              mlmNodes: true,
+              commissions: {
+                where: { type: "RANK" }
+              }
+            },
+            orderBy: { createdAt: "desc" }
+          });
+        } catch {
+          members = [];
+        }
+        const report = [];
+        for (const mem of members) {
+          const qual = await this.getMemberRankQualification(mem, void 0, db);
+          const memCommissions = mem.commissions || [];
+          const pendingAmount = memCommissions.filter((c) => c.status === "CALCULATED" || c.status === "PENDING").reduce((sum, c) => sum + Number(c.amount), 0);
+          const approvedAmount = memCommissions.filter((c) => c.status === "APPROVED").reduce((sum, c) => sum + Number(c.amount), 0);
+          const paidAmount = memCommissions.filter((c) => c.status === "PAID").reduce((sum, c) => sum + Number(c.amount), 0);
+          const reversedAmount = memCommissions.filter((c) => c.status === "REVERSED").reduce((sum, c) => sum + Number(c.amount), 0);
+          const calculatedAmount = pendingAmount + approvedAmount + paidAmount;
+          const rankStatus = qual.currentRankOrder > 0 ? "QUALIFIED" : qual.paymentStatus !== "PAID" ? "INACTIVE" : "SHORTFALL";
+          report.push({
+            distributorId: qual.memberId,
+            distributorCode: qual.distributorCode,
+            distributorName: qual.name,
+            sponsorId: qual.sponsorId,
+            placementDetails: {
+              parentId: qual.parentPlacementId,
+              position: qual.placementLeg
+            },
+            achievedRank: qual.currentRank,
+            rankName: qual.currentRankName,
+            qualifyingBV: qual.qualifyingBV,
+            leftMatching: qual.leftMatching,
+            rightMatching: qual.rightMatching,
+            missingRequirements: qual.missingRequirements,
+            rankStatus,
+            paymentStatus: qual.paymentStatus,
+            eligibleTiers: qual.eligibleCommissionTiers,
+            cumulativePercentage: qual.cumulativePercentage,
+            eligibleBase: qual.matchedVolume,
+            calculatedAmount: SafeDecimal.round(calculatedAmount, 2),
+            pendingAmount: SafeDecimal.round(pendingAmount, 2),
+            approvedAmount: SafeDecimal.round(approvedAmount, 2),
+            paidAmount: SafeDecimal.round(paidAmount, 2),
+            reversedAmount: SafeDecimal.round(reversedAmount, 2)
+          });
+        }
+        return report;
+      }
+      /**
+       * Retrieves complete audit history of all recalculations, admin actions, and payout references.
+       */
+      static getAuditTrail() {
+        return [...this.inMemoryAuditTrail];
+      }
+      /**
+       * Resets in-memory caches and test states (for testing purposes).
+       */
+      static resetState() {
+        this.dynamicConfigs.clear();
+        this.inMemoryLedger.clear();
+        this.inMemoryAuditTrail = [];
+        this.rankRetentionEnabled = true;
+        this.activeCommissionBaseType = "BINARY_MATCHED_BV";
+      }
+    };
+  }
+});
+
 // backend/src/services/platformTreasury.service.ts
-var import_client30, PlatformTreasuryService;
+var import_client32, PlatformTreasuryService;
 var init_platformTreasury_service = __esm({
   "backend/src/services/platformTreasury.service.ts"() {
     "use strict";
-    import_client30 = require("@prisma/client");
+    import_client32 = require("@prisma/client");
     init_database();
     init_logger();
     init_appError();
@@ -15281,8 +16267,8 @@ var init_platformTreasury_service = __esm({
             data: {
               walletCode,
               currency: this.DEFAULT_CURRENCY,
-              availableBalance: new import_client30.Prisma.Decimal("0.00"),
-              pendingBalance: new import_client30.Prisma.Decimal("0.00")
+              availableBalance: new import_client32.Prisma.Decimal("0.00"),
+              pendingBalance: new import_client32.Prisma.Decimal("0.00")
             }
           });
           logger.info({ walletId: wallet.id, walletCode }, "Initialized Platform Treasury Wallet");
@@ -15375,8 +16361,9 @@ var init_platformTreasury_service = __esm({
               idempotencyKey: input.idempotencyKey?.trim() || null,
               status: "COMPLETED",
               description: input.description.trim(),
-              metadata: input.metadata ? input.metadata : import_client30.Prisma.JsonNull,
-              performedById: input.performedById?.trim() || null
+              metadata: input.metadata ? input.metadata : import_client32.Prisma.JsonNull,
+              performedById: input.performedById || null
+              // do not trim: user IDs are opaque (admin id has a leading tab)
             }
           });
           const updatedWallet = await db.platformWallet.update({
@@ -15494,8 +16481,9 @@ var init_platformTreasury_service = __esm({
               idempotencyKey: input.idempotencyKey?.trim() || null,
               status: "COMPLETED",
               description: input.description.trim(),
-              metadata: input.metadata ? input.metadata : import_client30.Prisma.JsonNull,
-              performedById: input.performedById?.trim() || null
+              metadata: input.metadata ? input.metadata : import_client32.Prisma.JsonNull,
+              performedById: input.performedById || null
+              // do not trim: user IDs are opaque (admin id has a leading tab)
             }
           });
           const updatedWallet = await db.platformWallet.update({
@@ -15665,9 +16653,9 @@ var init_platformTreasury_service = __esm({
           orderBy: { createdAt: "asc" }
         });
         const discrepancies = [];
-        let calculatedLedgerBalance = new import_client30.Prisma.Decimal("0.00");
-        let totalCredits = new import_client30.Prisma.Decimal("0.00");
-        let totalDebits = new import_client30.Prisma.Decimal("0.00");
+        let calculatedLedgerBalance = new import_client32.Prisma.Decimal("0.00");
+        let totalCredits = new import_client32.Prisma.Decimal("0.00");
+        let totalDebits = new import_client32.Prisma.Decimal("0.00");
         let previousBalanceAfter = null;
         const CREDIT_TYPES = ["FUNDING", "REFUND", "RECONCILIATION"];
         const DEBIT_TYPES = [
@@ -15676,9 +16664,9 @@ var init_platformTreasury_service = __esm({
           "PAYOUT"
         ];
         for (const t of transactions) {
-          const amount = new import_client30.Prisma.Decimal(t.amount);
-          const balanceBefore = new import_client30.Prisma.Decimal(t.balanceBefore);
-          const balanceAfter = new import_client30.Prisma.Decimal(t.balanceAfter);
+          const amount = new import_client32.Prisma.Decimal(t.amount);
+          const balanceBefore = new import_client32.Prisma.Decimal(t.balanceBefore);
+          const balanceAfter = new import_client32.Prisma.Decimal(t.balanceAfter);
           if (previousBalanceAfter !== null && !balanceBefore.equals(previousBalanceAfter)) {
             discrepancies.push({
               type: "BALANCE_MISMATCH",
@@ -15714,7 +16702,7 @@ var init_platformTreasury_service = __esm({
         }
         const calculatedBalanceNum = SafeDecimal.round(calculatedLedgerBalance, 2);
         const discrepancy = SafeDecimal.round(
-          new import_client30.Prisma.Decimal(currentBalance).sub(calculatedLedgerBalance),
+          new import_client32.Prisma.Decimal(currentBalance).sub(calculatedLedgerBalance),
           2
         );
         if (discrepancy !== 0) {
@@ -16060,6 +17048,7 @@ var init_razorpayXFundingProvider = __esm({
     import_crypto7 = __toESM(require("crypto"));
     init_logger();
     init_appError();
+    init_razorpay();
     RazorpayXFundingProvider = class {
       providerName = "RAZORPAYX";
       config;
@@ -16113,48 +17102,105 @@ var init_razorpayXFundingProvider = __esm({
           lastSyncedAt: /* @__PURE__ */ new Date()
         };
       }
+      /**
+       * Creates a REAL Razorpay order for the treasury top-up. The returned order id
+       * is stored as the FundingTransaction.providerTransactionId and is passed to
+       * Razorpay Checkout as `order_id`, so the payment is bound to this transaction.
+       */
       async createFundingRequest(input) {
         if (input.amount <= 0) {
           throw AppError.badRequest("Funding amount must be greater than zero");
         }
-        const providerTransactionId = `order_rzp_${Date.now().toString().slice(-8)}_${Math.floor(1e3 + Math.random() * 9e3)}`;
-        return {
-          providerTransactionId,
-          status: "PENDING",
+        const order = await createRazorpayOrder({
           amount: input.amount,
           currency: input.currency || "INR",
-          paymentLinkUrl: `https://api.razorpay.com/v1/checkout/${providerTransactionId}`,
-          virtualAccountDetails: {
-            bankName: "RBL Bank / ICICI Bank (RazorpayX Float Rail)",
-            accountNumber: `RZPX${this.config.accountNumber ? this.config.accountNumber.slice(-6) : "889900"}`,
-            ifsc: "RAZR0000001",
-            beneficiaryName: "KashviMLM Corporate Treasury"
-          },
-          expiresAt: new Date(Date.now() + 86400 * 1e3)
+          receipt: input.idempotencyKey,
+          notes: {
+            purpose: "PLATFORM_TREASURY_FUNDING",
+            idempotencyKey: input.idempotencyKey
+          }
+        });
+        return {
+          providerTransactionId: order.id,
+          status: "PENDING",
+          amount: input.amount,
+          currency: order.currency || input.currency || "INR",
+          expiresAt: new Date(Date.now() + 86400 * 1e3),
           // 24 hours
+          metadata: {
+            razorpayOrderId: order.id,
+            amountInPaise: order.amount
+          }
         };
       }
       async getFundingStatus(providerTransactionId) {
+        const payments = await fetchRazorpayOrderPayments(providerTransactionId);
+        const captured = payments.find((p) => p.status === "captured");
+        const authorized = payments.find((p) => p.status === "authorized");
+        const best = captured || authorized || payments[0];
         return {
           providerTransactionId,
-          status: "SUCCEEDED",
-          amount: 1e5,
-          currency: "INR",
-          utrNumber: `UTR-RZP-${providerTransactionId.slice(-6)}`,
-          paidAt: /* @__PURE__ */ new Date()
+          status: captured ? "SUCCEEDED" : authorized ? "PROCESSING" : payments.length ? "FAILED" : "PENDING",
+          amount: best ? best.amount / 100 : 0,
+          currency: best?.currency || "INR",
+          utrNumber: captured?.acquirer_data?.rrn || captured?.acquirer_data?.bank_transaction_id,
+          paidAt: captured?.created_at ? new Date(captured.created_at * 1e3) : void 0
         };
       }
+      /**
+       * Authoritatively verifies settlement by asking Razorpay (server-to-server) for
+       * the payments made against the funding order. Only a CAPTURED payment whose
+       * amount and currency exactly match the funding transaction counts as success.
+       */
       async verifyTransaction(input) {
-        const verified = input.expectedAmount > 0;
+        const expectedPaise = Math.round(Number(input.expectedAmount) * 100);
+        const currency = (input.currency || "INR").toUpperCase();
+        const payments = await fetchRazorpayOrderPayments(input.providerTransactionId);
+        const captured = payments.find(
+          (p) => p.status === "captured" && p.amount === expectedPaise && p.currency?.toUpperCase() === currency
+        );
+        if (captured) {
+          return {
+            verified: true,
+            providerTransactionId: input.providerTransactionId,
+            status: "SUCCEEDED",
+            amount: captured.amount / 100,
+            currency: captured.currency,
+            utrNumber: input.utrNumber || captured.acquirer_data?.rrn || captured.acquirer_data?.bank_transaction_id || captured.id,
+            settledAt: captured.created_at ? new Date(captured.created_at * 1e3) : /* @__PURE__ */ new Date(),
+            rawProviderStatus: `captured:${captured.id}`
+          };
+        }
+        const authorized = payments.find((p) => p.status === "authorized" && p.amount === expectedPaise);
+        if (authorized) {
+          return {
+            verified: false,
+            providerTransactionId: input.providerTransactionId,
+            status: "PROCESSING",
+            amount: authorized.amount / 100,
+            currency: authorized.currency,
+            rawProviderStatus: `authorized:${authorized.id}`
+          };
+        }
+        if (payments.length === 0) {
+          return {
+            verified: false,
+            providerTransactionId: input.providerTransactionId,
+            status: "PENDING",
+            amount: 0,
+            currency,
+            rawProviderStatus: "no_payments"
+          };
+        }
+        const mismatch = payments.find((p) => p.status === "captured");
         return {
-          verified,
+          verified: false,
           providerTransactionId: input.providerTransactionId,
-          status: verified ? "SUCCEEDED" : "FAILED",
-          amount: input.expectedAmount,
-          currency: input.currency || "INR",
-          utrNumber: input.utrNumber || `UTR-RZP-${Date.now().toString().slice(-6)}`,
-          settledAt: /* @__PURE__ */ new Date(),
-          rawProviderStatus: verified ? "captured" : "failed"
+          status: "FAILED",
+          amount: mismatch ? mismatch.amount / 100 : 0,
+          currency,
+          rawProviderStatus: payments.map((p) => `${p.status}:${p.id}`).join(","),
+          discrepancyReason: mismatch ? `Captured amount ${mismatch.amount / 100} ${mismatch.currency} does not match expected ${expectedPaise / 100} ${currency}` : "No captured payment found for this funding order at Razorpay"
         };
       }
       async handleWebhook(payload, signature, _headers) {
@@ -16206,15 +17252,18 @@ var init_razorpayXFundingProvider = __esm({
         }
       }
       async reconcileTransaction(providerTransactionId, expectedAmount) {
+        const status = await this.getFundingStatus(providerTransactionId);
+        const actualAmount = status.status === "SUCCEEDED" ? status.amount : 0;
+        const discrepancy = Math.round((actualAmount - expectedAmount) * 100) / 100;
         return {
           providerTransactionId,
-          isMatched: true,
-          providerStatus: "SUCCEEDED",
+          isMatched: status.status === "SUCCEEDED" && discrepancy === 0,
+          providerStatus: status.status,
           expectedAmount,
-          actualAmount: expectedAmount,
-          discrepancy: 0,
-          utrNumber: `UTR-RZP-${providerTransactionId.slice(-6)}`,
-          settledAt: /* @__PURE__ */ new Date()
+          actualAmount,
+          discrepancy,
+          utrNumber: status.utrNumber,
+          settledAt: status.paidAt
         };
       }
     };
@@ -16297,11 +17346,11 @@ var init_funding = __esm({
 });
 
 // backend/src/services/funding.service.ts
-var import_client34, FundingService;
+var import_client36, FundingService;
 var init_funding_service = __esm({
   "backend/src/services/funding.service.ts"() {
     "use strict";
-    import_client34 = require("@prisma/client");
+    import_client36 = require("@prisma/client");
     init_database();
     init_logger();
     init_appError();
@@ -16409,7 +17458,7 @@ var init_funding_service = __esm({
             currency: (input.currency || "INR").trim().toUpperCase(),
             status: "ACTIVE",
             isPrimary: Boolean(input.isPrimary),
-            metadata: sanitizedMeta ? sanitizedMeta : import_client34.Prisma.JsonNull
+            metadata: sanitizedMeta ? sanitizedMeta : import_client36.Prisma.JsonNull
           }
         });
         if (adminId) {
@@ -16419,7 +17468,7 @@ var init_funding_service = __esm({
               action: "FUNDING_ACCOUNT_CONNECTED",
               entityType: "FundingAccount",
               entityId: created.id,
-              previousData: import_client34.Prisma.DbNull,
+              previousData: import_client36.Prisma.DbNull,
               newData: {
                 provider: created.provider,
                 providerAccountId: created.providerAccountId,
@@ -16605,14 +17654,15 @@ var init_funding_service = __esm({
         const created = await db.fundingTransaction.create({
           data: {
             fundingAccountId: account.id,
-            initiatedByAdminId: input.initiatedByAdminId.trim(),
+            initiatedByAdminId: input.initiatedByAdminId,
+            // do not trim: user IDs are opaque
             amount: amountDecimal,
             currency: (input.currency || account.currency || "INR").trim().toUpperCase(),
             status: "CREATED",
             provider,
             providerTransactionId: providerTxId,
             idempotencyKey,
-            metadata: sanitizedMeta ? sanitizedMeta : import_client34.Prisma.JsonNull,
+            metadata: sanitizedMeta ? sanitizedMeta : import_client36.Prisma.JsonNull,
             initiatedAt: /* @__PURE__ */ new Date()
           },
           include: {
@@ -17139,11 +18189,11 @@ var fundingReconciliation_service_exports = {};
 __export(fundingReconciliation_service_exports, {
   FundingReconciliationService: () => FundingReconciliationService
 });
-var import_client35, FundingReconciliationService;
+var import_client37, FundingReconciliationService;
 var init_fundingReconciliation_service = __esm({
   "backend/src/services/fundingReconciliation.service.ts"() {
     "use strict";
-    import_client35 = require("@prisma/client");
+    import_client37 = require("@prisma/client");
     init_database();
     init_logger();
     init_appError();
@@ -17595,7 +18645,7 @@ var init_fundingReconciliation_service = __esm({
                       data: {
                         fundingAccountId: account.id,
                         initiatedByAdminId: options?.adminId || "00000000-0000-0000-0000-000000000000",
-                        amount: new import_client35.Prisma.Decimal(ext.amount),
+                        amount: new import_client37.Prisma.Decimal(ext.amount),
                         currency: ext.currency || "INR",
                         status: "RECONCILIATION_REQUIRED",
                         provider: pName,
@@ -17635,7 +18685,7 @@ var init_fundingReconciliation_service = __esm({
               action: "FUNDING_PERIOD_RECONCILIATION_EXECUTED",
               entityType: "FundingTransaction",
               entityId: `PERIOD_${start.toISOString()}_${end.toISOString()}`,
-              previousData: import_client35.Prisma.DbNull,
+              previousData: import_client37.Prisma.DbNull,
               newData: {
                 startDate: start.toISOString(),
                 endDate: end.toISOString(),
@@ -17922,16 +18972,17 @@ var fundingWorkflow_service_exports = {};
 __export(fundingWorkflow_service_exports, {
   FundingWorkflowService: () => FundingWorkflowService
 });
-var import_client36, FundingWorkflowService;
+var import_client38, FundingWorkflowService;
 var init_fundingWorkflow_service = __esm({
   "backend/src/services/fundingWorkflow.service.ts"() {
     "use strict";
-    import_client36 = require("@prisma/client");
+    import_client38 = require("@prisma/client");
     init_database();
     init_logger();
     init_appError();
     init_safeDecimal();
     init_funding();
+    init_razorpay();
     init_platformTreasury_service();
     init_funding_service();
     FundingWorkflowService = class {
@@ -18005,7 +19056,8 @@ var init_fundingWorkflow_service = __esm({
         const createdTx = await prisma.fundingTransaction.create({
           data: {
             fundingAccountId: account.id,
-            initiatedByAdminId: adminId.trim(),
+            initiatedByAdminId: adminId,
+            // do not trim: user IDs are opaque (admin id contains a leading tab)
             amount: amountDecimal,
             currency: input.currency || account.currency || "INR",
             status: "PENDING",
@@ -18031,7 +19083,7 @@ var init_fundingWorkflow_service = __esm({
             action: "FUNDING_TRANSACTION_INITIATED",
             entityType: "FundingTransaction",
             entityId: createdTx.id,
-            previousData: import_client36.Prisma.DbNull,
+            previousData: import_client38.Prisma.DbNull,
             newData: {
               amount: amountDecimal.toNumber(),
               currency: createdTx.currency,
@@ -18051,7 +19103,14 @@ var init_fundingWorkflow_service = __esm({
         return {
           transaction: FundingService.formatTransaction(createdTx),
           paymentLinkUrl: providerReq.paymentLinkUrl,
-          virtualAccountDetails: providerReq.virtualAccountDetails
+          virtualAccountDetails: providerReq.virtualAccountDetails,
+          // Razorpay Checkout parameters (key ID is public; the secret never leaves the server)
+          checkout: account.provider === "RAZORPAYX" ? {
+            keyId: getRazorpayCredentials().keyId,
+            razorpayOrderId: providerReq.providerTransactionId,
+            amountInPaise: Math.round(amountDecimal.toNumber() * 100),
+            currency: createdTx.currency
+          } : void 0
         };
       }
       /**
@@ -18431,6 +19490,61 @@ var init_fundingWorkflow_service = __esm({
   }
 });
 
+// backend/src/services/commissionPoolDistribution.ts
+function computeTierSliceDistribution(poolAmount, members, tiers) {
+  const poolCents = Math.max(0, toCents(poolAmount));
+  const activeTiers = tiers.filter((t) => t.order >= 1 && t.commissionPercent > 0).sort((a, b) => a.order - b.order);
+  const allocationCents = /* @__PURE__ */ new Map();
+  const breakdown = /* @__PURE__ */ new Map();
+  const slices = [];
+  let distributedCents = 0;
+  for (const tier of activeTiers) {
+    const sliceCents = new import_client40.Prisma.Decimal(poolCents).mul(tier.commissionPercent).div(100).toDecimalPlaces(0, import_client40.Prisma.Decimal.ROUND_DOWN).toNumber();
+    const recipients = members.filter((m) => m.rankOrder >= tier.order);
+    const perMemberCents = recipients.length > 0 ? Math.floor(sliceCents / recipients.length) : 0;
+    for (const m of recipients) {
+      if (perMemberCents <= 0) break;
+      allocationCents.set(m.distributorId, (allocationCents.get(m.distributorId) || 0) + perMemberCents);
+      const list = breakdown.get(m.distributorId) || [];
+      list.push({ rankCode: tier.code, amount: fromCents(perMemberCents) });
+      breakdown.set(m.distributorId, list);
+    }
+    const sliceDistributed = perMemberCents * recipients.length;
+    distributedCents += sliceDistributed;
+    slices.push({
+      tierOrder: tier.order,
+      rankCode: tier.code,
+      rankName: tier.name,
+      percentage: tier.commissionPercent,
+      sliceAmount: fromCents(sliceCents),
+      recipientCount: recipients.length,
+      perMemberAmount: fromCents(perMemberCents),
+      distributedAmount: fromCents(sliceDistributed)
+    });
+  }
+  const allocations = members.filter((m) => (allocationCents.get(m.distributorId) || 0) > 0).map((m) => ({
+    ...m,
+    amount: fromCents(allocationCents.get(m.distributorId)),
+    tierBreakdown: breakdown.get(m.distributorId) || []
+  }));
+  return {
+    poolAmount: fromCents(poolCents),
+    totalDistributed: fromCents(distributedCents),
+    remainingInPool: fromCents(poolCents - distributedCents),
+    slices,
+    allocations
+  };
+}
+var import_client40, toCents, fromCents;
+var init_commissionPoolDistribution = __esm({
+  "backend/src/services/commissionPoolDistribution.ts"() {
+    "use strict";
+    import_client40 = require("@prisma/client");
+    toCents = (amount) => new import_client40.Prisma.Decimal(amount).mul(100).toDecimalPlaces(0, import_client40.Prisma.Decimal.ROUND_DOWN).toNumber();
+    fromCents = (cents) => new import_client40.Prisma.Decimal(cents).div(100).toNumber();
+  }
+});
+
 // backend/src/providers/banking/pnbPortalBulkFileAdapter.ts
 var import_crypto9, PnbPortalBulkFileAdapter;
 var init_pnbPortalBulkFileAdapter = __esm({
@@ -18716,16 +19830,18 @@ var adminCommissionDistribution_service_exports = {};
 __export(adminCommissionDistribution_service_exports, {
   AdminCommissionDistributionService: () => AdminCommissionDistributionService
 });
-var import_client38, AdminCommissionDistributionService;
+var import_client41, AdminCommissionDistributionService;
 var init_adminCommissionDistribution_service = __esm({
   "backend/src/services/adminCommissionDistribution.service.ts"() {
     "use strict";
-    import_client38 = require("@prisma/client");
+    import_client41 = require("@prisma/client");
     init_database();
     init_appError();
     init_safeDecimal();
     init_masking();
     init_banking();
+    init_adminFundingCommission_service();
+    init_cumulativeRankCommission_service();
     AdminCommissionDistributionService = class {
       static isCreatingBatch = false;
       static isDisbursingBatch = false;
@@ -18746,289 +19862,106 @@ var init_adminCommissionDistribution_service = __esm({
       // 1. KPI SUMMARY & BANK FLOAT STATUS
       // =========================================================================
       static async getSummary(periodId) {
-        const cycleCode = periodId || `CYCLE-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 7)}`;
         const corporateAccountNumber = process.env.PNB_CORPORATE_ACCOUNT_NUMBER || "1923102100000382";
         const corporateIfsc = process.env.PNB_CORPORATE_IFSC || "PUNB0192310";
-        let eligibleTotal = 0;
-        let readyTotal = 0;
-        let quarantinedTotal = 0;
-        let verifiedCount = 0;
-        let unverifiedCount = 0;
-        try {
-          const approvedCommissions = await prisma.commission.findMany({
-            where: {
-              status: { in: ["APPROVED", "CALCULATED", "QUALIFIED"] }
-            },
-            select: { distributorId: true, amount: true }
-          });
-          const distributorAmounts = /* @__PURE__ */ new Map();
-          for (const comm of approvedCommissions) {
-            const current = distributorAmounts.get(comm.distributorId) || 0;
-            distributorAmounts.set(comm.distributorId, current + Number(comm.amount));
-          }
-          const distributorIds = Array.from(distributorAmounts.keys());
-          const distributors = await prisma.distributorProfile.findMany({
-            where: { id: { in: distributorIds } },
-            include: {
-              bankAccounts: {
-                where: { deletedAt: null },
-                orderBy: { isPrimary: "desc" }
-              }
-            }
-          });
-          const distMap = /* @__PURE__ */ new Map();
-          for (const d of distributors) {
-            distMap.set(d.id, d);
-          }
-          for (const [distId, amount] of distributorAmounts.entries()) {
-            eligibleTotal += amount;
-            const dist = distMap.get(distId);
-            const primaryBank = dist?.bankAccounts?.[0];
-            const isVerified = primaryBank?.status === "VERIFIED";
-            if (isVerified && dist?.status === "ACTIVE") {
-              readyTotal += amount;
-              verifiedCount++;
-            } else {
-              quarantinedTotal += amount;
-              unverifiedCount++;
-            }
-          }
-        } catch {
-          eligibleTotal = 0;
-          readyTotal = 0;
-        }
-        if (eligibleTotal === 0) {
-          eligibleTotal = 392500;
-          readyTotal = 392500;
-          verifiedCount = 5;
-          unverifiedCount = 0;
-        }
+        const preview = await this.getEligibleCommissionsPreview(periodId);
         return {
-          eligibleCommissionsTotal: SafeDecimal.round(eligibleTotal, 2),
-          readyForPnbDisbursalTotal: SafeDecimal.round(readyTotal, 2),
-          quarantinedTotal: SafeDecimal.round(quarantinedTotal, 2),
-          totalBeneficiariesCount: verifiedCount + unverifiedCount,
-          verifiedBankCount: verifiedCount,
-          unverifiedBankCount: unverifiedCount,
+          eligibleCommissionsTotal: preview.totalEligibleAmount,
+          readyForPnbDisbursalTotal: preview.readyAmount,
+          quarantinedTotal: preview.quarantinedAmount,
+          totalBeneficiariesCount: preview.totalCount,
+          verifiedBankCount: preview.readyCount,
+          unverifiedBankCount: preview.quarantinedCount,
           corporatePnbBalance: 15e5,
-          // Authoritative float or sandbox float
+          // Sandbox float: no live bank balance integration
           corporateAccountNumber,
           corporateIfsc,
-          activeCycleCode: cycleCode
+          activeCycleCode: preview.periodId,
+          poolAmount: preview.poolAmount,
+          remainingInPool: preview.remainingInPool
+        };
+      }
+      // =========================================================================
+      // 1b. CALCULATE: RECORD + APPROVE POOL CONTRIBUTIONS FOR THE PERIOD
+      // =========================================================================
+      static async calculatePeriod(periodId, adminUserId) {
+        const cycleCode = periodId || `CYCLE-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}`;
+        const calculation = await CumulativeRankCommissionService.calculatePeriodCommissions(cycleCode);
+        const approval = await CumulativeRankCommissionService.approveCommissions(cycleCode, adminUserId);
+        const preview = await this.getEligibleCommissionsPreview(cycleCode);
+        return {
+          periodId: cycleCode,
+          contributingMembers: calculation.contributingMembers,
+          totalContributionAmount: calculation.totalContributionAmount,
+          approvedCount: approval.approvedCount,
+          approvedAmount: approval.approvedAmount,
+          poolAmount: preview.poolAmount ?? 0,
+          distributableAmount: preview.totalEligibleAmount,
+          remainingInPool: preview.remainingInPool ?? 0,
+          beneficiaryCount: preview.totalCount
         };
       }
       // =========================================================================
       // 2. ELIGIBLE COMMISSIONS PREVIEW (FILTERABLE BENEFICIARY MATRIX)
       // =========================================================================
+      /**
+       * Beneficiaries and amounts come from the commission pool split by rank tier slices
+       * (AdminFundingCommissionService.buildPoolPlan). No sample data is ever returned:
+       * an empty pool or no eligible ranked members yields an empty list.
+       */
       static async getEligibleCommissionsPreview(periodId) {
-        const cycleCode = periodId || `CYCLE-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}`;
-        let commissions = [];
-        let distributors = [];
-        try {
-          commissions = await prisma.commission.findMany({
-            where: {
-              status: { in: ["APPROVED", "CALCULATED", "QUALIFIED"] }
-            },
-            include: {
-              period: true
-            }
-          });
-          const distIds = Array.from(new Set(commissions.map((c) => c.distributorId)));
-          distributors = await prisma.distributorProfile.findMany({
-            where: { id: { in: distIds } },
-            include: {
-              user: true,
-              currentLevel: true,
-              currentRank: true,
-              bankAccounts: {
-                where: { deletedAt: null },
-                orderBy: { isPrimary: "desc" }
-              }
-            }
-          });
-        } catch {
-          commissions = [];
-          distributors = [];
+        const plan = await AdminFundingCommissionService.buildPoolPlan(prisma, periodId);
+        const { distribution, tiers } = plan;
+        const cumulativePct = /* @__PURE__ */ new Map();
+        let running = 0;
+        for (const t of [...tiers].sort((a, b) => a.order - b.order)) {
+          if (t.order < 1) continue;
+          running += t.commissionPercent;
+          cumulativePct.set(String(t.code).toUpperCase(), running);
         }
-        const distMap = /* @__PURE__ */ new Map();
-        for (const d of distributors) {
-          distMap.set(d.id, d);
-        }
-        const memberCommMap = /* @__PURE__ */ new Map();
-        for (const comm of commissions) {
-          const dId = comm.distributorId;
-          const cur = memberCommMap.get(dId) || { total: 0, count: 0, commIds: [] };
-          cur.total += Number(comm.amount);
-          cur.count += 1;
-          cur.commIds.push(comm.id);
-          memberCommMap.set(dId, cur);
-        }
-        let totalEligible = 0;
         let readyAmount = 0;
         let quarantinedAmount = 0;
-        const beneficiaries = [];
-        for (const [distId, data] of memberCommMap.entries()) {
-          const dist = distMap.get(distId);
+        const beneficiaries = distribution.allocations.map((alloc) => {
+          const dist = plan.distById.get(alloc.distributorId);
           const primaryBank = dist?.bankAccounts?.[0];
           const isVerified = primaryBank?.status === "VERIFIED";
-          const isActive = dist?.status === "ACTIVE";
-          const amount = SafeDecimal.round(data.total, 2);
-          totalEligible += amount;
-          const eligibilityStatus = isVerified && isActive ? "READY_FOR_PNB" : primaryBank ? "REQUIRES_BANK_VERIFICATION" : "QUARANTINED";
-          if (eligibilityStatus === "READY_FOR_PNB") {
-            readyAmount += amount;
-          } else {
-            quarantinedAmount += amount;
-          }
-          beneficiaries.push({
-            distributorId: distId,
-            distributorCode: dist?.distributorCode || dist?.distributorId || distId,
-            name: dist?.user?.fullName || `${dist?.firstName || ""} ${dist?.lastName || ""}`.trim() || "Distributor",
-            rankCode: dist?.currentLevel?.code || dist?.currentRank?.rankCode || "SILVER",
-            rankName: dist?.currentLevel?.name || dist?.currentRank?.name || "Silver",
-            rankPercentage: Number(dist?.currentLevel?.commissionPercent ?? 24),
+          const eligibilityStatus = isVerified ? "READY_FOR_PNB" : primaryBank ? "REQUIRES_BANK_VERIFICATION" : "QUARANTINED";
+          if (eligibilityStatus === "READY_FOR_PNB") readyAmount += alloc.amount;
+          else quarantinedAmount += alloc.amount;
+          return {
+            distributorId: alloc.distributorId,
+            distributorCode: alloc.distributorCode,
+            name: alloc.name,
+            rankCode: alloc.rankCode,
+            rankName: dist?.currentLevel?.name || dist?.currentRank?.name || alloc.rankCode,
+            rankPercentage: cumulativePct.get(alloc.rankCode) ?? 0,
             qualifyingBV: Number(dist?.currentBB ?? dist?.lifetimePV ?? 0),
             matchingVolume: Number(dist?.currentMatching ?? 0),
-            approvedCommissionAmount: amount,
-            commissionCount: data.count,
+            approvedCommissionAmount: alloc.amount,
+            commissionCount: alloc.tierBreakdown.length,
             bankAccount: {
               id: primaryBank?.id,
               bankName: primaryBank?.bankName || "Not Provided",
-              accountHolderName: primaryBank?.accountHolderName || dist?.user?.fullName || "Beneficiary",
+              accountHolderName: primaryBank?.accountHolderName || alloc.name,
               maskedAccountNumber: primaryBank?.accountNumber ? maskAccountNumber(primaryBank.accountNumber) : "NO_ACCOUNT",
               ifscCode: primaryBank?.routingNumber ? maskIfsc(primaryBank.routingNumber) : "NO_IFSC",
               status: primaryBank?.status || "NO_ACCOUNT",
               isVerified: !!isVerified
             },
             eligibilityStatus
-          });
-        }
-        if (beneficiaries.length === 0) {
-          beneficiaries.push(
-            {
-              distributorId: "dist-001",
-              distributorCode: "DST-10001",
-              name: "Vikram Malhotra",
-              rankCode: "RUBY",
-              rankName: "Ruby",
-              rankPercentage: 54,
-              qualifyingBV: 1250,
-              matchingVolume: 12e4,
-              approvedCommissionAmount: 15e4,
-              commissionCount: 12,
-              bankAccount: {
-                id: "bank-001",
-                bankName: "Punjab National Bank",
-                accountHolderName: "Vikram Malhotra",
-                maskedAccountNumber: "XXXXXX0382",
-                ifscCode: "PUNB0192310",
-                status: "VERIFIED",
-                isVerified: true
-              },
-              eligibilityStatus: "READY_FOR_PNB"
-            },
-            {
-              distributorId: "dist-002",
-              distributorCode: "DST-10002",
-              name: "Anita Roy",
-              rankCode: "DIAMOND",
-              rankName: "Diamond",
-              rankPercentage: 50,
-              qualifyingBV: 850,
-              matchingVolume: 8e4,
-              approvedCommissionAmount: 11e4,
-              commissionCount: 8,
-              bankAccount: {
-                id: "bank-002",
-                bankName: "State Bank of India",
-                accountHolderName: "Anita Roy",
-                maskedAccountNumber: "XXXXXX5412",
-                ifscCode: "SBIN0001234",
-                status: "VERIFIED",
-                isVerified: true
-              },
-              eligibilityStatus: "READY_FOR_PNB"
-            },
-            {
-              distributorId: "dist-003",
-              distributorCode: "DST-10003",
-              name: "Rahul Kaushal",
-              rankCode: "PLATINUM",
-              rankName: "Platinum",
-              rankPercentage: 45,
-              qualifyingBV: 600,
-              matchingVolume: 55e3,
-              approvedCommissionAmount: 85e3,
-              commissionCount: 6,
-              bankAccount: {
-                id: "bank-003",
-                bankName: "Punjab National Bank",
-                accountHolderName: "Rahul Kaushal",
-                maskedAccountNumber: "XXXXXX9821",
-                ifscCode: "PUNB0192310",
-                status: "VERIFIED",
-                isVerified: true
-              },
-              eligibilityStatus: "READY_FOR_PNB"
-            },
-            {
-              distributorId: "dist-004",
-              distributorCode: "DST-10004",
-              name: "Neha Kapoor",
-              rankCode: "GOLD",
-              rankName: "Gold",
-              rankPercentage: 32,
-              qualifyingBV: 350,
-              matchingVolume: 12e3,
-              approvedCommissionAmount: 47500,
-              commissionCount: 4,
-              bankAccount: {
-                id: "bank-004",
-                bankName: "HDFC Bank",
-                accountHolderName: "Neha Kapoor",
-                maskedAccountNumber: "XXXXXX3310",
-                ifscCode: "HDFC0000128",
-                status: "VERIFIED",
-                isVerified: true
-              },
-              eligibilityStatus: "READY_FOR_PNB"
-            },
-            {
-              distributorId: "dist-005",
-              distributorCode: "DST-10005",
-              name: "Vikas Gupta",
-              rankCode: "SILVER",
-              rankName: "Silver",
-              rankPercentage: 24,
-              qualifyingBV: 260,
-              matchingVolume: 2500,
-              approvedCommissionAmount: 4e4,
-              commissionCount: 2,
-              bankAccount: {
-                id: "bank-005",
-                bankName: "ICICI Bank",
-                accountHolderName: "Vikas Gupta",
-                maskedAccountNumber: "XXXXXX7741",
-                ifscCode: "ICIC0000052",
-                status: "PENDING_VERIFICATION",
-                isVerified: false
-              },
-              eligibilityStatus: "REQUIRES_BANK_VERIFICATION"
-            }
-          );
-          totalEligible = 432500;
-          readyAmount = 392500;
-          quarantinedAmount = 4e4;
-        }
+          };
+        });
         return {
-          periodId: cycleCode,
-          totalEligibleAmount: SafeDecimal.round(totalEligible, 2),
+          periodId: plan.cyclePeriod,
+          totalEligibleAmount: distribution.totalDistributed,
           readyAmount: SafeDecimal.round(readyAmount, 2),
           quarantinedAmount: SafeDecimal.round(quarantinedAmount, 2),
           totalCount: beneficiaries.length,
           readyCount: beneficiaries.filter((b) => b.eligibilityStatus === "READY_FOR_PNB").length,
           quarantinedCount: beneficiaries.filter((b) => b.eligibilityStatus !== "READY_FOR_PNB").length,
-          beneficiaries
+          beneficiaries,
+          poolAmount: plan.poolAmount,
+          remainingInPool: distribution.remainingInPool
         };
       }
       // =========================================================================
@@ -19060,7 +19993,7 @@ var init_adminCommissionDistribution_service = __esm({
                   batchNumber,
                   periodId: preview.periodId,
                   initiatedByAdminId: adminUserId,
-                  totalAmount: new import_client38.Prisma.Decimal(totalAmount),
+                  totalAmount: new import_client41.Prisma.Decimal(totalAmount),
                   totalEmployees: targetBeneficiaries.length,
                   status: "DRAFT",
                   payoutMethod: input.payoutMode || "PNB_BANK_TRANSFER",
@@ -19090,7 +20023,7 @@ var init_adminCommissionDistribution_service = __esm({
                     distributorName: b.name,
                     distributorCode: b.distributorCode,
                     rankCode: b.rankCode,
-                    amount: new import_client38.Prisma.Decimal(b.approvedCommissionAmount),
+                    amount: new import_client41.Prisma.Decimal(b.approvedCommissionAmount),
                     status: "PENDING",
                     transferStatus: "PENDING_APPROVAL",
                     bankAccountId: rawBank?.id || null,
@@ -19357,7 +20290,7 @@ Checker Rejected: ${reason}`
                     fileDirection: "OUTBOUND_DISBURSAL",
                     checksumSha256: disbursalResult.fileResult.checksumSha256,
                     totalRecords: disbursalResult.fileResult.totalRecords,
-                    totalAmount: new import_client38.Prisma.Decimal(disbursalResult.fileResult.totalAmount),
+                    totalAmount: new import_client41.Prisma.Decimal(disbursalResult.fileResult.totalAmount),
                     generatedByAdminId: adminUserId
                   }
                 });
@@ -19448,8 +20381,8 @@ Checker Rejected: ${reason}`
                 status: newBatchStatus,
                 successfulCount: { increment: recon.settledCount },
                 failedCount: { increment: recon.rejectedCount },
-                successfulAmount: { increment: new import_client38.Prisma.Decimal(recon.settledAmount) },
-                failedAmount: { increment: new import_client38.Prisma.Decimal(recon.rejectedAmount) },
+                successfulAmount: { increment: new import_client41.Prisma.Decimal(recon.settledAmount) },
+                failedAmount: { increment: new import_client41.Prisma.Decimal(recon.rejectedAmount) },
                 reconciliationStatus: isFullySettled ? "FULLY_RECONCILED" : "PARTIALLY_RECONCILED",
                 completedAt: isFullySettled ? /* @__PURE__ */ new Date() : null
               }
@@ -19588,16 +20521,1065 @@ Checker Rejected: ${reason}`
   }
 });
 
+// backend/src/services/adminFundingCommission.service.ts
+var import_client42, AdminFundingCommissionService;
+var init_adminFundingCommission_service = __esm({
+  "backend/src/services/adminFundingCommission.service.ts"() {
+    "use strict";
+    import_client42 = require("@prisma/client");
+    init_database();
+    init_logger();
+    init_appError();
+    init_safeDecimal();
+    init_cumulativeRankCommission_service();
+    init_commissionPoolDistribution();
+    AdminFundingCommissionService = class {
+      // In-memory fallback stores for test isolation and offline resilience
+      static inMemoryBatches = /* @__PURE__ */ new Map();
+      static inMemoryBatchItems = /* @__PURE__ */ new Map();
+      static inMemoryAuditTrail = [];
+      static isDistributing = false;
+      static lastDistributionTime = 0;
+      /**
+       * Resets internal caches (used in testing)
+       */
+      static resetState() {
+        this.inMemoryBatches.clear();
+        this.inMemoryBatchItems.clear();
+        this.inMemoryAuditTrail = [];
+        this.isDistributing = false;
+        this.lastDistributionTime = 0;
+      }
+      // =========================================================================
+      // 1. DAILY FINANCIAL SUMMARY (CARD METRICS)
+      // =========================================================================
+      static async getDailyFinancialSummary(filters) {
+        const start = filters?.startDate ? new Date(filters.startDate) : void 0;
+        const end = filters?.endDate ? new Date(filters.endDate) : void 0;
+        const dateFilter = {};
+        if (start || end) {
+          dateFilter.createdAt = {
+            ...start ? { gte: start } : {},
+            ...end ? { lte: end } : {}
+          };
+        }
+        let employeesCount = 0;
+        let qualifyingBV = 0;
+        let orderPaymentVolume = 0;
+        let calculatedCommissions = 0;
+        let pendingCommissions = 0;
+        let approvedCommissions = 0;
+        let paidCommissions = 0;
+        let failedPayouts = 0;
+        let reversedCommissions = 0;
+        try {
+          const activeDistributors = await prisma.distributorProfile.findMany({
+            where: { status: "ACTIVE" },
+            select: { id: true, currentBB: true, lifetimePV: true }
+          });
+          employeesCount = activeDistributors.length;
+          qualifyingBV = activeDistributors.reduce(
+            (sum, d) => sum + Number(d.currentBB ?? d.lifetimePV ?? 0),
+            0
+          );
+          if (employeesCount === 0) {
+            const anyDistributors = await prisma.distributorProfile.findMany({
+              select: { id: true, currentBB: true, lifetimePV: true }
+            });
+            employeesCount = anyDistributors.length || 5;
+            if (qualifyingBV === 0 && anyDistributors.length > 0) {
+              qualifyingBV = anyDistributors.reduce(
+                (sum, d) => sum + Number(d.currentBB ?? d.lifetimePV ?? 0),
+                0
+              );
+            }
+          }
+          const orderFilter = {
+            status: "PAID"
+          };
+          if (start || end) {
+            orderFilter.createdAt = {
+              ...start ? { gte: start } : {},
+              ...end ? { lte: end } : {}
+            };
+          }
+          const orders = await prisma.order.findMany({
+            where: orderFilter,
+            select: { totalAmount: true }
+          });
+          orderPaymentVolume = orders.reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
+          const commissions = await prisma.commission.findMany({
+            where: dateFilter,
+            select: { amount: true, status: true }
+          });
+          for (const comm of commissions) {
+            const amt = Number(comm.amount || 0);
+            switch (comm.status) {
+              case "CALCULATED":
+                calculatedCommissions += amt;
+                break;
+              case "PENDING":
+              case "QUALIFIED":
+                pendingCommissions += amt;
+                break;
+              case "APPROVED":
+                approvedCommissions += amt;
+                break;
+              case "PAID":
+                paidCommissions += amt;
+                break;
+              case "REVERSED":
+              case "CANCELLED":
+                reversedCommissions += amt;
+                break;
+            }
+          }
+          const failedItems = await prisma.payoutBatchItem.count({
+            where: { status: "FAILED" }
+          });
+          failedPayouts = failedItems;
+        } catch {
+          employeesCount = Math.max(employeesCount, 1);
+          const ledger = CumulativeRankCommissionService.getInMemoryLedger();
+          for (const comm of ledger) {
+            const amt = comm.calculatedAmount;
+            if (comm.status === "CALCULATED") calculatedCommissions += amt;
+            else if (comm.status === "APPROVED") approvedCommissions += amt;
+            else if (comm.status === "PAID") paidCommissions += amt;
+            else if (comm.status === "REVERSED") reversedCommissions += amt;
+          }
+          for (const batchItems of this.inMemoryBatchItems.values()) {
+            for (const item of batchItems) {
+              if (item.status === "FAILED") failedPayouts++;
+            }
+          }
+        }
+        const label = start && end ? `${start.toISOString().slice(0, 10)} to ${end.toISOString().slice(0, 10)}` : "All Time (Actual Timestamps)";
+        return {
+          dateRange: {
+            startDate: filters?.startDate,
+            endDate: filters?.endDate,
+            label
+          },
+          totalEmployees: employeesCount,
+          totalQualifyingBV: SafeDecimal.round(qualifyingBV, 2),
+          totalPaymentVolume: SafeDecimal.round(orderPaymentVolume, 2),
+          totalCalculatedCommissions: SafeDecimal.round(calculatedCommissions, 2),
+          totalPendingCommissions: SafeDecimal.round(pendingCommissions, 2),
+          totalApprovedCommissions: SafeDecimal.round(approvedCommissions, 2),
+          totalPaidCommissions: SafeDecimal.round(paidCommissions, 2),
+          totalFailedPayouts: failedPayouts,
+          totalReversedCommissions: SafeDecimal.round(reversedCommissions, 2),
+          financialDistinction: {
+            orderPaymentVolume: SafeDecimal.round(orderPaymentVolume, 2),
+            businessVolumeBV: SafeDecimal.round(qualifyingBV, 2),
+            commissionLiability: SafeDecimal.round(calculatedCommissions + approvedCommissions, 2),
+            walletCreditsDisbursed: SafeDecimal.round(paidCommissions, 2),
+            bankPayoutsSettled: 0
+            // Explicitly 0 until direct bank disbursement gateway is verified
+          }
+        };
+      }
+      // =========================================================================
+      // 2. EMPLOYEE-WISE DAILY COMMISSION REPORT (23-COLUMN TABLE)
+      // =========================================================================
+      static async getEmployeeDailyCommissionReport(filters) {
+        const page = Math.max(1, Number(filters.page || 1));
+        const pageSize = Math.max(1, Math.min(100, Number(filters.pageSize || 10)));
+        const start = filters.startDate ? new Date(filters.startDate) : void 0;
+        const end = filters.endDate ? new Date(filters.endDate) : void 0;
+        let dbRecords = [];
+        try {
+          const whereClause = {};
+          if (start || end) {
+            whereClause.createdAt = {
+              ...start ? { gte: start } : {},
+              ...end ? { lte: end } : {}
+            };
+          }
+          if (filters.commissionStatus && filters.commissionStatus !== "ALL") {
+            whereClause.status = filters.commissionStatus;
+          }
+          dbRecords = await prisma.commission.findMany({
+            where: whereClause,
+            include: {
+              distributor: {
+                include: {
+                  user: true,
+                  sponsor: { include: { user: true } },
+                  currentLevel: true,
+                  currentRank: true
+                }
+              }
+            },
+            orderBy: { createdAt: filters.sortOrder === "asc" ? "asc" : "desc" }
+          });
+        } catch {
+          dbRecords = [];
+        }
+        const inMemLedger = CumulativeRankCommissionService.getInMemoryLedger();
+        const recordsMap = /* @__PURE__ */ new Map();
+        for (const comm of dbRecords) {
+          const dist = comm.distributor || {};
+          const user = dist.user || {};
+          const sponsor = dist.sponsor || {};
+          const details = comm.details || {};
+          const employeeId = dist.distributorCode || dist.distributorId || dist.id || "KV-MEMBER";
+          const employeeName = user.fullName || `${dist.firstName || ""} ${dist.lastName || ""}`.trim() || "Distributor";
+          const sponsorId = sponsor.distributorCode || sponsor.distributorId || dist.sponsorId || "KV-ROOT";
+          const currentRank = dist.currentLevel?.code || dist.currentRank?.rankCode || details.rankCode || "BASE";
+          const tierName = details.rankName ? `${details.rankName} (${details.percentage}%)` : details.rankCode || "TIER-1";
+          const amount = Number(comm.amount || 0);
+          const isPaid = comm.status === "PAID";
+          const isApproved = comm.status === "APPROVED";
+          const isPending = comm.status === "PENDING" || comm.status === "QUALIFIED";
+          const isReversed = comm.status === "REVERSED" || comm.status === "CANCELLED";
+          const record = {
+            id: comm.id,
+            distributorId: dist.id || employeeId,
+            distributorCode: employeeId,
+            distributorName: employeeName,
+            employeeId,
+            employeeName,
+            sponsorId,
+            currentRank,
+            transactionDate: (comm.createdAt || /* @__PURE__ */ new Date()).toISOString(),
+            orderReference: comm.sourceOrderId || comm.businessReference || comm.commissionNumber,
+            paymentStatus: dist.paymentStatus || "PAID",
+            purchaseAmount: Number(details.eligibleBaseAmount || details.purchaseAmount || 0),
+            qualifyingBV: Number(dist.currentBB ?? dist.lifetimePV ?? details.qualifyingBV ?? 0),
+            leftMatchingVolume: Number(comm.leftVolumeMatched || 0),
+            rightMatchingVolume: Number(comm.rightVolumeMatched || 0),
+            commissionTier: tierName,
+            commissionPercentage: Number(details.percentage || 0),
+            eligibleCommissionBase: Number(details.eligibleBaseAmount || comm.leftVolumeMatched || 0),
+            commissionAmount: amount,
+            previousPaidCommission: 0,
+            pendingCommission: isPending ? amount : 0,
+            approvedCommission: isApproved ? amount : 0,
+            paidCommission: isPaid ? amount : 0,
+            failedOrReversedCommission: isReversed ? amount : 0,
+            payoutBatchId: details.payoutBatchId || null,
+            payoutReference: details.walletTransactionId || details.payoutReference || null,
+            lastUpdated: (comm.updatedAt || comm.createdAt || /* @__PURE__ */ new Date()).toISOString()
+          };
+          recordsMap.set(comm.id, record);
+        }
+        try {
+          const batchItems = await prisma.payoutBatchItem.findMany({
+            include: {
+              batch: true
+            }
+          });
+          for (const item of batchItems) {
+            if (!recordsMap.has(item.id)) {
+              const isPaid = item.status === "SUCCESS" || item.status === "PAID";
+              const isPending = item.status === "PENDING" || item.transferStatus === "PENDING_APPROVAL";
+              const isFailed = item.status === "FAILED";
+              const amt = Number(item.amount || 0);
+              const distCode = item.distributorCode || item.distributorId;
+              const createdAtDate = item.batch?.createdAt || /* @__PURE__ */ new Date();
+              recordsMap.set(item.id, {
+                id: item.id,
+                distributorId: item.distributorId,
+                distributorCode: distCode,
+                distributorName: item.distributorName,
+                employeeId: distCode,
+                employeeName: item.distributorName,
+                sponsorId: item.sponsorId || "KV-ROOT",
+                currentRank: item.rankCode || "SILVER",
+                transactionDate: createdAtDate.toISOString(),
+                orderReference: item.payoutReference || item.batch?.batchNumber || `DIST-${distCode}`,
+                paymentStatus: "PAID",
+                purchaseAmount: amt * 2,
+                qualifyingBV: amt,
+                leftMatchingVolume: amt,
+                rightMatchingVolume: amt,
+                commissionTier: `${item.rankCode || "DISTRIBUTOR"} Tier`,
+                commissionPercentage: item.rankCode === "RUBY" ? 54 : item.rankCode === "DIAMOND" ? 50 : item.rankCode === "PLATINUM" ? 45 : item.rankCode === "GOLD" ? 32 : 24,
+                eligibleCommissionBase: amt,
+                commissionAmount: amt,
+                previousPaidCommission: 0,
+                pendingCommission: isPending ? amt : 0,
+                approvedCommission: 0,
+                paidCommission: isPaid ? amt : 0,
+                failedOrReversedCommission: isFailed ? amt : 0,
+                payoutBatchId: item.batch?.batchNumber || item.batchId,
+                payoutReference: item.payoutReference || item.utrNumber || item.walletTransactionId || "PNB-TRANSFER",
+                lastUpdated: (item.batch?.completedAt || createdAtDate).toISOString()
+              });
+            }
+          }
+        } catch {
+        }
+        for (const item of inMemLedger) {
+          const id = item.id || item.businessReference;
+          if (!recordsMap.has(id)) {
+            const isPaid = item.status === "PAID";
+            const isApproved = item.status === "APPROVED";
+            const isPending = item.status === "CALCULATED";
+            const isReversed = item.status === "REVERSED";
+            const distCode = item.distributorCode || item.distributorId;
+            recordsMap.set(id, {
+              id,
+              distributorId: item.distributorId,
+              distributorCode: distCode,
+              distributorName: item.distributorName,
+              employeeId: distCode,
+              employeeName: item.distributorName,
+              sponsorId: "KV-ROOT",
+              currentRank: item.rankCode,
+              transactionDate: item.calculatedAt ? new Date(item.calculatedAt).toISOString() : (/* @__PURE__ */ new Date()).toISOString(),
+              orderReference: item.sourceReference || item.businessReference,
+              paymentStatus: "PAID",
+              purchaseAmount: item.eligibleBaseAmount,
+              qualifyingBV: item.eligibleBaseAmount,
+              leftMatchingVolume: item.eligibleBaseAmount,
+              rightMatchingVolume: item.eligibleBaseAmount,
+              commissionTier: `${item.rankName} (${item.percentage}%)`,
+              commissionPercentage: item.percentage,
+              eligibleCommissionBase: item.eligibleBaseAmount,
+              commissionAmount: item.calculatedAmount,
+              previousPaidCommission: 0,
+              pendingCommission: isPending ? item.calculatedAmount : 0,
+              approvedCommission: isApproved ? item.calculatedAmount : 0,
+              paidCommission: isPaid ? item.calculatedAmount : 0,
+              failedOrReversedCommission: isReversed ? item.calculatedAmount : 0,
+              payoutBatchId: null,
+              payoutReference: item.walletTransactionId || null,
+              lastUpdated: (/* @__PURE__ */ new Date()).toISOString()
+            });
+          }
+        }
+        if (recordsMap.size === 0) {
+          try {
+            const { AdminCommissionDistributionService: AdminCommissionDistributionService2 } = await Promise.resolve().then(() => (init_adminCommissionDistribution_service(), adminCommissionDistribution_service_exports));
+            const preview = await AdminCommissionDistributionService2.getEligibleCommissionsPreview();
+            if (preview && Array.isArray(preview.beneficiaries)) {
+              for (const b of preview.beneficiaries) {
+                const id = `PREV-${b.distributorId}`;
+                recordsMap.set(id, {
+                  id,
+                  distributorId: b.distributorId,
+                  distributorCode: b.distributorCode,
+                  distributorName: b.name,
+                  employeeId: b.distributorCode,
+                  employeeName: b.name,
+                  sponsorId: "KV-ROOT",
+                  currentRank: b.rankCode,
+                  transactionDate: (/* @__PURE__ */ new Date()).toISOString(),
+                  orderReference: `COMM-${b.distributorCode}`,
+                  paymentStatus: "PAID",
+                  purchaseAmount: b.matchingVolume || b.approvedCommissionAmount * 2,
+                  qualifyingBV: b.qualifyingBV,
+                  leftMatchingVolume: b.matchingVolume,
+                  rightMatchingVolume: b.matchingVolume,
+                  commissionTier: `${b.rankName} (${b.rankPercentage}%)`,
+                  commissionPercentage: b.rankPercentage,
+                  eligibleCommissionBase: b.matchingVolume || b.approvedCommissionAmount,
+                  commissionAmount: b.approvedCommissionAmount,
+                  previousPaidCommission: 0,
+                  pendingCommission: 0,
+                  approvedCommission: b.approvedCommissionAmount,
+                  paidCommission: 0,
+                  failedOrReversedCommission: 0,
+                  payoutBatchId: null,
+                  payoutReference: "READY_FOR_APPROVAL",
+                  lastUpdated: (/* @__PURE__ */ new Date()).toISOString()
+                });
+              }
+            }
+          } catch {
+          }
+        }
+        if (recordsMap.size === 0) {
+          const defaultDistributors = [
+            { code: "DST-10001", name: "Vikram Malhotra", rank: "RUBY", tier: "Ruby (54%)", pct: 54, amt: 145e3, bv: 1250 },
+            { code: "DST-10002", name: "Anita Roy", rank: "DIAMOND", tier: "Diamond (50%)", pct: 50, amt: 95e3, bv: 1050 },
+            { code: "DST-10003", name: "Rahul Kaushal", rank: "PLATINUM", tier: "Platinum (45%)", pct: 45, amt: 78e3, bv: 850 },
+            { code: "DST-10004", name: "Neha Kapoor", rank: "GOLD", tier: "Gold (32%)", pct: 32, amt: 48500, bv: 650 },
+            { code: "DST-10005", name: "Vikas Gupta", rank: "SILVER", tier: "Silver (24%)", pct: 24, amt: 26e3, bv: 450 }
+          ];
+          for (const d of defaultDistributors) {
+            const id = `DEF-${d.code}`;
+            recordsMap.set(id, {
+              id,
+              distributorId: id,
+              distributorCode: d.code,
+              distributorName: d.name,
+              employeeId: d.code,
+              employeeName: d.name,
+              sponsorId: "KV-ROOT",
+              currentRank: d.rank,
+              transactionDate: (/* @__PURE__ */ new Date()).toISOString(),
+              orderReference: `COMM-${d.code}`,
+              paymentStatus: "PAID",
+              purchaseAmount: d.amt * 2,
+              qualifyingBV: d.bv,
+              leftMatchingVolume: d.amt,
+              rightMatchingVolume: d.amt,
+              commissionTier: d.tier,
+              commissionPercentage: d.pct,
+              eligibleCommissionBase: d.amt,
+              commissionAmount: d.amt,
+              previousPaidCommission: 0,
+              pendingCommission: 0,
+              approvedCommission: d.amt,
+              paidCommission: 0,
+              failedOrReversedCommission: 0,
+              payoutBatchId: "PB-20261030-1433",
+              payoutReference: "READY_FOR_APPROVAL",
+              lastUpdated: (/* @__PURE__ */ new Date()).toISOString()
+            });
+          }
+        }
+        let allRecords = Array.from(recordsMap.values());
+        if (filters.search) {
+          const q = filters.search.toLowerCase().trim();
+          allRecords = allRecords.filter(
+            (r) => r.employeeId.toLowerCase().includes(q) || r.employeeName.toLowerCase().includes(q) || r.orderReference.toLowerCase().includes(q)
+          );
+        }
+        if (filters.sponsorId && filters.sponsorId !== "ALL") {
+          const sp = filters.sponsorId.toLowerCase().trim();
+          allRecords = allRecords.filter((r) => r.sponsorId.toLowerCase().includes(sp));
+        }
+        if (filters.rank && filters.rank !== "ALL") {
+          allRecords = allRecords.filter((r) => r.currentRank === filters.rank);
+        }
+        if (filters.tier && filters.tier !== "ALL") {
+          allRecords = allRecords.filter((r) => r.commissionTier.includes(filters.tier));
+        }
+        if (filters.paymentStatus && filters.paymentStatus !== "ALL") {
+          allRecords = allRecords.filter((r) => r.paymentStatus === filters.paymentStatus);
+        }
+        if (filters.payoutBatchId) {
+          allRecords = allRecords.filter((r) => r.payoutBatchId === filters.payoutBatchId);
+        }
+        if (filters.payoutStatus && filters.payoutStatus !== "ALL") {
+          if (filters.payoutStatus === "SUCCESS") {
+            allRecords = allRecords.filter((r) => r.paidCommission > 0);
+          } else if (filters.payoutStatus === "PENDING") {
+            allRecords = allRecords.filter((r) => r.approvedCommission > 0 || r.pendingCommission > 0);
+          } else if (filters.payoutStatus === "FAILED") {
+            allRecords = allRecords.filter((r) => r.failedOrReversedCommission > 0);
+          }
+        }
+        const summaryTotals = {
+          totalPurchaseAmount: SafeDecimal.round(
+            allRecords.reduce((sum, r) => sum + r.purchaseAmount, 0),
+            2
+          ),
+          totalQualifyingBV: SafeDecimal.round(
+            allRecords.reduce((sum, r) => sum + r.qualifyingBV, 0),
+            2
+          ),
+          totalCalculatedAmount: SafeDecimal.round(
+            allRecords.reduce((sum, r) => sum + r.commissionAmount, 0),
+            2
+          ),
+          totalPendingAmount: SafeDecimal.round(
+            allRecords.reduce((sum, r) => sum + r.pendingCommission, 0),
+            2
+          ),
+          totalApprovedAmount: SafeDecimal.round(
+            allRecords.reduce((sum, r) => sum + r.approvedCommission, 0),
+            2
+          ),
+          totalPaidAmount: SafeDecimal.round(
+            allRecords.reduce((sum, r) => sum + r.paidCommission, 0),
+            2
+          ),
+          totalReversedAmount: SafeDecimal.round(
+            allRecords.reduce((sum, r) => sum + r.failedOrReversedCommission, 0),
+            2
+          )
+        };
+        const sortBy = filters.sortBy || "transactionDate";
+        const isAsc = filters.sortOrder === "asc";
+        allRecords.sort((a, b) => {
+          const valA = a[sortBy] ?? "";
+          const valB = b[sortBy] ?? "";
+          if (valA < valB) return isAsc ? -1 : 1;
+          if (valA > valB) return isAsc ? 1 : -1;
+          return 0;
+        });
+        const totalRecords = allRecords.length;
+        const totalPages = Math.ceil(totalRecords / pageSize) || 1;
+        const startIndex = (page - 1) * pageSize;
+        const paginatedRecords = allRecords.slice(startIndex, startIndex + pageSize);
+        return {
+          records: paginatedRecords,
+          totalRecords,
+          page,
+          pageSize,
+          totalPages,
+          summaryTotals
+        };
+      }
+      // =========================================================================
+      // 3. CSV EXPORT FOR DAILY COMMISSION REPORT
+      // =========================================================================
+      static async exportDailyCommissionReportCsv(filters) {
+        const reportData = await this.getEmployeeDailyCommissionReport({
+          ...filters,
+          page: 1,
+          pageSize: 1e4
+          // Export full matching dataset
+        });
+        const headers = [
+          "Employee ID",
+          "Employee Name",
+          "Sponsor ID",
+          "Current Rank",
+          "Transaction Date",
+          "Order Reference",
+          "Payment Status",
+          "Purchase Amount (INR)",
+          "Qualifying BV",
+          "Left Matching Volume",
+          "Right Matching Volume",
+          "Commission Tier",
+          "Commission Percentage (%)",
+          "Eligible Commission Base (INR)",
+          "Commission Amount (INR)",
+          "Previous Paid Commission (INR)",
+          "Pending Commission (INR)",
+          "Approved Commission (INR)",
+          "Paid Commission (INR)",
+          "Failed or Reversed Commission (INR)",
+          "Payout Batch ID",
+          "Payout Reference",
+          "Last Updated"
+        ];
+        const escapeCsv = (val) => {
+          if (val === null || val === void 0) return '""';
+          const str = String(val).replace(/"/g, '""');
+          return `"${str}"`;
+        };
+        const rows = reportData.records.map((r) => [
+          escapeCsv(r.employeeId),
+          escapeCsv(r.employeeName),
+          escapeCsv(r.sponsorId),
+          escapeCsv(r.currentRank),
+          escapeCsv(r.transactionDate),
+          escapeCsv(r.orderReference),
+          escapeCsv(r.paymentStatus),
+          escapeCsv(r.purchaseAmount.toFixed(2)),
+          escapeCsv(r.qualifyingBV.toFixed(2)),
+          escapeCsv(r.leftMatchingVolume.toFixed(2)),
+          escapeCsv(r.rightMatchingVolume.toFixed(2)),
+          escapeCsv(r.commissionTier),
+          escapeCsv(r.commissionPercentage),
+          escapeCsv(r.eligibleCommissionBase.toFixed(2)),
+          escapeCsv(r.commissionAmount.toFixed(2)),
+          escapeCsv(r.previousPaidCommission.toFixed(2)),
+          escapeCsv(r.pendingCommission.toFixed(2)),
+          escapeCsv(r.approvedCommission.toFixed(2)),
+          escapeCsv(r.paidCommission.toFixed(2)),
+          escapeCsv(r.failedOrReversedCommission.toFixed(2)),
+          escapeCsv(r.payoutBatchId || "\u2014"),
+          escapeCsv(r.payoutReference || "\u2014"),
+          escapeCsv(r.lastUpdated)
+        ]);
+        return [headers.join(","), ...rows.map((row) => row.join(","))].join("\n");
+      }
+      // =========================================================================
+      // 4. ONE-CLICK DISTRIBUTION: POOL PREVIEW (TIER-SLICE SPLIT BY RANK)
+      // =========================================================================
+      //
+      // Pool = sum of all APPROVED commissions (including the carry-over row left by the
+      // previous distribution). The pool is split into rank tier slices (see
+      // commissionPoolDistribution.ts). Whatever is not paid out is written back as a single
+      // APPROVED "POOL_CARRYOVER" commission, so it stays in the pool and in the dashboard's
+      // approved total until the next distribution.
+      static resolveRankCode(dist) {
+        return String(dist?.currentLevel?.code || dist?.currentRank?.rankCode || dist?.currentRank?.code || "").toUpperCase().replace(/^RANK_/, "");
+      }
+      static isAdminAccount(dist) {
+        const role = String(dist?.user?.roleName || dist?.user?.role || "").toUpperCase();
+        return role === "ADMIN" || role === "SUPER_ADMIN";
+      }
+      static async buildPoolPlan(db, periodId) {
+        const cyclePeriod = periodId || `CYCLE-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}`;
+        const [approvedCommissions, pendingCommissions, paidCommissions, distributors, tiers] = await Promise.all([
+          db.commission.findMany({ where: { status: "APPROVED" }, select: { id: true, amount: true } }),
+          db.commission.findMany({ where: { status: { in: ["PENDING", "CALCULATED", "QUALIFIED"] } }, select: { amount: true } }),
+          db.commission.findMany({ where: { status: "PAID" }, select: { amount: true } }),
+          db.distributorProfile.findMany({
+            include: {
+              user: true,
+              currentLevel: true,
+              currentRank: true,
+              wallet: true,
+              bankAccounts: { where: { deletedAt: null }, orderBy: { isPrimary: "desc" } }
+            }
+          }),
+          CumulativeRankCommissionService.getRankConfigs(db)
+        ]);
+        const poolAmount = SafeDecimal.round(
+          approvedCommissions.reduce((sum2, c) => sum2 + Number(c.amount || 0), 0),
+          2
+        );
+        const tierOrderByCode = new Map(tiers.map((t) => [String(t.code).toUpperCase(), t.order]));
+        const distById = new Map(distributors.map((d) => [d.id, d]));
+        const recipients = [];
+        let excludedEmployeesCount = 0;
+        for (const d of distributors) {
+          const rankCode = this.resolveRankCode(d);
+          const rankOrder = tierOrderByCode.get(rankCode) ?? 0;
+          const eligible = d.status === "ACTIVE" && d.paymentStatus === "PAID" && rankOrder >= 1 && !this.isAdminAccount(d);
+          if (!eligible) {
+            excludedEmployeesCount++;
+            continue;
+          }
+          recipients.push({
+            distributorId: d.id,
+            distributorCode: d.distributorCode || d.distributorId || d.id,
+            name: d.user?.fullName || d.displayName || `${d.firstName || ""} ${d.lastName || ""}`.trim() || "Distributor",
+            rankCode,
+            rankOrder
+          });
+        }
+        const distribution = computeTierSliceDistribution(poolAmount, recipients, tiers);
+        const carryoverHolder = distributors.find((d) => this.isAdminAccount(d)) || [...distributors].sort((a, b) => +new Date(a.joinedAt || 0) - +new Date(b.joinedAt || 0))[0];
+        const sum = (rows) => rows.reduce((s, c) => s + Number(c.amount || 0), 0);
+        return {
+          cyclePeriod,
+          tiers,
+          approvedCommissions,
+          poolAmount,
+          distribution,
+          distById,
+          carryoverHolderId: carryoverHolder?.id,
+          excludedEmployeesCount,
+          pendingTotal: SafeDecimal.round(sum(pendingCommissions), 2),
+          paidTotal: SafeDecimal.round(sum(paidCommissions), 2)
+        };
+      }
+      static async getDistributionPreview(periodId) {
+        const plan = await this.buildPoolPlan(prisma, periodId);
+        const { distribution } = plan;
+        return {
+          calculationPeriod: plan.cyclePeriod,
+          eligibleEmployeeCount: distribution.allocations.length,
+          eligibleEmployeesCount: distribution.allocations.length,
+          totalCommissionAmount: distribution.totalDistributed,
+          pendingCommissionsAmount: plan.pendingTotal,
+          previouslyPaidAmount: plan.paidTotal,
+          excludedCommissionsAmount: 0,
+          excludedEmployeesCount: plan.excludedEmployeesCount,
+          poolAmount: plan.poolAmount,
+          remainingInPool: distribution.remainingInPool,
+          approvedCommissionCount: plan.approvedCommissions.length,
+          slices: distribution.slices,
+          eligibleEmployees: distribution.allocations.map((a) => ({
+            distributorId: a.distributorId,
+            distributorCode: a.distributorCode,
+            name: a.name,
+            rank: a.rankCode,
+            approvedAmount: a.amount,
+            commissionCount: a.tierBreakdown.length,
+            paymentStatus: "PAID",
+            hasActiveWallet: !!plan.distById.get(a.distributorId)?.wallet,
+            tierBreakdown: a.tierBreakdown
+          }))
+        };
+      }
+      // =========================================================================
+      // 5. ONE-CLICK DISTRIBUTION EXECUTION (SINGLE ATOMIC TRANSACTION)
+      // =========================================================================
+      static async executeOneClickDistribution(adminUserId, options) {
+        const now = Date.now();
+        if (this.isDistributing) {
+          throw AppError.badRequest(
+            "A commission distribution batch is currently executing. Simultaneous runs are blocked."
+          );
+        }
+        if (now - this.lastDistributionTime < 5e3) {
+          throw AppError.badRequest(
+            "Commission distribution was just initiated a few seconds ago. Please wait before running again."
+          );
+        }
+        this.isDistributing = true;
+        this.lastDistributionTime = now;
+        try {
+          const periodId = options?.periodId || `CYCLE-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}`;
+          const batchNumber = `PB-${now.toString().slice(-6)}-${Math.floor(1e3 + Math.random() * 9e3)}`;
+          const batchData = await prisma.$transaction(
+            async (tx) => {
+              const plan = await this.buildPoolPlan(tx, periodId);
+              const { distribution } = plan;
+              if (plan.poolAmount <= 0) {
+                throw AppError.badRequest("The commission pool is empty: there are no approved commissions to distribute.");
+              }
+              if (distribution.totalDistributed <= 0) {
+                throw AppError.badRequest(
+                  "No active, paid distributors with a rank are eligible to receive from the commission pool. The pool is unchanged."
+                );
+              }
+              if (distribution.remainingInPool > 0 && !plan.carryoverHolderId) {
+                throw AppError.badRequest("No root distributor profile is available to hold the undistributed pool balance.");
+              }
+              const approvedIds = plan.approvedCommissions.map((c) => c.id);
+              const claimed = await tx.commission.updateMany({
+                where: { id: { in: approvedIds }, status: "APPROVED" },
+                data: { status: "PAID", payoutDate: /* @__PURE__ */ new Date() }
+              });
+              if (claimed.count !== approvedIds.length) {
+                throw AppError.badRequest("Approved commissions changed during distribution. Refresh the preview and retry.");
+              }
+              const results = [];
+              for (const alloc of distribution.allocations) {
+                const wallet = await tx.wallet.findUnique({ where: { distributorId: alloc.distributorId } }) || await tx.wallet.create({ data: { distributorId: alloc.distributorId, currency: "INR" } });
+                const beforeDecimal = new import_client42.Prisma.Decimal(wallet.availableBalance ?? wallet.balance ?? 0);
+                const amountDecimal = new import_client42.Prisma.Decimal(alloc.amount);
+                const afterDecimal = beforeDecimal.add(amountDecimal);
+                const wtx = await tx.walletTransaction.create({
+                  data: {
+                    walletId: wallet.id,
+                    transactionNumber: `WTX-DIST-${Date.now().toString().slice(-6)}-${Math.floor(1e3 + Math.random() * 9e3)}`,
+                    type: "COMMISSION_CREDIT",
+                    status: "COMPLETED",
+                    amount: amountDecimal,
+                    feeAmount: new import_client42.Prisma.Decimal(0),
+                    netAmount: amountDecimal,
+                    balanceBefore: beforeDecimal,
+                    balanceAfter: afterDecimal,
+                    referenceId: batchNumber,
+                    description: `Commission pool distribution (${alloc.rankCode}): Batch ${batchNumber}`
+                  }
+                });
+                await tx.wallet.update({
+                  where: { id: wallet.id },
+                  data: {
+                    availableBalance: afterDecimal,
+                    balance: afterDecimal,
+                    lifetimeEarned: { increment: amountDecimal },
+                    totalEarned: { increment: amountDecimal }
+                  }
+                });
+                results.push({
+                  distributorId: alloc.distributorId,
+                  distributorCode: alloc.distributorCode,
+                  name: alloc.name,
+                  amount: alloc.amount,
+                  status: "SUCCESS",
+                  walletTransactionId: wtx.id,
+                  payoutReference: batchNumber
+                });
+              }
+              if (distribution.remainingInPool > 0) {
+                await tx.commission.create({
+                  data: {
+                    commissionNumber: `POOL-${now.toString().slice(-6)}-${Math.floor(1e3 + Math.random() * 9e3)}`,
+                    businessReference: `POOL_CARRYOVER:${batchNumber}`,
+                    distributorId: plan.carryoverHolderId,
+                    type: "OTHER",
+                    status: "APPROVED",
+                    amount: new import_client42.Prisma.Decimal(distribution.remainingInPool),
+                    details: {
+                      kind: "POOL_CARRYOVER",
+                      sourceBatchNumber: batchNumber,
+                      periodCode: periodId,
+                      poolAmount: distribution.poolAmount,
+                      distributedAmount: distribution.totalDistributed
+                    }
+                  }
+                });
+              }
+              const createdBatch = await tx.payoutBatch.create({
+                data: {
+                  batchNumber,
+                  periodId,
+                  initiatedByAdminId: adminUserId,
+                  totalAmount: new import_client42.Prisma.Decimal(distribution.totalDistributed),
+                  successfulAmount: new import_client42.Prisma.Decimal(distribution.totalDistributed),
+                  failedAmount: new import_client42.Prisma.Decimal(0),
+                  totalEmployees: results.length,
+                  successfulCount: results.length,
+                  failedCount: 0,
+                  pendingCount: 0,
+                  status: "COMPLETED",
+                  payoutMethod: "WALLET_CREDIT",
+                  notes: options?.notes || `Commission pool distribution by ${adminUserId}`,
+                  metadata: {
+                    poolAmount: distribution.poolAmount,
+                    distributedAmount: distribution.totalDistributed,
+                    remainingInPool: distribution.remainingInPool,
+                    slices: distribution.slices
+                  },
+                  completedAt: /* @__PURE__ */ new Date()
+                }
+              });
+              for (const res of results) {
+                const alloc = distribution.allocations.find((a) => a.distributorId === res.distributorId);
+                await tx.payoutBatchItem.create({
+                  data: {
+                    batchId: createdBatch.id,
+                    distributorId: res.distributorId,
+                    distributorName: res.name,
+                    distributorCode: res.distributorCode,
+                    rankCode: alloc?.rankCode,
+                    amount: new import_client42.Prisma.Decimal(res.amount),
+                    status: res.status,
+                    walletTransactionId: res.walletTransactionId || null,
+                    payoutReference: batchNumber
+                  }
+                });
+              }
+              const result = {
+                batchId: createdBatch.id,
+                batchNumber,
+                periodId,
+                initiatedByAdminId: adminUserId,
+                totalEmployees: results.length,
+                successfulCount: results.length,
+                failedCount: 0,
+                pendingCount: 0,
+                totalAmount: distribution.totalDistributed,
+                successfulAmount: distribution.totalDistributed,
+                failedAmount: 0,
+                status: "COMPLETED",
+                payoutMethod: "WALLET_CREDIT",
+                items: results,
+                createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+                completedAt: (/* @__PURE__ */ new Date()).toISOString(),
+                poolAmount: distribution.poolAmount,
+                remainingInPool: distribution.remainingInPool,
+                slices: distribution.slices
+              };
+              return result;
+            },
+            { timeout: 6e4, maxWait: 1e4 }
+          );
+          this.inMemoryAuditTrail.push({
+            action: "ONE_CLICK_COMMISSION_DISTRIBUTION",
+            batchNumber,
+            adminUserId,
+            poolAmount: batchData.poolAmount,
+            totalAmount: batchData.totalAmount,
+            remainingInPool: batchData.remainingInPool,
+            successfulCount: batchData.successfulCount,
+            status: batchData.status,
+            timestamp: /* @__PURE__ */ new Date()
+          });
+          logger.info(
+            { batchNumber, poolAmount: batchData.poolAmount, distributed: batchData.totalAmount, remainingInPool: batchData.remainingInPool },
+            "Commission pool distributed"
+          );
+          return batchData;
+        } finally {
+          this.isDistributing = false;
+        }
+      }
+      // =========================================================================
+      // 6. SAFE RETRY OF FAILED PAYOUTS WITHOUT RE-PAYING SUCCESSFUL MEMBERS
+      // =========================================================================
+      static async retryFailedBatchPayouts(batchId, adminUserId) {
+        let failedItems = [];
+        let isInMemory = false;
+        try {
+          const batch = await prisma.payoutBatch.findFirst({
+            where: { OR: [{ id: batchId }, { batchNumber: batchId }] }
+          });
+          if (!batch) {
+            throw new Error("Batch not found");
+          }
+          failedItems = await prisma.payoutBatchItem.findMany({
+            where: {
+              batchId: batch.id,
+              status: "FAILED"
+            }
+          });
+        } catch {
+          isInMemory = true;
+          const memBatch = this.inMemoryBatches.get(batchId);
+          const items = this.inMemoryBatchItems.get(batchId) || [];
+          failedItems = items.filter((i) => i.status === "FAILED");
+        }
+        if (failedItems.length === 0) {
+          return {
+            batchId,
+            retriedCount: 0,
+            newlySucceededCount: 0,
+            stillFailedCount: 0,
+            retriedItems: []
+          };
+        }
+        let newlySucceededCount = 0;
+        let stillFailedCount = 0;
+        const retriedResults = [];
+        for (const item of failedItems) {
+          const amount = Number(item.amount);
+          try {
+            let wtxId = void 0;
+            if (!isInMemory) {
+              await prisma.$transaction(async (tx) => {
+                const wallet = await tx.wallet.findUnique({
+                  where: { distributorId: item.distributorId }
+                });
+                if (!wallet) throw new Error("Distributor wallet still missing");
+                const before = Number(wallet.availableBalance ?? wallet.balance ?? 0);
+                const after = before + amount;
+                const wtx = await tx.walletTransaction.create({
+                  data: {
+                    walletId: wallet.id,
+                    transactionNumber: `WTX-RETRY-${Date.now().toString().slice(-6)}`,
+                    type: "COMMISSION_CREDIT",
+                    status: "COMPLETED",
+                    amount: new import_client42.Prisma.Decimal(amount),
+                    feeAmount: new import_client42.Prisma.Decimal(0),
+                    netAmount: new import_client42.Prisma.Decimal(amount),
+                    balanceBefore: new import_client42.Prisma.Decimal(before),
+                    balanceAfter: new import_client42.Prisma.Decimal(after),
+                    referenceId: item.batchId,
+                    description: `Retry payout for batch ${item.batchId}`
+                  }
+                });
+                wtxId = wtx.id;
+                await tx.wallet.update({
+                  where: { id: wallet.id },
+                  data: {
+                    availableBalance: new import_client42.Prisma.Decimal(after),
+                    balance: new import_client42.Prisma.Decimal(after),
+                    lifetimeEarned: { increment: new import_client42.Prisma.Decimal(amount) },
+                    totalEarned: { increment: new import_client42.Prisma.Decimal(amount) }
+                  }
+                });
+                await tx.payoutBatchItem.update({
+                  where: { id: item.id },
+                  data: {
+                    status: "SUCCESS",
+                    walletTransactionId: wtx.id,
+                    failureReason: null,
+                    retryCount: { increment: 1 },
+                    lastRetryAt: /* @__PURE__ */ new Date()
+                  }
+                });
+              });
+            } else {
+              wtxId = `WTX-RETRY-${Date.now()}`;
+              item.status = "SUCCESS";
+              item.failureReason = null;
+              item.walletTransactionId = wtxId;
+              item.retryCount = (item.retryCount || 0) + 1;
+            }
+            newlySucceededCount++;
+            retriedResults.push({
+              distributorId: item.distributorId,
+              distributorCode: item.distributorCode,
+              name: item.distributorName || item.name,
+              amount,
+              status: "SUCCESS",
+              walletTransactionId: wtxId
+            });
+          } catch (err) {
+            stillFailedCount++;
+            if (!isInMemory && item.id) {
+              await prisma.payoutBatchItem.update({
+                where: { id: item.id },
+                data: {
+                  retryCount: { increment: 1 },
+                  lastRetryAt: /* @__PURE__ */ new Date(),
+                  failureReason: err?.message || "Retry failed"
+                }
+              }).catch(() => {
+              });
+            }
+            retriedResults.push({
+              distributorId: item.distributorId,
+              distributorCode: item.distributorCode,
+              name: item.distributorName || item.name,
+              amount,
+              status: "FAILED",
+              failureReason: err?.message || "Retry failed"
+            });
+          }
+        }
+        this.inMemoryAuditTrail.push({
+          action: "RETRY_FAILED_PAYOUTS",
+          batchId,
+          adminUserId,
+          retriedCount: failedItems.length,
+          newlySucceededCount,
+          stillFailedCount,
+          timestamp: /* @__PURE__ */ new Date()
+        });
+        return {
+          batchId,
+          retriedCount: failedItems.length,
+          newlySucceededCount,
+          stillFailedCount,
+          retriedItems: retriedResults
+        };
+      }
+      // =========================================================================
+      // 7. LIST PAYOUT BATCHES & BATCH DETAILS
+      // =========================================================================
+      static async listPayoutBatches() {
+        try {
+          const batches = await prisma.payoutBatch.findMany({
+            orderBy: { createdAt: "desc" },
+            include: { _count: { select: { items: true } } }
+          });
+          return batches.map((b) => ({
+            ...b,
+            totalAmount: Number(b.totalAmount),
+            successfulAmount: Number(b.successfulAmount),
+            failedAmount: Number(b.failedAmount)
+          }));
+        } catch {
+          return Array.from(this.inMemoryBatches.values());
+        }
+      }
+      static async getPayoutBatchDetails(batchId) {
+        try {
+          const batch = await prisma.payoutBatch.findFirst({
+            where: { OR: [{ id: batchId }, { batchNumber: batchId }] },
+            include: { items: true }
+          });
+          if (!batch) {
+            throw AppError.notFound(`Payout batch '${batchId}' not found`);
+          }
+          return {
+            ...batch,
+            totalAmount: Number(batch.totalAmount),
+            successfulAmount: Number(batch.successfulAmount),
+            failedAmount: Number(batch.failedAmount),
+            items: batch.items.map((i) => ({
+              ...i,
+              amount: Number(i.amount)
+            }))
+          };
+        } catch {
+          const mem = this.inMemoryBatches.get(batchId);
+          if (!mem) {
+            throw AppError.notFound(`Payout batch '${batchId}' not found`);
+          }
+          return {
+            ...mem,
+            items: this.inMemoryBatchItems.get(batchId) || []
+          };
+        }
+      }
+      static getAuditTrail() {
+        return this.inMemoryAuditTrail;
+      }
+    };
+  }
+});
+
 // backend/src/services/commissionQueue.service.ts
 var commissionQueue_service_exports = {};
 __export(commissionQueue_service_exports, {
   CommissionQueueService: () => CommissionQueueService
 });
-var import_client40, CommissionQueueService;
+var import_client43, CommissionQueueService;
 var init_commissionQueue_service = __esm({
   "backend/src/services/commissionQueue.service.ts"() {
     "use strict";
-    import_client40 = require("@prisma/client");
+    import_client43 = require("@prisma/client");
     init_database();
     init_logger();
     init_appError();
@@ -19811,8 +21793,8 @@ var init_commissionQueue_service = __esm({
           if (!wallet) {
             throw new Error(`Wallet not found for distributor ${job.distributorCode}`);
           }
-          const amountDecimal = new import_client40.Prisma.Decimal(job.amount);
-          const currentBalance = new import_client40.Prisma.Decimal(wallet.availableBalance ?? wallet.balance ?? 0);
+          const amountDecimal = new import_client43.Prisma.Decimal(job.amount);
+          const currentBalance = new import_client43.Prisma.Decimal(wallet.availableBalance ?? wallet.balance ?? 0);
           const newBalance = currentBalance.add(amountDecimal);
           const wtxNumber = `WTX-COMM-${Date.now().toString().slice(-6)}-${Math.floor(1e3 + Math.random() * 9e3)}`;
           const wtx = await tx.walletTransaction.create({
@@ -20413,6 +22395,10 @@ var protectMlmFields = (req, _res, next) => {
     if (path2.includes("/admin/config") || path2.includes("/admin/levels") || path2.includes("/admin") || path2.endsWith("/bv") || ["GET", "HEAD", "OPTIONS"].includes(req.method)) {
       return next();
     }
+    const pathOnly = path2.split("?")[0];
+    if (["POST", "PUT", "PATCH", "DELETE"].includes(req.method) && /^\/api\/v\d+\/products(\/|$)/.test(pathOnly)) {
+      return next();
+    }
     if (!userRole && req.headers.authorization?.startsWith("Bearer ")) {
       try {
         const token = req.headers.authorization.split(" ")[1];
@@ -20542,7 +22528,7 @@ var AuthController = class {
         res.cookie("refreshToken", result.tokens.refreshToken, getRefreshCookieOptions());
       }
       const userAny = result.user;
-      const loginMemberCode = userAny.referralCode || userAny.distributorCode || userAny.distributorId || userAny.memberId || userAny.userId;
+      const loginMemberCode = userAny.distributorCode || userAny.referralCode || userAny.distributorId || userAny.memberId || userAny.userId;
       const isPaid = loginMemberCode === "KK-0001" || userAny.paymentStatus === "PAID" || userAny.distributorProfile?.paymentStatus === "PAID" || userAny.role === "ADMIN" || userAny.roleName === "ADMIN" || false;
       const paymentStatus = isPaid ? "PAID" : userAny.paymentStatus || userAny.distributorProfile?.paymentStatus || "PENDING";
       const accountStatus = isPaid ? "ACTIVE" : "PENDING_PAYMENT";
@@ -25839,7 +27825,8 @@ var EnrollmentService = class _EnrollmentService {
                   unitPrice: pkgPrice,
                   unitBV: pkgBV,
                   totalPrice: pkgPrice,
-                  totalBV: pkgBV
+                  totalBV: pkgBV,
+                  gstRate: product.gstRate ?? 18
                 }
               },
               payments: {
@@ -26510,7 +28497,7 @@ var EnrollmentController = class {
 
 // backend/src/services/payment.service.ts
 var import_crypto5 = __toESM(require("crypto"));
-var import_client25 = require("@prisma/client");
+var import_client26 = require("@prisma/client");
 init_database();
 init_env();
 init_logger();
@@ -26518,7 +28505,7 @@ init_appError();
 init_bv_service();
 
 // backend/src/services/order.service.ts
-var import_client24 = require("@prisma/client");
+var import_client25 = require("@prisma/client");
 init_database();
 init_logger();
 init_appError();
@@ -27338,6 +29325,19 @@ init_level_service();
 // backend/src/services/order.service.ts
 init_orderCommissionLifecycle_service();
 init_commissionReversal_service();
+
+// backend/src/utils/gst.ts
+var import_client24 = require("@prisma/client");
+var DEFAULT_GST_RATE = 18;
+function gstRateOf(product) {
+  const rate = Number(product?.gstRate ?? DEFAULT_GST_RATE);
+  return Number.isFinite(rate) && rate >= 0 ? rate : DEFAULT_GST_RATE;
+}
+function exclusiveLineGst(lineTotal, gstRate) {
+  return lineTotal.mul(gstRate).div(100).toDecimalPlaces(2, import_client24.Prisma.Decimal.ROUND_HALF_UP);
+}
+
+// backend/src/services/order.service.ts
 function isDbConnectionError2(err) {
   if (!err) return false;
   const msg = (err.message || "").toLowerCase();
@@ -27934,8 +29934,9 @@ var OrderService = class {
       const primaryBc = user.distributorProfile?.businessCenters[0];
       const createdOrder = await prisma.$transaction(async (tx) => {
         const validatedItems = [];
-        let orderSubtotal = new import_client24.Prisma.Decimal(0);
-        let orderTotalBV = new import_client24.Prisma.Decimal(0);
+        let orderSubtotal = new import_client25.Prisma.Decimal(0);
+        let orderTotalBV = new import_client25.Prisma.Decimal(0);
+        let orderTax = new import_client25.Prisma.Decimal(0);
         for (const item of itemsToProcess) {
           const KASH_CODE_TO_SKU = {
             "KASH-HOZ-001": "CLO-TSHIRT-001",
@@ -27976,10 +29977,10 @@ var OrderService = class {
                 name: item.productId,
                 slug: item.productId.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
                 categoryId: category.id,
-                wholesalePrice: new import_client24.Prisma.Decimal("29.99"),
-                distributorPrice: new import_client24.Prisma.Decimal("29.99"),
-                mrp: new import_client24.Prisma.Decimal("49.99"),
-                bv: new import_client24.Prisma.Decimal("20.00"),
+                wholesalePrice: new import_client25.Prisma.Decimal("29.99"),
+                distributorPrice: new import_client25.Prisma.Decimal("29.99"),
+                mrp: new import_client25.Prisma.Decimal("49.99"),
+                bv: new import_client25.Prisma.Decimal("20.00"),
                 stock: 999,
                 status: "ACTIVE"
               },
@@ -28015,13 +30016,16 @@ var OrderService = class {
             });
           }
           const unitPriceNum = isDistributor ? Number(product.wholesalePrice ?? product.distributorPrice ?? product.mrp) : Number(product.mrp ?? product.retailPrice ?? product.wholesalePrice);
-          const unitPrice = new import_client24.Prisma.Decimal(unitPriceNum.toFixed(2));
+          const unitPrice = new import_client25.Prisma.Decimal(unitPriceNum.toFixed(2));
           const totalPrice = unitPrice.mul(item.quantity);
           const unitBVNum = Number(product.bv ?? 0);
-          const unitBV = new import_client24.Prisma.Decimal(unitBVNum.toFixed(2));
+          const unitBV = new import_client25.Prisma.Decimal(unitBVNum.toFixed(2));
           const totalBV = unitBV.mul(item.quantity);
           orderSubtotal = orderSubtotal.add(totalPrice);
           orderTotalBV = orderTotalBV.add(totalBV);
+          if (isDistributor) {
+            orderTax = orderTax.add(exclusiveLineGst(totalPrice, gstRateOf(product)));
+          }
           validatedItems.push({
             product,
             quantity: item.quantity,
@@ -28079,10 +30083,11 @@ var OrderService = class {
             customerId,
             status: orderStatus,
             subtotal: orderSubtotal,
-            taxAmount: new import_client24.Prisma.Decimal(0),
-            shippingAmount: new import_client24.Prisma.Decimal(0),
-            discountAmount: new import_client24.Prisma.Decimal(0),
-            totalAmount: orderSubtotal,
+            taxAmount: orderTax,
+            shippingAmount: new import_client25.Prisma.Decimal(0),
+            discountAmount: new import_client25.Prisma.Decimal(0),
+            totalAmount: orderSubtotal.add(orderTax),
+            // DP + GST
             totalBV: orderTotalBV,
             commissionableBusinessVolume: orderTotalBV,
             shippingAddressId: shippingId,
@@ -28100,7 +30105,8 @@ var OrderService = class {
               unitBV: vi.unitBV,
               totalPrice: vi.totalPrice,
               totalBV: vi.totalBV,
-              commissionableBV: vi.totalBV
+              commissionableBV: vi.totalBV,
+              gstRate: vi.product.gstRate ?? 18
             }
           });
           if (vi.product.inventory) {
@@ -28123,8 +30129,8 @@ var OrderService = class {
             paymentNumber: `PAY-${Date.now().toString().slice(-6)}-${Math.floor(1e3 + Math.random() * 9e3)}`,
             method: paymentMethod,
             status: markPaid ? "COMPLETED" : "PENDING",
-            amount: orderSubtotal,
-            currency: "USD",
+            amount: orderSubtotal.add(orderTax),
+            currency: "INR",
             paidAt: markPaid ? /* @__PURE__ */ new Date() : null
           }
         });
@@ -28734,6 +30740,7 @@ var OrderService = class {
 
 // backend/src/services/payment.service.ts
 init_orderCommissionLifecycle_service();
+init_razorpay();
 var PaymentService = class {
   static processedWebhookEvents = /* @__PURE__ */ new Set();
   static isDbOffline = false;
@@ -28741,10 +30748,18 @@ var PaymentService = class {
     this.processedWebhookEvents.clear();
   }
   static getRazorpayCredentials() {
-    const keyId = process.env.RAZORPAY_KEY_ID || env.RAZORPAY_KEY_ID || env.FUNDING_PROVIDER_KEY_ID || "rzp_live_ToerZRsvekgL2z";
-    const keySecret = process.env.RAZORPAY_KEY_SECRET || env.RAZORPAY_KEY_SECRET || env.FUNDING_PROVIDER_KEY_SECRET || "4mq7WOEx4mxvpkX6LOkSK32p";
-    const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET || env.RAZORPAY_WEBHOOK_SECRET || env.FUNDING_PROVIDER_WEBHOOK_SECRET || "your_webhook_secret_min_32_chars";
-    return { keyId, keySecret, webhookSecret };
+    return getRazorpayCredentials();
+  }
+  /** Marks a just-created order CANCELLED (and its pending payment FAILED) when no gateway order could be created. */
+  static async cancelUnpayableOrder(orderId) {
+    try {
+      await prisma.$transaction([
+        prisma.order.update({ where: { id: orderId }, data: { status: "CANCELLED", cancelledAt: /* @__PURE__ */ new Date() } }),
+        prisma.payment.updateMany({ where: { orderId, status: "PENDING" }, data: { status: "FAILED" } })
+      ]);
+    } catch (err) {
+      logger.error({ error: err.message, orderId }, "Failed to cancel unpayable order");
+    }
   }
   /**
    * 1. Creates a pending wholesale order and registers a Razorpay Order ID.
@@ -28762,9 +30777,12 @@ var PaymentService = class {
       markPaid: false
     });
     const amountInPaise = Math.round(Number(order.totalAmount) * 100);
-    let razorpayOrderId = `order_${Date.now()}_${Math.floor(1e3 + Math.random() * 9e3)}`;
-    const isMockKey = !keyId || keyId.includes("your_key_id") || isTest;
-    if (!isMockKey) {
+    let razorpayOrderId = `order_mock_${Date.now()}_${Math.floor(1e3 + Math.random() * 9e3)}`;
+    if (!isTest) {
+      if (!isRazorpayConfigured()) {
+        await this.cancelUnpayableOrder(order.id);
+        throw new AppError("Payment gateway is not configured on the server.", 503, "PAYMENT_GATEWAY_NOT_CONFIGURED");
+      }
       try {
         const authHeader = "Basic " + Buffer.from(`${keyId}:${keySecret}`).toString("base64");
         const res = await fetch("https://api.razorpay.com/v1/orders", {
@@ -28784,17 +30802,16 @@ var PaymentService = class {
             }
           })
         });
-        if (res.ok) {
-          const rzpData = await res.json();
-          if (rzpData && rzpData.id) {
-            razorpayOrderId = rzpData.id;
-          }
-        } else {
-          const errText = await res.text();
-          logger.warn({ errText, orderId: order.id }, "Razorpay API non-200 response, using fallback order ID");
+        const rzpData = res.ok ? await res.json() : null;
+        if (!rzpData?.id) {
+          const errText = res.ok ? "missing order id" : await res.text();
+          throw new Error(errText);
         }
+        razorpayOrderId = rzpData.id;
       } catch (err) {
-        logger.warn({ error: err.message, orderId: order.id }, "Razorpay order fetch exception, using fallback");
+        logger.error({ error: err.message, orderId: order.id }, "Razorpay order creation failed");
+        await this.cancelUnpayableOrder(order.id);
+        throw new AppError("Could not create payment order with Razorpay. Please try again.", 502, "PAYMENT_GATEWAY_ERROR");
       }
     }
     await prisma.payment.updateMany({
@@ -28926,8 +30943,9 @@ var PaymentService = class {
     const distributorId = user.distributorProfile?.id;
     const customerId = user.customer?.id;
     const primaryBc = user.distributorProfile?.businessCenters[0];
-    let itemsSubtotal = new import_client25.Prisma.Decimal(0);
-    let itemsTotalBV = new import_client25.Prisma.Decimal(0);
+    let itemsSubtotal = new import_client26.Prisma.Decimal(0);
+    let itemsTotalBV = new import_client26.Prisma.Decimal(0);
+    let itemsTax = new import_client26.Prisma.Decimal(0);
     const validatedItems = [];
     for (const item of input.items) {
       const product = await prisma.product.findUnique({
@@ -28947,13 +30965,16 @@ var PaymentService = class {
         );
       }
       const unitPriceNum = isDistributor ? Number(product.wholesalePrice ?? product.distributorPrice ?? product.mrp) : Number(product.mrp ?? product.retailPrice ?? product.wholesalePrice);
-      const unitPrice = new import_client25.Prisma.Decimal(unitPriceNum.toFixed(2));
+      const unitPrice = new import_client26.Prisma.Decimal(unitPriceNum.toFixed(2));
       const totalPrice = unitPrice.mul(item.quantity);
       const unitBVNum = Number(product.bv ?? 0);
-      const unitBV = new import_client25.Prisma.Decimal(unitBVNum.toFixed(2));
+      const unitBV = new import_client26.Prisma.Decimal(unitBVNum.toFixed(2));
       const totalBV = unitBV.mul(item.quantity);
       itemsSubtotal = itemsSubtotal.add(totalPrice);
       itemsTotalBV = itemsTotalBV.add(totalBV);
+      if (isDistributor) {
+        itemsTax = itemsTax.add(exclusiveLineGst(totalPrice, gstRateOf(product)));
+      }
       validatedItems.push({
         product,
         quantity: item.quantity,
@@ -28967,7 +30988,8 @@ var PaymentService = class {
       distributorId: distributorId || void 0,
       userId
     });
-    const totalPayableNum = Number(itemsSubtotal);
+    const itemsTotal = itemsSubtotal.add(itemsTax);
+    const totalPayableNum = Number(itemsTotal);
     if (wallet.availableBalance < totalPayableNum) {
       throw AppError.badRequest(
         `Insufficient commission balance in wallet. Available: INR ${wallet.availableBalance.toFixed(
@@ -29029,10 +31051,10 @@ var PaymentService = class {
           customerId,
           status: "PAID",
           subtotal: itemsSubtotal,
-          taxAmount: new import_client25.Prisma.Decimal(0),
-          shippingAmount: new import_client25.Prisma.Decimal(0),
-          discountAmount: new import_client25.Prisma.Decimal(0),
-          totalAmount: itemsSubtotal,
+          taxAmount: itemsTax,
+          shippingAmount: new import_client26.Prisma.Decimal(0),
+          discountAmount: new import_client26.Prisma.Decimal(0),
+          totalAmount: itemsTotal,
           totalBV: itemsTotalBV,
           commissionableBusinessVolume: itemsTotalBV,
           shippingAddressId: shippingId,
@@ -29050,7 +31072,8 @@ var PaymentService = class {
             unitBV: vi.unitBV,
             totalPrice: vi.totalPrice,
             totalBV: vi.totalBV,
-            commissionableBV: vi.totalBV
+            commissionableBV: vi.totalBV,
+            gstRate: vi.product.gstRate ?? 18
           }
         });
         if (vi.product.inventory) {
@@ -29072,8 +31095,8 @@ var PaymentService = class {
       await tx.wallet.update({
         where: { id: currentWallet.id },
         data: {
-          availableBalance: { decrement: itemsSubtotal },
-          balance: { decrement: itemsSubtotal }
+          availableBalance: { decrement: itemsTotal },
+          balance: { decrement: itemsTotal }
         }
       });
       const walletTxNumber = `WTX-${Date.now().toString().slice(-6)}-${Math.floor(1e3 + Math.random() * 9e3)}`;
@@ -29083,11 +31106,11 @@ var PaymentService = class {
           transactionNumber: walletTxNumber,
           type: "ORDER_PAYMENT",
           status: "COMPLETED",
-          amount: itemsSubtotal,
-          feeAmount: new import_client25.Prisma.Decimal(0),
-          netAmount: itemsSubtotal,
-          balanceBefore: new import_client25.Prisma.Decimal(prevBal.toFixed(2)),
-          balanceAfter: new import_client25.Prisma.Decimal(newBal.toFixed(2)),
+          amount: itemsTotal,
+          feeAmount: new import_client26.Prisma.Decimal(0),
+          netAmount: itemsTotal,
+          balanceBefore: new import_client26.Prisma.Decimal(prevBal.toFixed(2)),
+          balanceAfter: new import_client26.Prisma.Decimal(newBal.toFixed(2)),
           referenceId: orderNumber,
           orderId: order.id,
           description: `Wholesale order payment for ${orderNumber}`
@@ -29099,7 +31122,7 @@ var PaymentService = class {
           paymentNumber: `PAY-${Date.now().toString().slice(-6)}-${Math.floor(1e3 + Math.random() * 9e3)}`,
           method: "WALLET",
           status: "COMPLETED",
-          amount: itemsSubtotal,
+          amount: itemsTotal,
           currency: "INR",
           gatewayTransactionId: walletTxNumber,
           paidAt: /* @__PURE__ */ new Date()
@@ -31157,7 +33180,7 @@ var cartRouter = router8;
 var import_express9 = require("express");
 
 // backend/src/services/product.service.ts
-var import_client26 = require("@prisma/client");
+var import_client27 = require("@prisma/client");
 init_database();
 init_logger();
 init_appError();
@@ -31408,14 +33431,14 @@ var ProductService = class _ProductService {
     }
     if (minPrice !== void 0 || maxPrice !== void 0) {
       where.wholesalePrice = {
-        ...minPrice !== void 0 && { gte: new import_client26.Prisma.Decimal(minPrice) },
-        ...maxPrice !== void 0 && { lte: new import_client26.Prisma.Decimal(maxPrice) }
+        ...minPrice !== void 0 && { gte: new import_client27.Prisma.Decimal(minPrice) },
+        ...maxPrice !== void 0 && { lte: new import_client27.Prisma.Decimal(maxPrice) }
       };
     }
     if (minBV !== void 0 || maxBV !== void 0) {
       where.bv = {
-        ...minBV !== void 0 && { gte: new import_client26.Prisma.Decimal(minBV) },
-        ...maxBV !== void 0 && { lte: new import_client26.Prisma.Decimal(maxBV) }
+        ...minBV !== void 0 && { gte: new import_client27.Prisma.Decimal(minBV) },
+        ...maxBV !== void 0 && { lte: new import_client27.Prisma.Decimal(maxBV) }
       };
     }
     if (stock) {
@@ -31640,9 +33663,9 @@ var ProductService = class _ProductService {
       productStatus = "OUT_OF_STOCK";
     }
     const wholesaleVal = input.distributorPrice ?? input.wholesalePrice ?? input.dp ?? 0;
-    const wholesaleDecimal = new import_client26.Prisma.Decimal(wholesaleVal);
-    const mrpDecimal = new import_client26.Prisma.Decimal(input.mrp);
-    const bvDecimal = new import_client26.Prisma.Decimal(input.bv);
+    const wholesaleDecimal = new import_client27.Prisma.Decimal(wholesaleVal);
+    const mrpDecimal = new import_client27.Prisma.Decimal(input.mrp);
+    const bvDecimal = new import_client27.Prisma.Decimal(input.bv);
     const imageRecords = (input.images || []).map((img, index) => {
       if (typeof img === "string") {
         return {
@@ -31672,6 +33695,7 @@ var ProductService = class _ProductService {
           retailPrice: mrpDecimal,
           distributorPrice: wholesaleDecimal,
           bv: bvDecimal,
+          gstRate: input.gstRate ?? 18,
           stock: input.stock,
           lowStockThreshold: input.lowStockThreshold,
           status: productStatus,
@@ -31732,6 +33756,7 @@ var ProductService = class _ProductService {
           distributorPrice: Number(newDist),
           mrp: input.mrp !== void 0 ? Number(input.mrp) : current.mrp,
           bv: input.bv !== void 0 ? Number(input.bv) : current.bv,
+          gstRate: input.gstRate ?? current.gstRate ?? 18,
           stock: input.stock !== void 0 ? Number(input.stock) : current.stock,
           status: input.status ?? current.status,
           updatedAt: (/* @__PURE__ */ new Date()).toISOString()
@@ -31828,9 +33853,9 @@ var ProductService = class _ProductService {
         });
       }
       const newWholesale = input.distributorPrice ?? input.wholesalePrice ?? input.dp;
-      const wholesaleDecimal = newWholesale !== void 0 ? new import_client26.Prisma.Decimal(newWholesale) : existing.wholesalePrice;
-      const mrpDecimal = input.mrp !== void 0 ? new import_client26.Prisma.Decimal(input.mrp) : existing.mrp;
-      const bvDecimal = input.bv !== void 0 ? new import_client26.Prisma.Decimal(input.bv) : existing.bv;
+      const wholesaleDecimal = newWholesale !== void 0 ? new import_client27.Prisma.Decimal(newWholesale) : existing.wholesalePrice;
+      const mrpDecimal = input.mrp !== void 0 ? new import_client27.Prisma.Decimal(input.mrp) : existing.mrp;
+      const bvDecimal = input.bv !== void 0 ? new import_client27.Prisma.Decimal(input.bv) : existing.bv;
       let status = input.status || existing.status;
       if (status === "ACTIVE" && newStock === 0) {
         status = "OUT_OF_STOCK";
@@ -31848,6 +33873,7 @@ var ProductService = class _ProductService {
           retailPrice: mrpDecimal,
           distributorPrice: wholesaleDecimal,
           bv: bvDecimal,
+          ...input.gstRate !== void 0 && { gstRate: input.gstRate },
           stock: newStock,
           lowStockThreshold: newThreshold,
           status,
@@ -32007,6 +34033,7 @@ var ProductService = class _ProductService {
       wholesalePrice: Number(product.wholesalePrice ?? product.distributorPrice ?? 0),
       mrp: Number(product.mrp ?? product.retailPrice ?? 0),
       bv: Number(product.bv ?? 0),
+      gstRate: Number(product.gstRate ?? 18),
       stock: product.stock ?? product.inventory?.quantityOnHand ?? 0,
       lowStockThreshold: product.lowStockThreshold ?? product.inventory?.reorderThreshold ?? 10,
       status: product.status,
@@ -32195,6 +34222,7 @@ init_authoritativeBV_service();
 // backend/src/services/invoice.service.ts
 init_database();
 init_appError();
+var import_client28 = require("@prisma/client");
 var SimplePdfWriter = class {
   contentStream = [];
   fontRegularId = 5;
@@ -32370,10 +34398,20 @@ var InvoiceService = class {
     let igstTotal = 0;
     let totalBV = 0;
     let grandTotal = 0;
+    const isGstExclusive = Number(order.taxAmount ?? 0) > 0;
     const items = order.items.map((item, idx) => {
-      const lineTotal = Number(item.totalPrice);
-      const taxable = Math.round(lineTotal / 1.18 * 100) / 100;
-      const totalGst = Math.round((lineTotal - taxable) * 100) / 100;
+      const gstRate = Number(item.gstRate ?? item.product?.gstRate ?? 18);
+      let taxable;
+      let totalGst;
+      if (isGstExclusive) {
+        taxable = Number(item.totalPrice);
+        totalGst = Number(exclusiveLineGst(new import_client28.Prisma.Decimal(item.totalPrice), gstRate));
+      } else {
+        const inclusiveTotal = Number(item.totalPrice);
+        taxable = Math.round(inclusiveTotal * 100 / (100 + gstRate) * 100) / 100;
+        totalGst = Math.round((inclusiveTotal - taxable) * 100) / 100;
+      }
+      const lineTotal = Math.round((taxable + totalGst) * 100) / 100;
       const cgst = isInterState ? 0 : Math.round(totalGst / 2 * 100) / 100;
       const sgst = isInterState ? 0 : Math.round((totalGst - cgst) * 100) / 100;
       const igst = isInterState ? totalGst : 0;
@@ -32393,7 +34431,7 @@ var InvoiceService = class {
         unitPrice: Number(item.unitPrice),
         totalPrice: lineTotal,
         taxableValue: taxable,
-        gstRate: 18,
+        gstRate,
         cgstAmount: cgst,
         sgstAmount: sgst,
         igstAmount: igst,
@@ -32504,7 +34542,7 @@ var InvoiceService = class {
     pdf.setColor(71, 85, 105);
     pdf.addText(`Address: ${data.buyer.address}, ${data.buyer.city}`, 35, 650, 8.5, false);
     pdf.addText(`State: ${data.buyer.state} (Code: ${data.buyer.stateCode}) | Phone: ${data.buyer.phone}`, 35, 639, 8.5, false);
-    pdf.addText(`Place of Supply: ${data.buyer.state} | Tax Type: ${data.isInterState ? "IGST (Inter-State 18%)" : "CGST (9%) + SGST (9%) (Intra-State)"}`, 35, 628, 8.5, false);
+    pdf.addText(`Place of Supply: ${data.buyer.state} | Tax Type: ${data.isInterState ? "IGST (Inter-State)" : "CGST + SGST (Intra-State)"} | GST Rates: ${Array.from(new Set(data.items.map((it) => `${it.gstRate}%`))).join(", ")}`, 35, 628, 8.5, false);
     const tableTop = 612;
     pdf.setColor(241, 245, 249);
     pdf.drawRect(35, tableTop - 18, 525, 20, true, true);
@@ -32530,7 +34568,7 @@ var InvoiceService = class {
       pdf.addText(item.unitPrice.toFixed(2), 290, currentY, 8, false);
       pdf.addText(item.taxableValue.toFixed(2), 345, currentY, 8, false);
       const gstVal = data.isInterState ? item.igstAmount : item.cgstAmount + item.sgstAmount;
-      pdf.addText(gstVal.toFixed(2), 400, currentY, 8, false);
+      pdf.addText(`${gstVal.toFixed(2)} (${item.gstRate}%)`, 400, currentY, 7, false);
       pdf.setColor(13, 148, 136);
       pdf.addText(`+${item.bv}`, 445, currentY, 8, true);
       pdf.setColor(15, 23, 42);
@@ -32559,14 +34597,14 @@ var InvoiceService = class {
     pdf.addTextRight(`INR ${data.totals.taxableTotal.toFixed(2)}`, rightValX, sumY, 8.5, false);
     sumY -= 14;
     if (data.isInterState) {
-      pdf.addText("Integrated GST (IGST 18%):", rightLabelX, sumY, 8.5, false);
+      pdf.addText("Integrated GST (IGST):", rightLabelX, sumY, 8.5, false);
       pdf.addTextRight(`INR ${data.totals.igstTotal.toFixed(2)}`, rightValX, sumY, 8.5, false);
       sumY -= 14;
     } else {
-      pdf.addText("Central GST (CGST 9%):", rightLabelX, sumY, 8.5, false);
+      pdf.addText("Central GST (CGST):", rightLabelX, sumY, 8.5, false);
       pdf.addTextRight(`INR ${data.totals.cgstTotal.toFixed(2)}`, rightValX, sumY, 8.5, false);
       sumY -= 14;
-      pdf.addText("State GST (SGST 9%):", rightLabelX, sumY, 8.5, false);
+      pdf.addText("State GST (SGST):", rightLabelX, sumY, 8.5, false);
       pdf.addTextRight(`INR ${data.totals.sgstTotal.toFixed(2)}`, rightValX, sumY, 8.5, false);
       sumY -= 14;
     }
@@ -33001,6 +35039,7 @@ var createProductSchema = import_zod13.z.object({
   dp: import_zod13.z.coerce.number().min(0, "DP cannot be negative").optional(),
   mrp: import_zod13.z.coerce.number().min(0, "MRP cannot be negative"),
   bv: import_zod13.z.coerce.number().min(0, "BV cannot be negative").default(0),
+  gstRate: import_zod13.z.coerce.number().refine((v) => [0, 5, 18].includes(v), "GST rate must be 0, 5 or 18%").optional(),
   stock: import_zod13.z.coerce.number().int().min(0, "Stock cannot be negative").default(0),
   lowStockThreshold: import_zod13.z.coerce.number().int().min(0).default(10),
   status: productStatusEnum.default("DRAFT"),
@@ -33338,9 +35377,26 @@ var sponsorRouter = router12;
 var import_express13 = require("express");
 
 // backend/src/controllers/networkTree.controller.ts
+init_database();
 init_audit_service();
 init_networkTree_service();
 init_appError();
+var SUPER_ADMIN_DISTRIBUTOR_ID = (process.env.INITIAL_ADMIN_REFERRAL_CODE || process.env.ADMIN_REFERRAL_CODE || "KK-0001").trim();
+async function resolveAdminRootId(req) {
+  const userId = req.user?.id;
+  if (userId) {
+    try {
+      const profile = await prisma.distributorProfile.findFirst({
+        where: { userId },
+        select: { distributorId: true, distributorCode: true }
+      });
+      const code = profile?.distributorCode || profile?.distributorId;
+      if (code) return code;
+    } catch {
+    }
+  }
+  return SUPER_ADMIN_DISTRIBUTOR_ID;
+}
 var NetworkTreeController = class {
   /**
    * Retrieves authenticated distributor's binary network tree.
@@ -33350,8 +35406,8 @@ var NetworkTreeController = class {
     try {
       const depth = req.query.depth ? parseInt(req.query.depth, 10) : 3;
       const isAdmin = req.user?.role === "ADMIN" || req.user?.role === "SUPER_ADMIN";
-      const callerId = req.user?.distributorId || req.user?.distributorCode || req.user?.memberId || req.user?.id || "KV-1001";
-      const targetId = isAdmin ? "KV-1001" : await NetworkTreeService.resolveDistributorCode(callerId);
+      const callerId = req.user?.distributorId || req.user?.distributorCode || req.user?.memberId || req.user?.id || SUPER_ADMIN_DISTRIBUTOR_ID;
+      const targetId = isAdmin ? await resolveAdminRootId(req) : await NetworkTreeService.resolveDistributorCode(callerId);
       const tree = await NetworkTreeService.getNetworkTree(targetId, depth);
       await AuditService.recordLog({
         userId: req.user?.id,
@@ -33515,8 +35571,8 @@ var NetworkTreeController = class {
   static async getMySummary(req, res, next) {
     try {
       const isAdmin = req.user?.role === "ADMIN" || req.user?.role === "SUPER_ADMIN";
-      const callerId = req.user?.distributorId || req.user?.distributorCode || req.user?.memberId || req.user?.id || "KV-1001";
-      const targetId = isAdmin ? "KV-1001" : await NetworkTreeService.resolveDistributorCode(callerId);
+      const callerId = req.user?.distributorId || req.user?.distributorCode || req.user?.memberId || req.user?.id || SUPER_ADMIN_DISTRIBUTOR_ID;
+      const targetId = isAdmin ? await resolveAdminRootId(req) : await NetworkTreeService.resolveDistributorCode(callerId);
       const summary = await NetworkTreeService.getNetworkSummary(targetId);
       await AuditService.recordLog({
         userId: req.user?.id,
@@ -33565,7 +35621,7 @@ var NetworkTreeController = class {
     try {
       const { distributorId, sponsorId, preferredLeg } = req.body;
       const targetDistId = distributorId || req.user?.id;
-      const targetSponsorId = sponsorId || req.user?.sponsorId || "KV-1001";
+      const targetSponsorId = sponsorId || req.user?.sponsorId || SUPER_ADMIN_DISTRIBUTOR_ID;
       if (!targetDistId) {
         throw AppError.badRequest("Distributor ID is required for placement.", "DISTRIBUTOR_ID_REQUIRED");
       }
@@ -33716,7 +35772,15 @@ var adminTreeAuditRouter = adminRouter;
 
 // backend/src/routes/payment.routes.ts
 var import_express15 = require("express");
+init_razorpay();
 var router15 = (0, import_express15.Router)();
+router15.get("/razorpay/key", (_req, res) => {
+  const { keyId } = getRazorpayCredentials();
+  if (!keyId) {
+    return res.status(503).json({ success: false, message: "Payment gateway is not configured", code: "PAYMENT_GATEWAY_NOT_CONFIGURED" });
+  }
+  return res.json({ success: true, data: { keyId } });
+});
 router15.post("/razorpay/webhook", PaymentController.handleWebhook);
 router15.post("/webhook", PaymentController.handleWebhook);
 router15.post("/enrollment/order", PaymentController.createEnrollmentOrder);
@@ -35221,7 +37285,7 @@ init_commissionLedger_service();
 init_atomicCommissionPosting_service();
 
 // backend/src/services/commissionWallet.service.ts
-var import_client27 = require("@prisma/client");
+var import_client29 = require("@prisma/client");
 init_database();
 init_logger();
 init_appError();
@@ -35298,10 +37362,10 @@ var CommissionWalletService = class {
           data: {
             distributorId: recipientMemberId,
             userId: targetUserId,
-            availableBalance: new import_client27.Prisma.Decimal(0),
-            pendingBalance: new import_client27.Prisma.Decimal(0),
-            lifetimeEarned: new import_client27.Prisma.Decimal(0),
-            lifetimePaid: new import_client27.Prisma.Decimal(0),
+            availableBalance: new import_client29.Prisma.Decimal(0),
+            pendingBalance: new import_client29.Prisma.Decimal(0),
+            lifetimeEarned: new import_client29.Prisma.Decimal(0),
+            lifetimePaid: new import_client29.Prisma.Decimal(0),
             currency: "INR",
             isLocked: false
           }
@@ -35323,7 +37387,7 @@ var CommissionWalletService = class {
           status: "COMPLETED",
           amount: grossAmountDecimal,
           netAmount: grossAmountDecimal,
-          feeAmount: new import_client27.Prisma.Decimal(0),
+          feeAmount: new import_client29.Prisma.Decimal(0),
           balanceBefore,
           balanceAfter,
           referenceId: commTx.id,
@@ -36051,877 +38115,8 @@ var commissionLedger_routes_default = router19;
 // backend/src/routes/cumulativeRankCommission.routes.ts
 var import_express20 = require("express");
 
-// backend/src/services/cumulativeRankCommission.service.ts
-var import_client28 = require("@prisma/client");
-init_database();
-init_logger();
-init_appError();
-init_safeDecimal();
-init_bb_service2();
-init_binaryVolume_service();
-
-// backend/src/types/cumulativeRankCommission.types.ts
-var CANONICAL_RANK_CONFIGS = Object.freeze([
-  {
-    order: 0,
-    code: "BASE",
-    name: "Base",
-    commissionPercent: 0,
-    minBV: 0,
-    minLeftMatching: 0,
-    minRightMatching: 0,
-    binaryWeeklyCap: 500,
-    description: "Initial entry tier for newly registered members before reaching Silver threshold.",
-    isActive: true
-  },
-  {
-    order: 1,
-    code: "SILVER",
-    name: "Silver",
-    commissionPercent: 24,
-    minBV: 250,
-    minLeftMatching: 2e3,
-    minRightMatching: 2e3,
-    binaryWeeklyCap: 3e3,
-    description: "Silver rank: 24% commission, min 250 BV, left matching >= 2,000, right matching >= 2,000.",
-    isActive: true
-  },
-  {
-    order: 2,
-    code: "GOLD",
-    name: "Gold",
-    commissionPercent: 8,
-    minBV: 250,
-    minLeftMatching: 5e3,
-    minRightMatching: 5e3,
-    binaryWeeklyCap: 1e4,
-    description: "Gold rank: 8% commission (cumulative +24% Silver = 32%), min 250 BV, left matching >= 5,000, right matching >= 5,000.",
-    isActive: true
-  },
-  {
-    order: 3,
-    code: "PLATINUM",
-    name: "Platinum",
-    commissionPercent: 13,
-    minBV: 500,
-    minLeftMatching: 5e4,
-    minRightMatching: 5e4,
-    binaryWeeklyCap: 25e3,
-    description: "Platinum rank: 13% commission (cumulative 24%+8%+13% = 45%), min 500 BV, left matching >= 50,000, right matching >= 50,000.",
-    isActive: true
-  },
-  {
-    order: 4,
-    code: "DIAMOND",
-    name: "Diamond",
-    commissionPercent: 5,
-    minBV: 1e3,
-    minLeftMatching: 6e4,
-    minRightMatching: 6e4,
-    binaryWeeklyCap: 5e4,
-    description: "Diamond rank: 5% commission (cumulative 24%+8%+13%+5% = 50%), min 1,000 BV, left matching >= 60,000, right matching >= 60,000.",
-    isActive: true
-  },
-  {
-    order: 5,
-    code: "RUBY",
-    name: "Ruby",
-    commissionPercent: 4,
-    minBV: 1e3,
-    minLeftMatching: 1e5,
-    minRightMatching: 1e5,
-    binaryWeeklyCap: 1e5,
-    description: "Ruby rank: 4% commission (cumulative 24%+8%+13%+5%+4% = 54%), min 1,000 BV, left matching >= 100,000, right matching >= 100,000.",
-    isActive: true
-  }
-]);
-
-// backend/src/services/cumulativeRankCommission.service.ts
-var CumulativeRankCommissionService = class {
-  // In-memory cache for dynamic configurations
-  static dynamicConfigs = /* @__PURE__ */ new Map();
-  static rankRetentionEnabled = true;
-  // Prevents accidental downgrades
-  static activeCommissionBaseType = "BINARY_MATCHED_BV";
-  // In-memory ledger storage for test/offline environments
-  static inMemoryLedger = /* @__PURE__ */ new Map();
-  static inMemoryAuditTrail = [];
-  static getInMemoryLedger() {
-    return Array.from(this.inMemoryLedger.values());
-  }
-  // =========================================================================
-  // PHASE 1: RANK CONFIGURATION
-  // =========================================================================
-  /**
-   * Initializes or loads the database-backed rank configuration.
-   */
-  static async getRankConfigs(tx) {
-    const db = tx || prisma;
-    try {
-      const dbLevels = await db.level?.findMany({
-        where: { isActive: true },
-        orderBy: { order: "asc" }
-      });
-      if (dbLevels && dbLevels.length > 0) {
-        const merged = CANONICAL_RANK_CONFIGS.map((canonical) => {
-          const dbMatch = dbLevels.find((l) => l.order === canonical.order || l.code?.toUpperCase() === canonical.code?.toUpperCase());
-          if (!dbMatch) return canonical;
-          return {
-            id: dbMatch.id,
-            order: dbMatch.order,
-            code: canonical.code,
-            name: dbMatch.name,
-            commissionPercent: canonical.commissionPercent ?? (dbMatch.commissionPercent !== void 0 ? Number(dbMatch.commissionPercent) : 0),
-            minBV: Number(dbMatch.requiredBB ?? canonical.minBV),
-            minLeftMatching: Number(dbMatch.requiredLeftMatching ?? dbMatch.requiredMatching ?? canonical.minLeftMatching),
-            minRightMatching: Number(dbMatch.requiredRightMatching ?? dbMatch.requiredMatching ?? canonical.minRightMatching),
-            binaryWeeklyCap: canonical.binaryWeeklyCap,
-            description: `${dbMatch.name} rank tier`,
-            isActive: dbMatch.isActive
-          };
-        });
-        return merged;
-      }
-    } catch {
-    }
-    if (this.dynamicConfigs.size > 0) {
-      return Array.from(this.dynamicConfigs.values()).sort((a, b) => a.order - b.order);
-    }
-    return [...CANONICAL_RANK_CONFIGS];
-  }
-  /**
-   * Retrieves single rank tier configuration by code.
-   */
-  static async getRankConfig(rankCode, tx) {
-    const configs = await this.getRankConfigs(tx);
-    const found = configs.find((c) => c.code === rankCode.toUpperCase());
-    if (found) return found;
-    const canonical = CANONICAL_RANK_CONFIGS.find((c) => c.code === rankCode.toUpperCase());
-    if (canonical) return canonical;
-    throw AppError.notFound(`Rank configuration for '${rankCode}' not found`);
-  }
-  /**
-   * Updates a rank configuration in database or in-memory config.
-   */
-  static async updateRankConfig(rankCode, updates, tx) {
-    const code = rankCode.toUpperCase();
-    const existing = await this.getRankConfig(code, tx);
-    const newConfig = {
-      ...existing,
-      ...updates,
-      code
-    };
-    if (newConfig.commissionPercent < 0 || newConfig.commissionPercent > 100) {
-      throw AppError.badRequest("Commission percentage must be between 0 and 100%");
-    }
-    if (newConfig.minBV < 0 || newConfig.minLeftMatching < 0 || newConfig.minRightMatching < 0) {
-      throw AppError.badRequest("Qualification thresholds must be non-negative");
-    }
-    const db = tx || prisma;
-    try {
-      await db.level?.updateMany({
-        where: { code },
-        data: {
-          name: newConfig.name,
-          requiredBB: new import_client28.Prisma.Decimal(newConfig.minBV),
-          requiredLeftMatching: new import_client28.Prisma.Decimal(newConfig.minLeftMatching),
-          requiredRightMatching: new import_client28.Prisma.Decimal(newConfig.minRightMatching),
-          requiredMatching: new import_client28.Prisma.Decimal(Math.min(newConfig.minLeftMatching, newConfig.minRightMatching)),
-          commissionPercent: new import_client28.Prisma.Decimal(newConfig.commissionPercent),
-          isActive: newConfig.isActive
-        }
-      });
-    } catch {
-    }
-    this.dynamicConfigs.set(code, newConfig);
-    logger.info({ rankCode: code, updates }, "Rank configuration updated successfully");
-    return newConfig;
-  }
-  /**
-   * Configures Commission Base Type (e.g. BINARY_MATCHED_BV or ORDER_BV)
-   */
-  static setCommissionBaseType(baseType) {
-    this.activeCommissionBaseType = baseType;
-  }
-  static getCommissionBaseType() {
-    return this.activeCommissionBaseType;
-  }
-  /**
-   * Configures Rank Retention Policy.
-   */
-  static setRankRetentionPolicy(retain) {
-    this.rankRetentionEnabled = retain;
-  }
-  static getRankRetentionPolicy() {
-    return this.rankRetentionEnabled;
-  }
-  // =========================================================================
-  // PHASE 2: RANK QUALIFICATION ENGINE
-  // =========================================================================
-  /**
-   * Pure evaluation helper: checks if BV, left matching, and right matching meet rank requirements.
-   * Admin level increases based on joinings() of users under him (no buying required).
-   * Distributor level increases when he buys also AND adds people both.
-   */
-  static isRankQualified(qualifyingBV, leftMatching, rightMatching, rank, isAdmin = false, joiningsCount = 0) {
-    if (!rank || rank.code === "BASE") return true;
-    if (isAdmin) {
-      const minJoinings = rank.order === 1 ? 2 : rank.order === 2 ? 5 : rank.order === 3 ? 10 : rank.order === 4 ? 20 : rank.order === 5 ? 50 : 0;
-      const meetsMatching2 = leftMatching >= rank.minLeftMatching || rightMatching >= rank.minRightMatching;
-      return meetsMatching2 || joiningsCount >= minJoinings;
-    }
-    const meetsBV = qualifyingBV >= rank.minBV;
-    const meetsMatching = leftMatching >= rank.minLeftMatching || rightMatching >= rank.minRightMatching;
-    return meetsBV && meetsMatching;
-  }
-  /**
-   * Calculates a member's rank qualification and details.
-   */
-  static async getMemberRankQualification(memberIdOrDistributor, overrides, tx) {
-    const db = tx || prisma;
-    let member = null;
-    if (typeof memberIdOrDistributor === "object" && memberIdOrDistributor !== null && memberIdOrDistributor.id) {
-      member = memberIdOrDistributor;
-    } else {
-      member = await db.distributorProfile.findFirst({
-        where: {
-          OR: [
-            { id: String(memberIdOrDistributor) },
-            { distributorCode: String(memberIdOrDistributor) },
-            { distributorId: String(memberIdOrDistributor) },
-            { userId: String(memberIdOrDistributor) }
-          ]
-        },
-        include: {
-          user: true,
-          sponsor: { include: { user: true } },
-          currentLevel: true,
-          currentRank: true,
-          highestRank: true,
-          mlmNodes: true
-        }
-      });
-    }
-    if (!member) {
-      throw AppError.notFound(`Member with identifier '${memberIdOrDistributor}' not found`);
-    }
-    const distId = member.id;
-    let qualifyingBV = 0;
-    if (overrides?.bv !== void 0) {
-      qualifyingBV = Number(overrides.bv);
-    } else {
-      try {
-        qualifyingBV = await BBService.calculateCurrentBB(distId, db);
-      } catch {
-        qualifyingBV = Number(member.currentBB ?? member.lifetimePV ?? 0);
-      }
-      qualifyingBV = Math.max(qualifyingBV, Number(member.currentBB ?? member.lifetimePV ?? 0));
-    }
-    let leftMatching = 0;
-    let rightMatching = 0;
-    if (overrides?.leftMatching !== void 0 && overrides?.rightMatching !== void 0) {
-      leftMatching = Number(overrides.leftMatching);
-      rightMatching = Number(overrides.rightMatching);
-    } else {
-      try {
-        if (overrides?.leftMatching !== void 0) {
-          leftMatching = Number(overrides.leftMatching);
-        } else {
-          leftMatching = await BinaryVolumeService.getLeftMatching(distId, void 0, db);
-        }
-        if (overrides?.rightMatching !== void 0) {
-          rightMatching = Number(overrides.rightMatching);
-        } else {
-          rightMatching = await BinaryVolumeService.getRightMatching(distId, void 0, db);
-        }
-      } catch {
-        const fallback = overrides?.matching !== void 0 ? Number(overrides.matching) : Number(member.currentMatching ?? 0);
-        leftMatching = overrides?.leftMatching !== void 0 ? Number(overrides.leftMatching) : fallback;
-        rightMatching = overrides?.rightMatching !== void 0 ? Number(overrides.rightMatching) : fallback;
-      }
-    }
-    if (leftMatching === 0 && rightMatching === 0 && Number(member.currentMatching ?? 0) > 0) {
-      leftMatching = Number(member.currentMatching);
-      rightMatching = Number(member.currentMatching);
-    }
-    const matchedVolume = Math.min(leftMatching, rightMatching);
-    const isMemberAdmin = Boolean(
-      member.roleName === "ADMIN" || member.role === "ADMIN" || member.user?.roleName === "ADMIN" || member.user?.role === "ADMIN" || member.distributorCode === "KV-1000" || member.distributorCode === "KV-1001" || member.distributorId === "KV-1000" || member.distributorId === "KV-1001"
-    );
-    let joiningsCount = overrides?.joinings !== void 0 ? Number(overrides.joinings) : 0;
-    if (joiningsCount === 0) {
-      try {
-        const { NetworkTreeService: NetworkTreeService2 } = await Promise.resolve().then(() => (init_networkTree_service(), networkTree_service_exports));
-        const enrolled = NetworkTreeService2.getEnrolledMembers();
-        joiningsCount = enrolled.filter((m) => m.distributorId !== member.distributorCode).length;
-      } catch {
-      }
-      joiningsCount = Math.max(
-        joiningsCount,
-        Number(member.joiningsCount ?? member.totalTeamCount ?? member.directMembers ?? 0)
-      );
-    }
-    const rankConfigs = await this.getRankConfigs(db);
-    const descendingRanks = [...rankConfigs].sort((a, b) => b.order - a.order);
-    let achievedRank = rankConfigs[0];
-    for (const rk of descendingRanks) {
-      if (this.isRankQualified(qualifyingBV, leftMatching, rightMatching, rk, isMemberAdmin, joiningsCount)) {
-        achievedRank = rk;
-        break;
-      }
-    }
-    if (this.rankRetentionEnabled && member.currentLevel) {
-      const heldRank = rankConfigs.find((r) => r.code === member.currentLevel.code || r.order === member.currentLevel.order);
-      if (heldRank && heldRank.order > achievedRank.order) {
-        achievedRank = heldRank;
-      }
-    }
-    const nextRank = achievedRank.order < rankConfigs.length - 1 ? rankConfigs.find((r) => r.order === achievedRank.order + 1) || null : null;
-    let bvGap = 0;
-    let leftMatchingGap = 0;
-    let rightMatchingGap = 0;
-    let rankProgressPercent = 100;
-    if (nextRank) {
-      bvGap = Math.max(0, nextRank.minBV - qualifyingBV);
-      leftMatchingGap = Math.max(0, nextRank.minLeftMatching - leftMatching);
-      rightMatchingGap = Math.max(0, nextRank.minRightMatching - rightMatching);
-      const bvProgress = nextRank.minBV > 0 ? Math.min(100, qualifyingBV / nextRank.minBV * 100) : 100;
-      const leftProgress = nextRank.minLeftMatching > 0 ? Math.min(100, leftMatching / nextRank.minLeftMatching * 100) : 100;
-      const rightProgress = nextRank.minRightMatching > 0 ? Math.min(100, rightMatching / nextRank.minRightMatching * 100) : 100;
-      rankProgressPercent = Math.min(100, Number(Math.min(bvProgress, leftProgress, rightProgress).toFixed(1)));
-    }
-    const paymentStatus = (member.paymentStatus || (member.status === "ACTIVE" ? "PAID" : "PENDING")).toUpperCase();
-    const isCommissionEligible = member.status === "ACTIVE" && paymentStatus === "PAID";
-    const eligibleCommissionTiers = this.getEligibleCommissionTiers(achievedRank.code, rankConfigs);
-    const cumulativePercentage = eligibleCommissionTiers.reduce((sum, t) => sum + t.percentage, 0);
-    const sponsorName = member.sponsor ? `${member.sponsor.firstName || ""} ${member.sponsor.lastName || ""}`.trim() || member.sponsor.displayName : null;
-    const node = member.mlmNodes && member.mlmNodes.length > 0 ? member.mlmNodes[0] : null;
-    return {
-      memberId: distId,
-      distributorCode: member.distributorCode || member.distributorId || "KV-MEM",
-      name: `${member.firstName || ""} ${member.lastName || ""}`.trim() || member.displayName || "Member",
-      sponsorId: member.sponsorId || null,
-      sponsorName,
-      parentPlacementId: node?.parentId || null,
-      placementLeg: node?.position || null,
-      currentRank: achievedRank.code,
-      currentRankName: achievedRank.name,
-      currentRankOrder: achievedRank.order,
-      qualifyingBV,
-      leftMatching,
-      rightMatching,
-      matchedVolume,
-      nextRank: nextRank ? nextRank.code : null,
-      nextRankName: nextRank ? nextRank.name : null,
-      missingRequirements: {
-        bvGap,
-        leftMatchingGap,
-        rightMatchingGap
-      },
-      rankProgressPercent,
-      isQualified: achievedRank.order > 0,
-      eligibleCommissionTiers,
-      cumulativePercentage,
-      paymentStatus,
-      isCommissionEligible
-    };
-  }
-  // =========================================================================
-  // PHASE 3: CUMULATIVE COMMISSION ELIGIBILITY MATRIX
-  // =========================================================================
-  /**
-   * Resolves cumulative commission tiers for a given achieved rank.
-   *
-   * Eligibility Matrix:
-   * - Silver member: Silver commission, 24%
-   * - Gold member: Silver 24% + Gold 8% (Total 32%)
-   * - Platinum member: Silver 24% + Gold 8% + Platinum 13% (Total 45%)
-   * - Diamond member: Silver 24% + Gold 8% + Platinum 13% + Diamond 5% (Total 50%)
-   * - Ruby member: Silver 24% + Gold 8% + Platinum 13% + Diamond 5% + Ruby 4% (Total 54%)
-   *
-   * A higher-ranked member retains eligibility for every lower commission tier.
-   */
-  static getEligibleCommissionTiers(rankCode, configs = [...CANONICAL_RANK_CONFIGS]) {
-    const targetConfig = configs.find((c) => c.code === rankCode.toUpperCase());
-    const targetOrder = targetConfig ? targetConfig.order : 0;
-    if (targetOrder <= 0) {
-      return [];
-    }
-    const eligibleTiers = [];
-    let runningCumulative = 0;
-    for (let order = 1; order <= targetOrder; order++) {
-      const cfg = configs.find((c) => c.order === order);
-      if (!cfg) continue;
-      runningCumulative += cfg.commissionPercent;
-      eligibleTiers.push({
-        tierOrder: cfg.order,
-        rankCode: cfg.code,
-        rankName: cfg.name,
-        percentage: cfg.commissionPercent,
-        cumulativePercentage: runningCumulative
-      });
-    }
-    return eligibleTiers;
-  }
-  // =========================================================================
-  // PHASE 4: COMMISSION CALCULATION ENGINE & LEDGER
-  // =========================================================================
-  /**
-   * Authoritatively calculates cumulative commissions for a specific member and period/source.
-   * Each eligible tier is calculated independently.
-   * Idempotent: uses unique businessReference constraint to prevent duplicates.
-   */
-  static async calculateMemberCumulativeCommissions(memberId, periodId = `CYCLE-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}`, options, tx) {
-    const db = tx || prisma;
-    const qualification = await this.getMemberRankQualification(memberId, void 0, db);
-    if (qualification.currentRankOrder <= 0 || !qualification.isCommissionEligible) {
-      return [];
-    }
-    let baseAmount = 0;
-    const baseType = options?.baseType || this.activeCommissionBaseType;
-    if (options?.baseAmount !== void 0) {
-      baseAmount = Math.max(0, options.baseAmount);
-    } else if (baseType === "BINARY_MATCHED_BV") {
-      baseAmount = qualification.matchedVolume;
-    } else {
-      baseAmount = qualification.qualifyingBV;
-    }
-    if (baseAmount <= 0) {
-      return [];
-    }
-    const results = [];
-    const sourceRef = options?.orderId || periodId;
-    for (const tier of qualification.eligibleCommissionTiers) {
-      const businessReference = `CUMULATIVE_RANK:${periodId}:${qualification.memberId}:${tier.rankCode}`;
-      let existingRecord = null;
-      try {
-        existingRecord = await db.commission.findUnique({
-          where: { businessReference }
-        });
-      } catch {
-        existingRecord = this.inMemoryLedger.get(businessReference) || null;
-      }
-      if (existingRecord) {
-        const details = existingRecord.details || {};
-        results.push({
-          id: existingRecord.id,
-          distributorId: qualification.memberId,
-          distributorCode: qualification.distributorCode,
-          distributorName: qualification.name,
-          tierOrder: tier.tierOrder,
-          rankCode: tier.rankCode,
-          rankName: tier.rankName,
-          percentage: Number(details.percentage ?? tier.percentage),
-          eligibleBaseAmount: Number(details.eligibleBaseAmount ?? baseAmount),
-          calculatedAmount: Number(existingRecord.amount),
-          periodId,
-          periodCode: periodId,
-          sourceReference: sourceRef,
-          status: existingRecord.status,
-          businessReference,
-          calculatedAt: existingRecord.createdAt,
-          approvedAt: details.approvedAt ? new Date(details.approvedAt) : null,
-          paidAt: existingRecord.payoutDate,
-          walletTransactionId: details.walletTransactionId || null
-        });
-        continue;
-      }
-      const calculatedAmount = SafeDecimal.round(
-        SafeDecimal.toDecimal(baseAmount).mul(SafeDecimal.toDecimal(tier.percentage)).div(new import_client28.Prisma.Decimal(100)),
-        2
-      );
-      const commissionNumber = `CRC-${Date.now().toString().slice(-6)}-${Math.floor(1e3 + Math.random() * 9e3)}`;
-      const calcData = {
-        distributorId: qualification.memberId,
-        distributorCode: qualification.distributorCode,
-        distributorName: qualification.name,
-        tierOrder: tier.tierOrder,
-        rankCode: tier.rankCode,
-        rankName: tier.rankName,
-        percentage: tier.percentage,
-        eligibleBaseAmount: baseAmount,
-        calculatedAmount,
-        periodId,
-        periodCode: periodId,
-        sourceReference: sourceRef,
-        status: "CALCULATED",
-        businessReference,
-        calculatedAt: /* @__PURE__ */ new Date()
-      };
-      this.inMemoryLedger.set(businessReference, calcData);
-      try {
-        const created = await db.commission.create({
-          data: {
-            commissionNumber,
-            businessReference,
-            distributorId: qualification.memberId,
-            periodId,
-            type: "RANK",
-            amount: new import_client28.Prisma.Decimal(calculatedAmount),
-            status: "CALCULATED",
-            leftVolumeMatched: new import_client28.Prisma.Decimal(qualification.leftMatching),
-            rightVolumeMatched: new import_client28.Prisma.Decimal(qualification.rightMatching),
-            details: {
-              tierOrder: tier.tierOrder,
-              rankCode: tier.rankCode,
-              percentage: tier.percentage,
-              eligibleBaseAmount: baseAmount,
-              baseType,
-              sourceReference: sourceRef
-            }
-          }
-        });
-        calcData.id = created.id;
-      } catch {
-      }
-      results.push(calcData);
-    }
-    return results;
-  }
-  /**
-   * Batch calculates cumulative commissions for all active qualified distributors in a period.
-   */
-  static async calculatePeriodCommissions(periodId, options, tx) {
-    const db = tx || prisma;
-    const baseType = options?.baseType || this.activeCommissionBaseType;
-    let members = [];
-    try {
-      members = await db.distributorProfile.findMany({
-        where: { status: "ACTIVE" },
-        include: {
-          user: true,
-          sponsor: true,
-          currentLevel: true,
-          currentRank: true,
-          mlmNodes: true
-        }
-      });
-    } catch {
-      members = [];
-    }
-    const allCommissions = [];
-    const tierSummary = {
-      SILVER: { count: 0, totalAmount: 0 },
-      GOLD: { count: 0, totalAmount: 0 },
-      PLATINUM: { count: 0, totalAmount: 0 },
-      DIAMOND: { count: 0, totalAmount: 0 },
-      RUBY: { count: 0, totalAmount: 0 }
-    };
-    let totalAmount = 0;
-    let qualifiedCount = 0;
-    for (const mem of members) {
-      const comms = await this.calculateMemberCumulativeCommissions(mem.id, periodId, { baseType }, db);
-      if (comms.length > 0) {
-        qualifiedCount++;
-        for (const c of comms) {
-          allCommissions.push(c);
-          totalAmount += c.calculatedAmount;
-          if (tierSummary[c.rankCode]) {
-            tierSummary[c.rankCode].count++;
-            tierSummary[c.rankCode].totalAmount += c.calculatedAmount;
-          }
-        }
-      }
-    }
-    return {
-      periodId,
-      periodCode: periodId,
-      baseType,
-      membersEvaluated: members.length,
-      membersQualified: qualifiedCount,
-      totalCalculatedAmount: SafeDecimal.round(totalAmount, 2),
-      tierSummary,
-      commissions: allCommissions
-    };
-  }
-  /**
-   * Approves calculated commissions for a period or specific list of commission references.
-   */
-  static async approveCommissions(periodId, adminUserId, tx) {
-    const db = tx || prisma;
-    let approvedCount = 0;
-    let approvedAmount = 0;
-    try {
-      const commissions = await db.commission.findMany({
-        where: {
-          periodId,
-          type: "RANK",
-          status: "CALCULATED"
-        }
-      });
-      for (const comm of commissions) {
-        await db.commission.update({
-          where: { id: comm.id },
-          data: {
-            status: "APPROVED",
-            details: {
-              ...comm.details || {},
-              approvedAt: (/* @__PURE__ */ new Date()).toISOString(),
-              approvedBy: adminUserId
-            }
-          }
-        });
-        approvedCount++;
-        approvedAmount += Number(comm.amount);
-      }
-      if (approvedCount === 0) {
-        for (const [key, item] of this.inMemoryLedger.entries()) {
-          if (item.periodId === periodId && item.status === "CALCULATED") {
-            item.status = "APPROVED";
-            item.approvedAt = /* @__PURE__ */ new Date();
-            approvedCount++;
-            approvedAmount += item.calculatedAmount;
-          }
-        }
-      }
-    } catch {
-      for (const [key, item] of this.inMemoryLedger.entries()) {
-        if (item.periodId === periodId && item.status === "CALCULATED") {
-          item.status = "APPROVED";
-          item.approvedAt = /* @__PURE__ */ new Date();
-          approvedCount++;
-          approvedAmount += item.calculatedAmount;
-        }
-      }
-    }
-    this.inMemoryAuditTrail.push({
-      action: "APPROVE_COMMISSIONS",
-      periodId,
-      adminUserId,
-      approvedCount,
-      approvedAmount,
-      timestamp: /* @__PURE__ */ new Date()
-    });
-    return { approvedCount, approvedAmount: SafeDecimal.round(approvedAmount, 2) };
-  }
-  /**
-   * Payouts approved commissions directly into members' Wallets.
-   * Atomic PostgreSQL transaction ensures wallets and commission records are synchronized.
-   */
-  static async payoutCommissions(periodId, adminUserId) {
-    return prisma.$transaction(async (tx) => {
-      let paidCount = 0;
-      let paidAmount = 0;
-      let approved = [];
-      try {
-        approved = await tx.commission.findMany({
-          where: {
-            periodId,
-            type: "RANK",
-            status: "APPROVED"
-          },
-          include: { distributor: true }
-        });
-      } catch {
-        approved = Array.from(this.inMemoryLedger.values()).filter(
-          (c) => c.periodId === periodId && c.status === "APPROVED"
-        );
-      }
-      if (approved.length === 0) {
-        approved = Array.from(this.inMemoryLedger.values()).filter(
-          (c) => c.periodId === periodId && c.status === "APPROVED"
-        );
-      }
-      for (const comm of approved) {
-        const amount = Number(comm.amount ?? comm.calculatedAmount ?? 0);
-        const distId = comm.distributorId;
-        try {
-          const wallet = await tx.wallet.findUnique({
-            where: { distributorId: distId }
-          });
-          if (wallet) {
-            const before = Number(wallet.availableBalance ?? wallet.balance ?? 0);
-            const after = before + amount;
-            const wtxNumber = `WTX-RANK-${Date.now().toString().slice(-6)}-${Math.floor(1e3 + Math.random() * 9e3)}`;
-            const wtx = await tx.walletTransaction.create({
-              data: {
-                walletId: wallet.id,
-                transactionNumber: wtxNumber,
-                type: "COMMISSION",
-                status: "COMPLETED",
-                amount: new import_client28.Prisma.Decimal(amount),
-                feeAmount: new import_client28.Prisma.Decimal(0),
-                netAmount: new import_client28.Prisma.Decimal(amount),
-                balanceBefore: new import_client28.Prisma.Decimal(before),
-                balanceAfter: new import_client28.Prisma.Decimal(after),
-                referenceId: comm.id,
-                description: `Cumulative rank commission payout for period ${periodId}`
-              }
-            });
-            await tx.wallet.update({
-              where: { id: wallet.id },
-              data: {
-                availableBalance: new import_client28.Prisma.Decimal(after),
-                balance: new import_client28.Prisma.Decimal(after),
-                lifetimeEarned: { increment: new import_client28.Prisma.Decimal(amount) },
-                totalEarned: { increment: new import_client28.Prisma.Decimal(amount) }
-              }
-            });
-            await tx.commission.update({
-              where: { id: comm.id },
-              data: {
-                status: "PAID",
-                payoutDate: /* @__PURE__ */ new Date(),
-                details: {
-                  ...comm.details || {},
-                  paidAt: (/* @__PURE__ */ new Date()).toISOString(),
-                  paidBy: adminUserId,
-                  walletTransactionId: wtx.id
-                }
-              }
-            });
-          }
-        } catch {
-        }
-        if (comm.businessReference && this.inMemoryLedger.has(comm.businessReference)) {
-          const item = this.inMemoryLedger.get(comm.businessReference);
-          item.status = "PAID";
-          item.paidAt = /* @__PURE__ */ new Date();
-        }
-        paidCount++;
-        paidAmount += amount;
-      }
-      this.inMemoryAuditTrail.push({
-        action: "PAYOUT_COMMISSIONS",
-        periodId,
-        adminUserId,
-        paidCount,
-        paidAmount,
-        timestamp: /* @__PURE__ */ new Date()
-      });
-      return { paidCount, paidAmount: SafeDecimal.round(paidAmount, 2) };
-    });
-  }
-  /**
-   * Reverses an incorrect commission entry through an auditable reversal record.
-   */
-  static async reverseCommission(commissionIdOrRef, reason, adminUserId, tx) {
-    const db = tx || prisma;
-    let foundId = commissionIdOrRef;
-    try {
-      const comm = await db.commission.findFirst({
-        where: {
-          OR: [{ id: commissionIdOrRef }, { businessReference: commissionIdOrRef }]
-        }
-      });
-      if (!comm) {
-        throw AppError.notFound(`Commission with ID '${commissionIdOrRef}' not found`);
-      }
-      foundId = comm.id;
-      await db.commission.update({
-        where: { id: comm.id },
-        data: {
-          status: "REVERSED",
-          details: {
-            ...comm.details || {},
-            reversedAt: (/* @__PURE__ */ new Date()).toISOString(),
-            reversedBy: adminUserId,
-            reversalReason: reason
-          }
-        }
-      });
-    } catch {
-      for (const [key, item] of this.inMemoryLedger.entries()) {
-        if (item.id === commissionIdOrRef || item.businessReference === commissionIdOrRef) {
-          item.status = "REVERSED";
-          item.reversedAt = /* @__PURE__ */ new Date();
-          item.reversalReason = reason;
-        }
-      }
-    }
-    this.inMemoryAuditTrail.push({
-      action: "REVERSE_COMMISSION",
-      commissionId: foundId,
-      reason,
-      adminUserId,
-      timestamp: /* @__PURE__ */ new Date()
-    });
-    return { reversed: true, commissionId: foundId, reason };
-  }
-  // =========================================================================
-  // PHASE 5: ADMIN COMMISSION REPORTS
-  // =========================================================================
-  /**
-   * Builds comprehensive admin commission report for all members.
-   */
-  static async getAdminCommissionReport(tx) {
-    const db = tx || prisma;
-    let members = [];
-    try {
-      members = await db.distributorProfile.findMany({
-        include: {
-          user: true,
-          sponsor: true,
-          currentLevel: true,
-          currentRank: true,
-          mlmNodes: true,
-          commissions: {
-            where: { type: "RANK" }
-          }
-        },
-        orderBy: { createdAt: "desc" }
-      });
-    } catch {
-      members = [];
-    }
-    const report = [];
-    for (const mem of members) {
-      const qual = await this.getMemberRankQualification(mem, void 0, db);
-      const memCommissions = mem.commissions || [];
-      const pendingAmount = memCommissions.filter((c) => c.status === "CALCULATED" || c.status === "PENDING").reduce((sum, c) => sum + Number(c.amount), 0);
-      const approvedAmount = memCommissions.filter((c) => c.status === "APPROVED").reduce((sum, c) => sum + Number(c.amount), 0);
-      const paidAmount = memCommissions.filter((c) => c.status === "PAID").reduce((sum, c) => sum + Number(c.amount), 0);
-      const reversedAmount = memCommissions.filter((c) => c.status === "REVERSED").reduce((sum, c) => sum + Number(c.amount), 0);
-      const calculatedAmount = pendingAmount + approvedAmount + paidAmount;
-      const rankStatus = qual.currentRankOrder > 0 ? "QUALIFIED" : qual.paymentStatus !== "PAID" ? "INACTIVE" : "SHORTFALL";
-      report.push({
-        distributorId: qual.memberId,
-        distributorCode: qual.distributorCode,
-        distributorName: qual.name,
-        sponsorId: qual.sponsorId,
-        placementDetails: {
-          parentId: qual.parentPlacementId,
-          position: qual.placementLeg
-        },
-        achievedRank: qual.currentRank,
-        rankName: qual.currentRankName,
-        qualifyingBV: qual.qualifyingBV,
-        leftMatching: qual.leftMatching,
-        rightMatching: qual.rightMatching,
-        missingRequirements: qual.missingRequirements,
-        rankStatus,
-        paymentStatus: qual.paymentStatus,
-        eligibleTiers: qual.eligibleCommissionTiers,
-        cumulativePercentage: qual.cumulativePercentage,
-        eligibleBase: qual.matchedVolume,
-        calculatedAmount: SafeDecimal.round(calculatedAmount, 2),
-        pendingAmount: SafeDecimal.round(pendingAmount, 2),
-        approvedAmount: SafeDecimal.round(approvedAmount, 2),
-        paidAmount: SafeDecimal.round(paidAmount, 2),
-        reversedAmount: SafeDecimal.round(reversedAmount, 2)
-      });
-    }
-    return report;
-  }
-  /**
-   * Retrieves complete audit history of all recalculations, admin actions, and payout references.
-   */
-  static getAuditTrail() {
-    return [...this.inMemoryAuditTrail];
-  }
-  /**
-   * Resets in-memory caches and test states (for testing purposes).
-   */
-  static resetState() {
-    this.dynamicConfigs.clear();
-    this.inMemoryLedger.clear();
-    this.inMemoryAuditTrail = [];
-    this.rankRetentionEnabled = true;
-    this.activeCommissionBaseType = "BINARY_MATCHED_BV";
-  }
-};
-
 // backend/src/controllers/cumulativeRankCommission.controller.ts
+init_cumulativeRankCommission_service();
 init_appError();
 var CumulativeRankCommissionController = class {
   /**
@@ -37096,7 +38291,7 @@ var CumulativeRankCommissionController = class {
       const result = await CumulativeRankCommissionService.calculatePeriodCommissions(periodId, { baseType });
       res.json({
         success: true,
-        message: `Period commissions calculated successfully for ${result.membersQualified} qualified members`,
+        message: `Recorded pool contributions of \u20B9${result.totalContributionAmount.toFixed(2)} from ${result.contributingMembers} members. Approve them, then distribute the pool by rank.`,
         data: result
       });
     } catch (err) {
@@ -37498,7 +38693,7 @@ adminWalletRouter.post(
 var import_express24 = require("express");
 
 // backend/src/services/payout.service.ts
-var import_client29 = require("@prisma/client");
+var import_client31 = require("@prisma/client");
 init_database();
 init_logger();
 init_appError();
@@ -37589,8 +38784,8 @@ var PayoutService = class {
           "WALLET_LOCKED"
         );
       }
-      const availableBalance = new import_client29.Prisma.Decimal(wallet.availableBalance ?? wallet.balance ?? 0);
-      const amount = new import_client29.Prisma.Decimal(input.amount);
+      const availableBalance = new import_client31.Prisma.Decimal(wallet.availableBalance ?? wallet.balance ?? 0);
+      const amount = new import_client31.Prisma.Decimal(input.amount);
       if (availableBalance.lessThan(amount)) {
         throw AppError.badRequest(
           `Insufficient available balance for payout. Available: ${availableBalance.toFixed(2)}, Requested: ${amount.toFixed(2)}`,
@@ -37613,7 +38808,7 @@ var PayoutService = class {
           distributorId: distributor.id,
           bankAccountId: bankAccount.id,
           amount,
-          fee: new import_client29.Prisma.Decimal(0),
+          fee: new import_client31.Prisma.Decimal(0),
           netAmount: amount,
           status: "REQUESTED",
           requestedAt: /* @__PURE__ */ new Date(),
@@ -37843,8 +39038,8 @@ var PayoutService = class {
         where: { distributorId: payout.distributorId }
       });
       if (wallet) {
-        const balanceBefore = new import_client29.Prisma.Decimal(wallet.availableBalance ?? wallet.balance ?? 0);
-        const amount = new import_client29.Prisma.Decimal(payout.amount);
+        const balanceBefore = new import_client31.Prisma.Decimal(wallet.availableBalance ?? wallet.balance ?? 0);
+        const amount = new import_client31.Prisma.Decimal(payout.amount);
         const balanceAfter = balanceBefore.add(amount);
         await tx.wallet.update({
           where: { id: wallet.id },
@@ -37862,7 +39057,7 @@ var PayoutService = class {
             type: "REVERSAL",
             status: "COMPLETED",
             amount,
-            feeAmount: new import_client29.Prisma.Decimal(0),
+            feeAmount: new import_client31.Prisma.Decimal(0),
             netAmount: amount,
             balanceBefore,
             balanceAfter,
@@ -37942,8 +39137,8 @@ var PayoutService = class {
       if (!wallet) {
         throw AppError.badRequest("Distributor wallet not found.", "WALLET_NOT_FOUND");
       }
-      const amount = new import_client29.Prisma.Decimal(payout.amount);
-      const available = new import_client29.Prisma.Decimal(wallet.availableBalance ?? wallet.balance ?? 0);
+      const amount = new import_client31.Prisma.Decimal(payout.amount);
+      const available = new import_client31.Prisma.Decimal(wallet.availableBalance ?? wallet.balance ?? 0);
       await tx.wallet.update({
         where: { id: wallet.id },
         data: {
@@ -38247,7 +39442,7 @@ var import_express25 = require("express");
 init_database();
 
 // backend/src/services/withdrawal.service.ts
-var import_client31 = require("@prisma/client");
+var import_client33 = require("@prisma/client");
 init_database();
 init_logger();
 init_appError();
@@ -38478,7 +39673,7 @@ var WithdrawalService = class {
         data: {
           memberId,
           amount: amountDecimal,
-          fee: new import_client31.Prisma.Decimal(0),
+          fee: new import_client33.Prisma.Decimal(0),
           netAmount: amountDecimal,
           status: "REQUESTED",
           payoutProvider: input.payoutProvider || this.DEFAULT_PAYOUT_PROVIDER,
@@ -38499,7 +39694,7 @@ var WithdrawalService = class {
           distributorId: memberId,
           bankAccountId: input.bankAccountId,
           amount: amountDecimal,
-          fee: new import_client31.Prisma.Decimal(0),
+          fee: new import_client33.Prisma.Decimal(0),
           netAmount: amountDecimal,
           status: "REQUESTED",
           requestedAt: /* @__PURE__ */ new Date(),
@@ -38743,7 +39938,7 @@ var WithdrawalService = class {
             status: "COMPLETED",
             amount: amountDecimal,
             netAmount: amountDecimal,
-            feeAmount: new import_client31.Prisma.Decimal(0),
+            feeAmount: new import_client33.Prisma.Decimal(0),
             balanceBefore: availBefore,
             balanceAfter: availAfter,
             referenceId: withdrawal.id,
@@ -40932,8 +42127,8 @@ var NewsService = class {
 
 // backend/src/validators/news.validators.ts
 var import_zod25 = require("zod");
-var import_client32 = require("@prisma/client");
-var newsStatusSchema = import_zod25.z.nativeEnum(import_client32.NewsStatus);
+var import_client34 = require("@prisma/client");
+var newsStatusSchema = import_zod25.z.nativeEnum(import_client34.NewsStatus);
 var createNewsSchema = import_zod25.z.object({
   title: import_zod25.z.string().trim().min(3, "Title must be at least 3 characters").max(200, "Title cannot exceed 200 characters"),
   slug: import_zod25.z.string().trim().min(2, "Slug must be at least 2 characters").max(150, "Slug cannot exceed 150 characters").regex(/^[a-z0-9-]+$/, "Slug can only contain lowercase alphanumeric characters and hyphens").optional(),
@@ -43216,7 +44411,7 @@ var AdminController = class _AdminController {
   }
   static async getNetworkTree(req, res, next) {
     try {
-      const rootId = req.query.memberId || req.query.rootId || "KV-1001";
+      const rootId = req.query.memberId || req.query.rootId || await NetworkTreeService.resolveDistributorCode(req.user?.id || "") || "KK-0001";
       const depth = req.query.depth ? parseInt(req.query.depth, 10) : 3;
       const tree = await NetworkTreeService.getNetworkTree(rootId, depth);
       sendSuccess(res, {
@@ -44756,6 +45951,7 @@ init_appError();
 init_bb_service2();
 init_binaryVolume_service();
 init_levelPromotion_service();
+init_cumulativeRankCommission_types();
 var MemberPerformanceService = class {
   /**
    * Resolves member performance card metrics strictly from actual database and business calculations.
@@ -45398,7 +46594,7 @@ var MemberLevelController = class {
 };
 
 // backend/src/services/mlmReconciliation.service.ts
-var import_client33 = require("@prisma/client");
+var import_client35 = require("@prisma/client");
 init_database();
 init_logger();
 init_appError();
@@ -45565,9 +46761,9 @@ var MLMReconciliationService = class {
           await client.distributorProfile.update({
             where: { id: distId },
             data: {
-              currentBB: new import_client33.Prisma.Decimal(calculatedBB),
-              currentMatching: new import_client33.Prisma.Decimal(calculatedMatching),
-              lifetimePV: new import_client33.Prisma.Decimal(Math.max(calculatedBB, Number(member.lifetimePV ?? 0)))
+              currentBB: new import_client35.Prisma.Decimal(calculatedBB),
+              currentMatching: new import_client35.Prisma.Decimal(calculatedMatching),
+              lifetimePV: new import_client35.Prisma.Decimal(Math.max(calculatedBB, Number(member.lifetimePV ?? 0)))
             }
           });
         } catch {
@@ -45596,16 +46792,16 @@ var MLMReconciliationService = class {
           const audit = await client.reconciliationAudit?.create({
             data: {
               memberId: distId,
-              oldBB: new import_client33.Prisma.Decimal(oldBB),
-              calculatedBB: new import_client33.Prisma.Decimal(calculatedBB),
-              bbDiscrepancy: new import_client33.Prisma.Decimal(bbDiscrepancy),
-              oldMatching: new import_client33.Prisma.Decimal(oldMatching),
-              calculatedMatching: new import_client33.Prisma.Decimal(calculatedMatching),
-              matchingDiscrepancy: new import_client33.Prisma.Decimal(matchingDiscrepancy),
-              oldLeftVolume: new import_client33.Prisma.Decimal(oldLeftVolume),
-              calculatedLeftVolume: new import_client33.Prisma.Decimal(calculatedLeftVolume),
-              oldRightVolume: new import_client33.Prisma.Decimal(oldRightVolume),
-              calculatedRightVolume: new import_client33.Prisma.Decimal(calculatedRightVolume),
+              oldBB: new import_client35.Prisma.Decimal(oldBB),
+              calculatedBB: new import_client35.Prisma.Decimal(calculatedBB),
+              bbDiscrepancy: new import_client35.Prisma.Decimal(bbDiscrepancy),
+              oldMatching: new import_client35.Prisma.Decimal(oldMatching),
+              calculatedMatching: new import_client35.Prisma.Decimal(calculatedMatching),
+              matchingDiscrepancy: new import_client35.Prisma.Decimal(matchingDiscrepancy),
+              oldLeftVolume: new import_client35.Prisma.Decimal(oldLeftVolume),
+              calculatedLeftVolume: new import_client35.Prisma.Decimal(calculatedLeftVolume),
+              oldRightVolume: new import_client35.Prisma.Decimal(oldRightVolume),
+              calculatedRightVolume: new import_client35.Prisma.Decimal(calculatedRightVolume),
               oldLevel: oldLevel.code,
               calculatedLevel: calculatedLevel.code,
               promoted,
@@ -46536,7 +47732,7 @@ init_fundingReconciliation_service();
 init_platformTreasury_service();
 
 // backend/src/services/treasuryCommission.service.ts
-var import_client37 = require("@prisma/client");
+var import_client39 = require("@prisma/client");
 init_database();
 init_logger();
 init_appError();
@@ -46659,10 +47855,10 @@ var TreasuryCommissionService = class {
             data: {
               distributorId: distProfile.id,
               userId: distProfile.userId,
-              availableBalance: new import_client37.Prisma.Decimal(0),
-              pendingBalance: new import_client37.Prisma.Decimal(0),
+              availableBalance: new import_client39.Prisma.Decimal(0),
+              pendingBalance: new import_client39.Prisma.Decimal(0),
               lifetimeEarned: grossDecimal,
-              lifetimePaid: new import_client37.Prisma.Decimal(0),
+              lifetimePaid: new import_client39.Prisma.Decimal(0),
               currency: "INR",
               isLocked: false
             }
@@ -46829,10 +48025,10 @@ var TreasuryCommissionService = class {
           data: {
             distributorId: recipientDistributorId,
             userId: targetUserId,
-            availableBalance: new import_client37.Prisma.Decimal(0),
-            pendingBalance: new import_client37.Prisma.Decimal(0),
+            availableBalance: new import_client39.Prisma.Decimal(0),
+            pendingBalance: new import_client39.Prisma.Decimal(0),
             lifetimeEarned: grossDecimal,
-            lifetimePaid: new import_client37.Prisma.Decimal(0),
+            lifetimePaid: new import_client39.Prisma.Decimal(0),
             currency: "INR",
             isLocked: false
           }
@@ -46854,7 +48050,7 @@ var TreasuryCommissionService = class {
           status: "COMPLETED",
           amount: grossDecimal,
           netAmount: grossDecimal,
-          feeAmount: new import_client37.Prisma.Decimal(0),
+          feeAmount: new import_client39.Prisma.Decimal(0),
           balanceBefore: memberBalanceBefore,
           balanceAfter: memberBalanceAfter,
           referenceId: commission.id,
@@ -47299,7 +48495,7 @@ var TreasuryCommissionService = class {
               status: "COMPLETED",
               amount: grossDecimal,
               netAmount: grossDecimal,
-              feeAmount: new import_client37.Prisma.Decimal(0),
+              feeAmount: new import_client39.Prisma.Decimal(0),
               balanceBefore: mBefore,
               balanceAfter: mAfter,
               referenceId: commission.id,
@@ -48252,1029 +49448,8 @@ init_appError();
 // backend/src/routes/adminFundingCommission.routes.ts
 var import_express36 = require("express");
 
-// backend/src/services/adminFundingCommission.service.ts
-var import_client39 = require("@prisma/client");
-init_database();
-init_appError();
-init_safeDecimal();
-var AdminFundingCommissionService = class {
-  // In-memory fallback stores for test isolation and offline resilience
-  static inMemoryBatches = /* @__PURE__ */ new Map();
-  static inMemoryBatchItems = /* @__PURE__ */ new Map();
-  static inMemoryAuditTrail = [];
-  static isDistributing = false;
-  static lastDistributionTime = 0;
-  /**
-   * Resets internal caches (used in testing)
-   */
-  static resetState() {
-    this.inMemoryBatches.clear();
-    this.inMemoryBatchItems.clear();
-    this.inMemoryAuditTrail = [];
-    this.isDistributing = false;
-    this.lastDistributionTime = 0;
-  }
-  // =========================================================================
-  // 1. DAILY FINANCIAL SUMMARY (CARD METRICS)
-  // =========================================================================
-  static async getDailyFinancialSummary(filters) {
-    const start = filters?.startDate ? new Date(filters.startDate) : void 0;
-    const end = filters?.endDate ? new Date(filters.endDate) : void 0;
-    const dateFilter = {};
-    if (start || end) {
-      dateFilter.createdAt = {
-        ...start ? { gte: start } : {},
-        ...end ? { lte: end } : {}
-      };
-    }
-    let employeesCount = 0;
-    let qualifyingBV = 0;
-    let orderPaymentVolume = 0;
-    let calculatedCommissions = 0;
-    let pendingCommissions = 0;
-    let approvedCommissions = 0;
-    let paidCommissions = 0;
-    let failedPayouts = 0;
-    let reversedCommissions = 0;
-    try {
-      const activeDistributors = await prisma.distributorProfile.findMany({
-        where: { status: "ACTIVE" },
-        select: { id: true, currentBB: true, lifetimePV: true }
-      });
-      employeesCount = activeDistributors.length;
-      qualifyingBV = activeDistributors.reduce(
-        (sum, d) => sum + Number(d.currentBB ?? d.lifetimePV ?? 0),
-        0
-      );
-      if (employeesCount === 0) {
-        const anyDistributors = await prisma.distributorProfile.findMany({
-          select: { id: true, currentBB: true, lifetimePV: true }
-        });
-        employeesCount = anyDistributors.length || 5;
-        if (qualifyingBV === 0 && anyDistributors.length > 0) {
-          qualifyingBV = anyDistributors.reduce(
-            (sum, d) => sum + Number(d.currentBB ?? d.lifetimePV ?? 0),
-            0
-          );
-        }
-      }
-      const orderFilter = {
-        status: "PAID"
-      };
-      if (start || end) {
-        orderFilter.createdAt = {
-          ...start ? { gte: start } : {},
-          ...end ? { lte: end } : {}
-        };
-      }
-      const orders = await prisma.order.findMany({
-        where: orderFilter,
-        select: { totalAmount: true }
-      });
-      orderPaymentVolume = orders.reduce((sum, o) => sum + Number(o.totalAmount || 0), 0);
-      const commissions = await prisma.commission.findMany({
-        where: dateFilter,
-        select: { amount: true, status: true }
-      });
-      for (const comm of commissions) {
-        const amt = Number(comm.amount || 0);
-        switch (comm.status) {
-          case "CALCULATED":
-            calculatedCommissions += amt;
-            break;
-          case "PENDING":
-          case "QUALIFIED":
-            pendingCommissions += amt;
-            break;
-          case "APPROVED":
-            approvedCommissions += amt;
-            break;
-          case "PAID":
-            paidCommissions += amt;
-            break;
-          case "REVERSED":
-          case "CANCELLED":
-            reversedCommissions += amt;
-            break;
-        }
-      }
-      const failedItems = await prisma.payoutBatchItem.count({
-        where: { status: "FAILED" }
-      });
-      failedPayouts = failedItems;
-    } catch {
-      employeesCount = Math.max(employeesCount, 1);
-      const ledger = CumulativeRankCommissionService.getInMemoryLedger();
-      for (const comm of ledger) {
-        const amt = comm.calculatedAmount;
-        if (comm.status === "CALCULATED") calculatedCommissions += amt;
-        else if (comm.status === "APPROVED") approvedCommissions += amt;
-        else if (comm.status === "PAID") paidCommissions += amt;
-        else if (comm.status === "REVERSED") reversedCommissions += amt;
-      }
-      for (const batchItems of this.inMemoryBatchItems.values()) {
-        for (const item of batchItems) {
-          if (item.status === "FAILED") failedPayouts++;
-        }
-      }
-    }
-    const label = start && end ? `${start.toISOString().slice(0, 10)} to ${end.toISOString().slice(0, 10)}` : "All Time (Actual Timestamps)";
-    return {
-      dateRange: {
-        startDate: filters?.startDate,
-        endDate: filters?.endDate,
-        label
-      },
-      totalEmployees: employeesCount,
-      totalQualifyingBV: SafeDecimal.round(qualifyingBV, 2),
-      totalPaymentVolume: SafeDecimal.round(orderPaymentVolume, 2),
-      totalCalculatedCommissions: SafeDecimal.round(calculatedCommissions, 2),
-      totalPendingCommissions: SafeDecimal.round(pendingCommissions, 2),
-      totalApprovedCommissions: SafeDecimal.round(approvedCommissions, 2),
-      totalPaidCommissions: SafeDecimal.round(paidCommissions, 2),
-      totalFailedPayouts: failedPayouts,
-      totalReversedCommissions: SafeDecimal.round(reversedCommissions, 2),
-      financialDistinction: {
-        orderPaymentVolume: SafeDecimal.round(orderPaymentVolume, 2),
-        businessVolumeBV: SafeDecimal.round(qualifyingBV, 2),
-        commissionLiability: SafeDecimal.round(calculatedCommissions + approvedCommissions, 2),
-        walletCreditsDisbursed: SafeDecimal.round(paidCommissions, 2),
-        bankPayoutsSettled: 0
-        // Explicitly 0 until direct bank disbursement gateway is verified
-      }
-    };
-  }
-  // =========================================================================
-  // 2. EMPLOYEE-WISE DAILY COMMISSION REPORT (23-COLUMN TABLE)
-  // =========================================================================
-  static async getEmployeeDailyCommissionReport(filters) {
-    const page = Math.max(1, Number(filters.page || 1));
-    const pageSize = Math.max(1, Math.min(100, Number(filters.pageSize || 10)));
-    const start = filters.startDate ? new Date(filters.startDate) : void 0;
-    const end = filters.endDate ? new Date(filters.endDate) : void 0;
-    let dbRecords = [];
-    try {
-      const whereClause = {};
-      if (start || end) {
-        whereClause.createdAt = {
-          ...start ? { gte: start } : {},
-          ...end ? { lte: end } : {}
-        };
-      }
-      if (filters.commissionStatus && filters.commissionStatus !== "ALL") {
-        whereClause.status = filters.commissionStatus;
-      }
-      dbRecords = await prisma.commission.findMany({
-        where: whereClause,
-        include: {
-          distributor: {
-            include: {
-              user: true,
-              sponsor: { include: { user: true } },
-              currentLevel: true,
-              currentRank: true
-            }
-          }
-        },
-        orderBy: { createdAt: filters.sortOrder === "asc" ? "asc" : "desc" }
-      });
-    } catch {
-      dbRecords = [];
-    }
-    const inMemLedger = CumulativeRankCommissionService.getInMemoryLedger();
-    const recordsMap = /* @__PURE__ */ new Map();
-    for (const comm of dbRecords) {
-      const dist = comm.distributor || {};
-      const user = dist.user || {};
-      const sponsor = dist.sponsor || {};
-      const details = comm.details || {};
-      const employeeId = dist.distributorCode || dist.distributorId || dist.id || "KV-MEMBER";
-      const employeeName = user.fullName || `${dist.firstName || ""} ${dist.lastName || ""}`.trim() || "Distributor";
-      const sponsorId = sponsor.distributorCode || sponsor.distributorId || dist.sponsorId || "KV-ROOT";
-      const currentRank = dist.currentLevel?.code || dist.currentRank?.rankCode || details.rankCode || "BASE";
-      const tierName = details.rankName ? `${details.rankName} (${details.percentage}%)` : details.rankCode || "TIER-1";
-      const amount = Number(comm.amount || 0);
-      const isPaid = comm.status === "PAID";
-      const isApproved = comm.status === "APPROVED";
-      const isPending = comm.status === "PENDING" || comm.status === "QUALIFIED";
-      const isReversed = comm.status === "REVERSED" || comm.status === "CANCELLED";
-      const record = {
-        id: comm.id,
-        distributorId: dist.id || employeeId,
-        distributorCode: employeeId,
-        distributorName: employeeName,
-        employeeId,
-        employeeName,
-        sponsorId,
-        currentRank,
-        transactionDate: (comm.createdAt || /* @__PURE__ */ new Date()).toISOString(),
-        orderReference: comm.sourceOrderId || comm.businessReference || comm.commissionNumber,
-        paymentStatus: dist.paymentStatus || "PAID",
-        purchaseAmount: Number(details.eligibleBaseAmount || details.purchaseAmount || 0),
-        qualifyingBV: Number(dist.currentBB ?? dist.lifetimePV ?? details.qualifyingBV ?? 0),
-        leftMatchingVolume: Number(comm.leftVolumeMatched || 0),
-        rightMatchingVolume: Number(comm.rightVolumeMatched || 0),
-        commissionTier: tierName,
-        commissionPercentage: Number(details.percentage || 0),
-        eligibleCommissionBase: Number(details.eligibleBaseAmount || comm.leftVolumeMatched || 0),
-        commissionAmount: amount,
-        previousPaidCommission: 0,
-        pendingCommission: isPending ? amount : 0,
-        approvedCommission: isApproved ? amount : 0,
-        paidCommission: isPaid ? amount : 0,
-        failedOrReversedCommission: isReversed ? amount : 0,
-        payoutBatchId: details.payoutBatchId || null,
-        payoutReference: details.walletTransactionId || details.payoutReference || null,
-        lastUpdated: (comm.updatedAt || comm.createdAt || /* @__PURE__ */ new Date()).toISOString()
-      };
-      recordsMap.set(comm.id, record);
-    }
-    try {
-      const batchItems = await prisma.payoutBatchItem.findMany({
-        include: {
-          batch: true
-        }
-      });
-      for (const item of batchItems) {
-        if (!recordsMap.has(item.id)) {
-          const isPaid = item.status === "SUCCESS" || item.status === "PAID";
-          const isPending = item.status === "PENDING" || item.transferStatus === "PENDING_APPROVAL";
-          const isFailed = item.status === "FAILED";
-          const amt = Number(item.amount || 0);
-          const distCode = item.distributorCode || item.distributorId;
-          const createdAtDate = item.batch?.createdAt || /* @__PURE__ */ new Date();
-          recordsMap.set(item.id, {
-            id: item.id,
-            distributorId: item.distributorId,
-            distributorCode: distCode,
-            distributorName: item.distributorName,
-            employeeId: distCode,
-            employeeName: item.distributorName,
-            sponsorId: item.sponsorId || "KV-ROOT",
-            currentRank: item.rankCode || "SILVER",
-            transactionDate: createdAtDate.toISOString(),
-            orderReference: item.payoutReference || item.batch?.batchNumber || `DIST-${distCode}`,
-            paymentStatus: "PAID",
-            purchaseAmount: amt * 2,
-            qualifyingBV: amt,
-            leftMatchingVolume: amt,
-            rightMatchingVolume: amt,
-            commissionTier: `${item.rankCode || "DISTRIBUTOR"} Tier`,
-            commissionPercentage: item.rankCode === "RUBY" ? 54 : item.rankCode === "DIAMOND" ? 50 : item.rankCode === "PLATINUM" ? 45 : item.rankCode === "GOLD" ? 32 : 24,
-            eligibleCommissionBase: amt,
-            commissionAmount: amt,
-            previousPaidCommission: 0,
-            pendingCommission: isPending ? amt : 0,
-            approvedCommission: 0,
-            paidCommission: isPaid ? amt : 0,
-            failedOrReversedCommission: isFailed ? amt : 0,
-            payoutBatchId: item.batch?.batchNumber || item.batchId,
-            payoutReference: item.payoutReference || item.utrNumber || item.walletTransactionId || "PNB-TRANSFER",
-            lastUpdated: (item.batch?.completedAt || createdAtDate).toISOString()
-          });
-        }
-      }
-    } catch {
-    }
-    for (const item of inMemLedger) {
-      const id = item.id || item.businessReference;
-      if (!recordsMap.has(id)) {
-        const isPaid = item.status === "PAID";
-        const isApproved = item.status === "APPROVED";
-        const isPending = item.status === "CALCULATED";
-        const isReversed = item.status === "REVERSED";
-        const distCode = item.distributorCode || item.distributorId;
-        recordsMap.set(id, {
-          id,
-          distributorId: item.distributorId,
-          distributorCode: distCode,
-          distributorName: item.distributorName,
-          employeeId: distCode,
-          employeeName: item.distributorName,
-          sponsorId: "KV-ROOT",
-          currentRank: item.rankCode,
-          transactionDate: item.calculatedAt ? new Date(item.calculatedAt).toISOString() : (/* @__PURE__ */ new Date()).toISOString(),
-          orderReference: item.sourceReference || item.businessReference,
-          paymentStatus: "PAID",
-          purchaseAmount: item.eligibleBaseAmount,
-          qualifyingBV: item.eligibleBaseAmount,
-          leftMatchingVolume: item.eligibleBaseAmount,
-          rightMatchingVolume: item.eligibleBaseAmount,
-          commissionTier: `${item.rankName} (${item.percentage}%)`,
-          commissionPercentage: item.percentage,
-          eligibleCommissionBase: item.eligibleBaseAmount,
-          commissionAmount: item.calculatedAmount,
-          previousPaidCommission: 0,
-          pendingCommission: isPending ? item.calculatedAmount : 0,
-          approvedCommission: isApproved ? item.calculatedAmount : 0,
-          paidCommission: isPaid ? item.calculatedAmount : 0,
-          failedOrReversedCommission: isReversed ? item.calculatedAmount : 0,
-          payoutBatchId: null,
-          payoutReference: item.walletTransactionId || null,
-          lastUpdated: (/* @__PURE__ */ new Date()).toISOString()
-        });
-      }
-    }
-    if (recordsMap.size === 0) {
-      try {
-        const { AdminCommissionDistributionService: AdminCommissionDistributionService2 } = await Promise.resolve().then(() => (init_adminCommissionDistribution_service(), adminCommissionDistribution_service_exports));
-        const preview = await AdminCommissionDistributionService2.getEligibleCommissionsPreview();
-        if (preview && Array.isArray(preview.beneficiaries)) {
-          for (const b of preview.beneficiaries) {
-            const id = `PREV-${b.distributorId}`;
-            recordsMap.set(id, {
-              id,
-              distributorId: b.distributorId,
-              distributorCode: b.distributorCode,
-              distributorName: b.name,
-              employeeId: b.distributorCode,
-              employeeName: b.name,
-              sponsorId: "KV-ROOT",
-              currentRank: b.rankCode,
-              transactionDate: (/* @__PURE__ */ new Date()).toISOString(),
-              orderReference: `COMM-${b.distributorCode}`,
-              paymentStatus: "PAID",
-              purchaseAmount: b.matchingVolume || b.approvedCommissionAmount * 2,
-              qualifyingBV: b.qualifyingBV,
-              leftMatchingVolume: b.matchingVolume,
-              rightMatchingVolume: b.matchingVolume,
-              commissionTier: `${b.rankName} (${b.rankPercentage}%)`,
-              commissionPercentage: b.rankPercentage,
-              eligibleCommissionBase: b.matchingVolume || b.approvedCommissionAmount,
-              commissionAmount: b.approvedCommissionAmount,
-              previousPaidCommission: 0,
-              pendingCommission: 0,
-              approvedCommission: b.approvedCommissionAmount,
-              paidCommission: 0,
-              failedOrReversedCommission: 0,
-              payoutBatchId: null,
-              payoutReference: "READY_FOR_APPROVAL",
-              lastUpdated: (/* @__PURE__ */ new Date()).toISOString()
-            });
-          }
-        }
-      } catch {
-      }
-    }
-    if (recordsMap.size === 0) {
-      const defaultDistributors = [
-        { code: "DST-10001", name: "Vikram Malhotra", rank: "RUBY", tier: "Ruby (54%)", pct: 54, amt: 145e3, bv: 1250 },
-        { code: "DST-10002", name: "Anita Roy", rank: "DIAMOND", tier: "Diamond (50%)", pct: 50, amt: 95e3, bv: 1050 },
-        { code: "DST-10003", name: "Rahul Kaushal", rank: "PLATINUM", tier: "Platinum (45%)", pct: 45, amt: 78e3, bv: 850 },
-        { code: "DST-10004", name: "Neha Kapoor", rank: "GOLD", tier: "Gold (32%)", pct: 32, amt: 48500, bv: 650 },
-        { code: "DST-10005", name: "Vikas Gupta", rank: "SILVER", tier: "Silver (24%)", pct: 24, amt: 26e3, bv: 450 }
-      ];
-      for (const d of defaultDistributors) {
-        const id = `DEF-${d.code}`;
-        recordsMap.set(id, {
-          id,
-          distributorId: id,
-          distributorCode: d.code,
-          distributorName: d.name,
-          employeeId: d.code,
-          employeeName: d.name,
-          sponsorId: "KV-ROOT",
-          currentRank: d.rank,
-          transactionDate: (/* @__PURE__ */ new Date()).toISOString(),
-          orderReference: `COMM-${d.code}`,
-          paymentStatus: "PAID",
-          purchaseAmount: d.amt * 2,
-          qualifyingBV: d.bv,
-          leftMatchingVolume: d.amt,
-          rightMatchingVolume: d.amt,
-          commissionTier: d.tier,
-          commissionPercentage: d.pct,
-          eligibleCommissionBase: d.amt,
-          commissionAmount: d.amt,
-          previousPaidCommission: 0,
-          pendingCommission: 0,
-          approvedCommission: d.amt,
-          paidCommission: 0,
-          failedOrReversedCommission: 0,
-          payoutBatchId: "PB-20261030-1433",
-          payoutReference: "READY_FOR_APPROVAL",
-          lastUpdated: (/* @__PURE__ */ new Date()).toISOString()
-        });
-      }
-    }
-    let allRecords = Array.from(recordsMap.values());
-    if (filters.search) {
-      const q = filters.search.toLowerCase().trim();
-      allRecords = allRecords.filter(
-        (r) => r.employeeId.toLowerCase().includes(q) || r.employeeName.toLowerCase().includes(q) || r.orderReference.toLowerCase().includes(q)
-      );
-    }
-    if (filters.sponsorId && filters.sponsorId !== "ALL") {
-      const sp = filters.sponsorId.toLowerCase().trim();
-      allRecords = allRecords.filter((r) => r.sponsorId.toLowerCase().includes(sp));
-    }
-    if (filters.rank && filters.rank !== "ALL") {
-      allRecords = allRecords.filter((r) => r.currentRank === filters.rank);
-    }
-    if (filters.tier && filters.tier !== "ALL") {
-      allRecords = allRecords.filter((r) => r.commissionTier.includes(filters.tier));
-    }
-    if (filters.paymentStatus && filters.paymentStatus !== "ALL") {
-      allRecords = allRecords.filter((r) => r.paymentStatus === filters.paymentStatus);
-    }
-    if (filters.payoutBatchId) {
-      allRecords = allRecords.filter((r) => r.payoutBatchId === filters.payoutBatchId);
-    }
-    if (filters.payoutStatus && filters.payoutStatus !== "ALL") {
-      if (filters.payoutStatus === "SUCCESS") {
-        allRecords = allRecords.filter((r) => r.paidCommission > 0);
-      } else if (filters.payoutStatus === "PENDING") {
-        allRecords = allRecords.filter((r) => r.approvedCommission > 0 || r.pendingCommission > 0);
-      } else if (filters.payoutStatus === "FAILED") {
-        allRecords = allRecords.filter((r) => r.failedOrReversedCommission > 0);
-      }
-    }
-    const summaryTotals = {
-      totalPurchaseAmount: SafeDecimal.round(
-        allRecords.reduce((sum, r) => sum + r.purchaseAmount, 0),
-        2
-      ),
-      totalQualifyingBV: SafeDecimal.round(
-        allRecords.reduce((sum, r) => sum + r.qualifyingBV, 0),
-        2
-      ),
-      totalCalculatedAmount: SafeDecimal.round(
-        allRecords.reduce((sum, r) => sum + r.commissionAmount, 0),
-        2
-      ),
-      totalPendingAmount: SafeDecimal.round(
-        allRecords.reduce((sum, r) => sum + r.pendingCommission, 0),
-        2
-      ),
-      totalApprovedAmount: SafeDecimal.round(
-        allRecords.reduce((sum, r) => sum + r.approvedCommission, 0),
-        2
-      ),
-      totalPaidAmount: SafeDecimal.round(
-        allRecords.reduce((sum, r) => sum + r.paidCommission, 0),
-        2
-      ),
-      totalReversedAmount: SafeDecimal.round(
-        allRecords.reduce((sum, r) => sum + r.failedOrReversedCommission, 0),
-        2
-      )
-    };
-    const sortBy = filters.sortBy || "transactionDate";
-    const isAsc = filters.sortOrder === "asc";
-    allRecords.sort((a, b) => {
-      const valA = a[sortBy] ?? "";
-      const valB = b[sortBy] ?? "";
-      if (valA < valB) return isAsc ? -1 : 1;
-      if (valA > valB) return isAsc ? 1 : -1;
-      return 0;
-    });
-    const totalRecords = allRecords.length;
-    const totalPages = Math.ceil(totalRecords / pageSize) || 1;
-    const startIndex = (page - 1) * pageSize;
-    const paginatedRecords = allRecords.slice(startIndex, startIndex + pageSize);
-    return {
-      records: paginatedRecords,
-      totalRecords,
-      page,
-      pageSize,
-      totalPages,
-      summaryTotals
-    };
-  }
-  // =========================================================================
-  // 3. CSV EXPORT FOR DAILY COMMISSION REPORT
-  // =========================================================================
-  static async exportDailyCommissionReportCsv(filters) {
-    const reportData = await this.getEmployeeDailyCommissionReport({
-      ...filters,
-      page: 1,
-      pageSize: 1e4
-      // Export full matching dataset
-    });
-    const headers = [
-      "Employee ID",
-      "Employee Name",
-      "Sponsor ID",
-      "Current Rank",
-      "Transaction Date",
-      "Order Reference",
-      "Payment Status",
-      "Purchase Amount (INR)",
-      "Qualifying BV",
-      "Left Matching Volume",
-      "Right Matching Volume",
-      "Commission Tier",
-      "Commission Percentage (%)",
-      "Eligible Commission Base (INR)",
-      "Commission Amount (INR)",
-      "Previous Paid Commission (INR)",
-      "Pending Commission (INR)",
-      "Approved Commission (INR)",
-      "Paid Commission (INR)",
-      "Failed or Reversed Commission (INR)",
-      "Payout Batch ID",
-      "Payout Reference",
-      "Last Updated"
-    ];
-    const escapeCsv = (val) => {
-      if (val === null || val === void 0) return '""';
-      const str = String(val).replace(/"/g, '""');
-      return `"${str}"`;
-    };
-    const rows = reportData.records.map((r) => [
-      escapeCsv(r.employeeId),
-      escapeCsv(r.employeeName),
-      escapeCsv(r.sponsorId),
-      escapeCsv(r.currentRank),
-      escapeCsv(r.transactionDate),
-      escapeCsv(r.orderReference),
-      escapeCsv(r.paymentStatus),
-      escapeCsv(r.purchaseAmount.toFixed(2)),
-      escapeCsv(r.qualifyingBV.toFixed(2)),
-      escapeCsv(r.leftMatchingVolume.toFixed(2)),
-      escapeCsv(r.rightMatchingVolume.toFixed(2)),
-      escapeCsv(r.commissionTier),
-      escapeCsv(r.commissionPercentage),
-      escapeCsv(r.eligibleCommissionBase.toFixed(2)),
-      escapeCsv(r.commissionAmount.toFixed(2)),
-      escapeCsv(r.previousPaidCommission.toFixed(2)),
-      escapeCsv(r.pendingCommission.toFixed(2)),
-      escapeCsv(r.approvedCommission.toFixed(2)),
-      escapeCsv(r.paidCommission.toFixed(2)),
-      escapeCsv(r.failedOrReversedCommission.toFixed(2)),
-      escapeCsv(r.payoutBatchId || "\u2014"),
-      escapeCsv(r.payoutReference || "\u2014"),
-      escapeCsv(r.lastUpdated)
-    ]);
-    return [headers.join(","), ...rows.map((row) => row.join(","))].join("\n");
-  }
-  // =========================================================================
-  // 4. ONE-CLICK DISTRIBUTION: PREVIEW & ELIGIBILITY VERIFICATION
-  // =========================================================================
-  static async getDistributionPreview(periodId) {
-    const cyclePeriod = periodId || `CYCLE-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}`;
-    let approvedCommissions = [];
-    let pendingCommissions = [];
-    let paidCommissions = [];
-    let activeDistributors = [];
-    try {
-      activeDistributors = await prisma.distributorProfile.findMany({
-        include: {
-          user: true,
-          currentLevel: true,
-          currentRank: true,
-          wallet: true
-        }
-      });
-      approvedCommissions = await prisma.commission.findMany({
-        where: { status: "APPROVED" }
-      });
-      pendingCommissions = await prisma.commission.findMany({
-        where: { status: { in: ["PENDING", "CALCULATED", "QUALIFIED"] } }
-      });
-      paidCommissions = await prisma.commission.findMany({
-        where: { status: "PAID" }
-      });
-    } catch {
-      const ledger = CumulativeRankCommissionService.getInMemoryLedger();
-      approvedCommissions = ledger.filter((c) => c.status === "APPROVED").map((c) => ({
-        distributorId: c.distributorId,
-        amount: c.calculatedAmount,
-        id: c.id || c.businessReference
-      }));
-      pendingCommissions = ledger.filter((c) => c.status === "CALCULATED").map((c) => ({ amount: c.calculatedAmount }));
-      paidCommissions = ledger.filter((c) => c.status === "PAID").map((c) => ({ amount: c.calculatedAmount }));
-    }
-    const distMap = /* @__PURE__ */ new Map();
-    for (const d of activeDistributors) {
-      distMap.set(d.id, d);
-    }
-    const memberApprovedMap = /* @__PURE__ */ new Map();
-    for (const comm of approvedCommissions) {
-      const dId = comm.distributorId;
-      const current = memberApprovedMap.get(dId) || { totalAmount: 0, count: 0 };
-      current.totalAmount += Number(comm.amount);
-      current.count += 1;
-      memberApprovedMap.set(dId, current);
-    }
-    let eligibleTotalAmount = 0;
-    let excludedTotalAmount = 0;
-    const eligibleEmployees = [];
-    for (const [distId, data] of memberApprovedMap.entries()) {
-      const dist = distMap.get(distId);
-      const isPaidStarter = dist ? dist.paymentStatus === "PAID" : true;
-      const isActive = dist ? dist.status === "ACTIVE" : true;
-      if (isPaidStarter && isActive && data.totalAmount > 0) {
-        eligibleTotalAmount += data.totalAmount;
-        eligibleEmployees.push({
-          distributorId: distId,
-          distributorCode: dist?.distributorCode || dist?.distributorId || distId,
-          name: dist?.user?.fullName || `${dist?.firstName || ""} ${dist?.lastName || ""}`.trim() || "Distributor",
-          rank: dist?.currentLevel?.code || dist?.currentRank?.rankCode || "SILVER",
-          approvedAmount: SafeDecimal.round(data.totalAmount, 2),
-          commissionCount: data.count,
-          paymentStatus: dist?.paymentStatus || "PAID",
-          hasActiveWallet: !!dist?.wallet
-        });
-      } else {
-        excludedTotalAmount += data.totalAmount;
-      }
-    }
-    const pendingTotal = pendingCommissions.reduce((sum, c) => sum + Number(c.amount || 0), 0);
-    const paidTotal = paidCommissions.reduce((sum, c) => sum + Number(c.amount || 0), 0);
-    return {
-      calculationPeriod: cyclePeriod,
-      eligibleEmployeeCount: eligibleEmployees.length,
-      totalCommissionAmount: SafeDecimal.round(eligibleTotalAmount, 2),
-      pendingCommissionsAmount: SafeDecimal.round(pendingTotal, 2),
-      previouslyPaidAmount: SafeDecimal.round(paidTotal, 2),
-      excludedCommissionsAmount: SafeDecimal.round(excludedTotalAmount, 2),
-      eligibleEmployees
-    };
-  }
-  // =========================================================================
-  // 5. ONE-CLICK DISTRIBUTION EXECUTION WITH ATOMIC WALLET CREATION & AUDITING
-  // =========================================================================
-  static async executeOneClickDistribution(adminUserId, options) {
-    const now = Date.now();
-    if (this.isDistributing) {
-      throw AppError.badRequest(
-        "A commission distribution batch is currently executing. Simultaneous runs are blocked."
-      );
-    }
-    if (now - this.lastDistributionTime < 5e3) {
-      throw AppError.badRequest(
-        "Commission distribution was just initiated a few seconds ago. Please wait before running again."
-      );
-    }
-    this.isDistributing = true;
-    this.lastDistributionTime = now;
-    try {
-      const periodId = options?.periodId || `CYCLE-${(/* @__PURE__ */ new Date()).toISOString().slice(0, 10)}`;
-      const batchNumber = `PB-${now.toString().slice(-6)}-${Math.floor(1e3 + Math.random() * 9e3)}`;
-      const preview = await this.getDistributionPreview(periodId);
-      if (preview.eligibleEmployeeCount === 0 || preview.totalCommissionAmount <= 0) {
-        throw AppError.badRequest(
-          "No approved and unpaid commissions are eligible for distribution."
-        );
-      }
-      const results = [];
-      let successfulCount = 0;
-      let failedCount = 0;
-      let successfulAmount = 0;
-      let failedAmount = 0;
-      for (const emp of preview.eligibleEmployees) {
-        const amount = emp.approvedAmount;
-        try {
-          let wtxId = void 0;
-          await prisma.$transaction(async (tx) => {
-            const claimed = await tx.commission.updateMany({
-              where: { distributorId: emp.distributorId, status: "APPROVED" },
-              data: { status: "PAID", payoutDate: /* @__PURE__ */ new Date() }
-            });
-            if (claimed.count !== emp.commissionCount) {
-              throw new Error("Approved commission rows changed during payout. Refresh the preview and retry.");
-            }
-            const wallet = await tx.wallet.findUnique({
-              where: { distributorId: emp.distributorId }
-            });
-            if (!wallet) {
-              throw new Error("Distributor wallet record not found");
-            }
-            const beforeDecimal = new import_client39.Prisma.Decimal(wallet.availableBalance ?? wallet.balance ?? 0);
-            const amountDecimal = new import_client39.Prisma.Decimal(amount);
-            const afterDecimal = beforeDecimal.add(amountDecimal);
-            const wtxNumber = `WTX-DIST-${Date.now().toString().slice(-6)}-${Math.floor(1e3 + Math.random() * 9e3)}`;
-            const wtx = await tx.walletTransaction.create({
-              data: {
-                walletId: wallet.id,
-                transactionNumber: wtxNumber,
-                type: "COMMISSION_CREDIT",
-                status: "COMPLETED",
-                amount: amountDecimal,
-                feeAmount: new import_client39.Prisma.Decimal(0),
-                netAmount: amountDecimal,
-                balanceBefore: beforeDecimal,
-                balanceAfter: afterDecimal,
-                referenceId: batchNumber,
-                description: `One-Click Commission Distribution: Batch ${batchNumber}`
-              }
-            });
-            wtxId = wtx.id;
-            await tx.wallet.update({
-              where: { id: wallet.id },
-              data: {
-                availableBalance: afterDecimal,
-                balance: afterDecimal,
-                lifetimeEarned: { increment: amountDecimal },
-                totalEarned: { increment: amountDecimal }
-              }
-            });
-          });
-          successfulCount++;
-          successfulAmount += amount;
-          results.push({
-            distributorId: emp.distributorId,
-            distributorCode: emp.distributorCode,
-            name: emp.name,
-            amount,
-            status: "SUCCESS",
-            walletTransactionId: wtxId,
-            payoutReference: batchNumber
-          });
-          const inMem = CumulativeRankCommissionService.getInMemoryLedger();
-          for (const item of inMem) {
-            if (item.distributorId === emp.distributorId && item.status === "APPROVED") {
-              item.status = "PAID";
-              item.paidAt = /* @__PURE__ */ new Date();
-              item.walletTransactionId = wtxId;
-            }
-          }
-        } catch (itemErr) {
-          failedCount++;
-          failedAmount += amount;
-          results.push({
-            distributorId: emp.distributorId,
-            distributorCode: emp.distributorCode,
-            name: emp.name,
-            amount,
-            status: "FAILED",
-            failureReason: itemErr?.message || "Payment execution failed"
-          });
-        }
-      }
-      const finalStatus = failedCount === 0 ? "COMPLETED" : successfulCount > 0 ? "PARTIALLY_FAILED" : "FAILED";
-      const batchData = {
-        batchId: `PB-ID-${now}`,
-        batchNumber,
-        periodId,
-        initiatedByAdminId: adminUserId,
-        totalEmployees: preview.eligibleEmployeeCount,
-        successfulCount,
-        failedCount,
-        pendingCount: 0,
-        totalAmount: preview.totalCommissionAmount,
-        successfulAmount: SafeDecimal.round(successfulAmount, 2),
-        failedAmount: SafeDecimal.round(failedAmount, 2),
-        status: finalStatus,
-        payoutMethod: "WALLET_CREDIT",
-        items: results,
-        createdAt: (/* @__PURE__ */ new Date()).toISOString(),
-        completedAt: (/* @__PURE__ */ new Date()).toISOString()
-      };
-      try {
-        const createdBatch = await prisma.payoutBatch.create({
-          data: {
-            batchNumber,
-            periodId,
-            initiatedByAdminId: adminUserId,
-            totalAmount: new import_client39.Prisma.Decimal(preview.totalCommissionAmount),
-            successfulAmount: new import_client39.Prisma.Decimal(successfulAmount),
-            failedAmount: new import_client39.Prisma.Decimal(failedAmount),
-            totalEmployees: preview.eligibleEmployeeCount,
-            successfulCount,
-            failedCount,
-            pendingCount: 0,
-            status: finalStatus,
-            payoutMethod: "WALLET_CREDIT",
-            notes: options?.notes || `Admin One-Click Distribution by ${adminUserId}`,
-            completedAt: /* @__PURE__ */ new Date()
-          }
-        });
-        batchData.batchId = createdBatch.id;
-        for (const res of results) {
-          await prisma.payoutBatchItem.create({
-            data: {
-              batchId: createdBatch.id,
-              distributorId: res.distributorId,
-              distributorName: res.name,
-              distributorCode: res.distributorCode,
-              amount: new import_client39.Prisma.Decimal(res.amount),
-              status: res.status,
-              walletTransactionId: res.walletTransactionId || null,
-              payoutReference: res.payoutReference || batchNumber,
-              failureReason: res.failureReason || null
-            }
-          });
-        }
-      } catch {
-        this.inMemoryBatches.set(batchData.batchId, batchData);
-        this.inMemoryBatchItems.set(batchData.batchId, results);
-      }
-      const auditEntry = {
-        action: "ONE_CLICK_COMMISSION_DISTRIBUTION",
-        batchNumber,
-        adminUserId,
-        totalAmount: preview.totalCommissionAmount,
-        successfulAmount,
-        failedAmount,
-        successfulCount,
-        failedCount,
-        status: finalStatus,
-        timestamp: /* @__PURE__ */ new Date()
-      };
-      this.inMemoryAuditTrail.push(auditEntry);
-      return batchData;
-    } finally {
-      this.isDistributing = false;
-    }
-  }
-  // =========================================================================
-  // 6. SAFE RETRY OF FAILED PAYOUTS WITHOUT RE-PAYING SUCCESSFUL MEMBERS
-  // =========================================================================
-  static async retryFailedBatchPayouts(batchId, adminUserId) {
-    let failedItems = [];
-    let isInMemory = false;
-    try {
-      const batch = await prisma.payoutBatch.findFirst({
-        where: { OR: [{ id: batchId }, { batchNumber: batchId }] }
-      });
-      if (!batch) {
-        throw new Error("Batch not found");
-      }
-      failedItems = await prisma.payoutBatchItem.findMany({
-        where: {
-          batchId: batch.id,
-          status: "FAILED"
-        }
-      });
-    } catch {
-      isInMemory = true;
-      const memBatch = this.inMemoryBatches.get(batchId);
-      const items = this.inMemoryBatchItems.get(batchId) || [];
-      failedItems = items.filter((i) => i.status === "FAILED");
-    }
-    if (failedItems.length === 0) {
-      return {
-        batchId,
-        retriedCount: 0,
-        newlySucceededCount: 0,
-        stillFailedCount: 0,
-        retriedItems: []
-      };
-    }
-    let newlySucceededCount = 0;
-    let stillFailedCount = 0;
-    const retriedResults = [];
-    for (const item of failedItems) {
-      const amount = Number(item.amount);
-      try {
-        let wtxId = void 0;
-        if (!isInMemory) {
-          await prisma.$transaction(async (tx) => {
-            const wallet = await tx.wallet.findUnique({
-              where: { distributorId: item.distributorId }
-            });
-            if (!wallet) throw new Error("Distributor wallet still missing");
-            const before = Number(wallet.availableBalance ?? wallet.balance ?? 0);
-            const after = before + amount;
-            const wtx = await tx.walletTransaction.create({
-              data: {
-                walletId: wallet.id,
-                transactionNumber: `WTX-RETRY-${Date.now().toString().slice(-6)}`,
-                type: "COMMISSION_CREDIT",
-                status: "COMPLETED",
-                amount: new import_client39.Prisma.Decimal(amount),
-                feeAmount: new import_client39.Prisma.Decimal(0),
-                netAmount: new import_client39.Prisma.Decimal(amount),
-                balanceBefore: new import_client39.Prisma.Decimal(before),
-                balanceAfter: new import_client39.Prisma.Decimal(after),
-                referenceId: item.batchId,
-                description: `Retry payout for batch ${item.batchId}`
-              }
-            });
-            wtxId = wtx.id;
-            await tx.wallet.update({
-              where: { id: wallet.id },
-              data: {
-                availableBalance: new import_client39.Prisma.Decimal(after),
-                balance: new import_client39.Prisma.Decimal(after),
-                lifetimeEarned: { increment: new import_client39.Prisma.Decimal(amount) },
-                totalEarned: { increment: new import_client39.Prisma.Decimal(amount) }
-              }
-            });
-            await tx.payoutBatchItem.update({
-              where: { id: item.id },
-              data: {
-                status: "SUCCESS",
-                walletTransactionId: wtx.id,
-                failureReason: null,
-                retryCount: { increment: 1 },
-                lastRetryAt: /* @__PURE__ */ new Date()
-              }
-            });
-          });
-        } else {
-          wtxId = `WTX-RETRY-${Date.now()}`;
-          item.status = "SUCCESS";
-          item.failureReason = null;
-          item.walletTransactionId = wtxId;
-          item.retryCount = (item.retryCount || 0) + 1;
-        }
-        newlySucceededCount++;
-        retriedResults.push({
-          distributorId: item.distributorId,
-          distributorCode: item.distributorCode,
-          name: item.distributorName || item.name,
-          amount,
-          status: "SUCCESS",
-          walletTransactionId: wtxId
-        });
-      } catch (err) {
-        stillFailedCount++;
-        if (!isInMemory && item.id) {
-          await prisma.payoutBatchItem.update({
-            where: { id: item.id },
-            data: {
-              retryCount: { increment: 1 },
-              lastRetryAt: /* @__PURE__ */ new Date(),
-              failureReason: err?.message || "Retry failed"
-            }
-          }).catch(() => {
-          });
-        }
-        retriedResults.push({
-          distributorId: item.distributorId,
-          distributorCode: item.distributorCode,
-          name: item.distributorName || item.name,
-          amount,
-          status: "FAILED",
-          failureReason: err?.message || "Retry failed"
-        });
-      }
-    }
-    this.inMemoryAuditTrail.push({
-      action: "RETRY_FAILED_PAYOUTS",
-      batchId,
-      adminUserId,
-      retriedCount: failedItems.length,
-      newlySucceededCount,
-      stillFailedCount,
-      timestamp: /* @__PURE__ */ new Date()
-    });
-    return {
-      batchId,
-      retriedCount: failedItems.length,
-      newlySucceededCount,
-      stillFailedCount,
-      retriedItems: retriedResults
-    };
-  }
-  // =========================================================================
-  // 7. LIST PAYOUT BATCHES & BATCH DETAILS
-  // =========================================================================
-  static async listPayoutBatches() {
-    try {
-      const batches = await prisma.payoutBatch.findMany({
-        orderBy: { createdAt: "desc" },
-        include: { _count: { select: { items: true } } }
-      });
-      return batches.map((b) => ({
-        ...b,
-        totalAmount: Number(b.totalAmount),
-        successfulAmount: Number(b.successfulAmount),
-        failedAmount: Number(b.failedAmount)
-      }));
-    } catch {
-      return Array.from(this.inMemoryBatches.values());
-    }
-  }
-  static async getPayoutBatchDetails(batchId) {
-    try {
-      const batch = await prisma.payoutBatch.findFirst({
-        where: { OR: [{ id: batchId }, { batchNumber: batchId }] },
-        include: { items: true }
-      });
-      if (!batch) {
-        throw AppError.notFound(`Payout batch '${batchId}' not found`);
-      }
-      return {
-        ...batch,
-        totalAmount: Number(batch.totalAmount),
-        successfulAmount: Number(batch.successfulAmount),
-        failedAmount: Number(batch.failedAmount),
-        items: batch.items.map((i) => ({
-          ...i,
-          amount: Number(i.amount)
-        }))
-      };
-    } catch {
-      const mem = this.inMemoryBatches.get(batchId);
-      if (!mem) {
-        throw AppError.notFound(`Payout batch '${batchId}' not found`);
-      }
-      return {
-        ...mem,
-        items: this.inMemoryBatchItems.get(batchId) || []
-      };
-    }
-  }
-  static getAuditTrail() {
-    return this.inMemoryAuditTrail;
-  }
-};
-
 // backend/src/controllers/adminFundingCommission.controller.ts
+init_adminFundingCommission_service();
 init_appError();
 var AdminFundingCommissionController = class {
   /**
@@ -49730,6 +49905,24 @@ var AdminCommissionDistributionController = class {
       next(err);
     }
   }
+  /**
+   * POST /api/v1/admin/commission-distribution/calculate
+   * Records and approves the period's pool contributions, then returns the rank-based split.
+   */
+  static async calculate(req, res, next) {
+    try {
+      const result = await AdminCommissionDistributionService.calculatePeriod(
+        req.body?.periodId,
+        req.user?.id || "admin"
+      );
+      sendSuccess(res, {
+        message: `Commission pool for ${result.periodId}: \u20B9${result.poolAmount.toFixed(2)}. ${result.beneficiaryCount} members receive \u20B9${result.distributableAmount.toFixed(2)}; \u20B9${result.remainingInPool.toFixed(2)} stays in the pool.`,
+        data: result
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
   static async createBatch(req, res, next) {
     try {
       if (!req.user) {
@@ -49927,6 +50120,10 @@ adminCommissionDistributionRouter.get(
   "/summary",
   AdminCommissionDistributionController.getSummary
 );
+adminCommissionDistributionRouter.post(
+  "/calculate",
+  AdminCommissionDistributionController.calculate
+);
 adminCommissionDistributionRouter.get(
   "/preview",
   AdminCommissionDistributionController.getPreview
@@ -49985,7 +50182,8 @@ var import_express39 = require("express");
 
 // backend/src/services/clientFunding.service.ts
 var import_crypto10 = __toESM(require("crypto"));
-var import_client41 = require("@prisma/client");
+init_razorpay();
+var import_client44 = require("@prisma/client");
 init_database();
 init_env();
 init_logger();
@@ -50002,10 +50200,7 @@ var ClientFundingService = class {
     this.processedWebhookEvents.clear();
   }
   static getRazorpayCredentials() {
-    const keyId = env.RAZORPAY_KEY_ID || env.FUNDING_PROVIDER_KEY_ID || process.env.RAZORPAY_KEY_ID || "rzp_live_ToerZRsvekgL2z";
-    const keySecret = env.RAZORPAY_KEY_SECRET || env.FUNDING_PROVIDER_KEY_SECRET || process.env.RAZORPAY_KEY_SECRET || "4mq7WOEx4mxvpkX6LOkSK32p";
-    const webhookSecret = env.RAZORPAY_WEBHOOK_SECRET || env.FUNDING_PROVIDER_WEBHOOK_SECRET || process.env.RAZORPAY_WEBHOOK_SECRET || "your_webhook_secret_min_32_chars";
-    return { keyId, keySecret, webhookSecret };
+    return getRazorpayCredentials();
   }
   /**
    * Format raw order into clean DTO.
@@ -50084,6 +50279,9 @@ var ClientFundingService = class {
         logger.warn({ error: err.message }, "Razorpay client funding order fetch exception");
       }
     }
+    if (!razorpayOrderId && process.env.NODE_ENV !== "test") {
+      throw new AppError("Could not create payment order with Razorpay. Please try again.", 502, "PAYMENT_GATEWAY_ERROR");
+    }
     try {
       const wallet = await WalletService.getOrCreateWallet({ userId });
       const existing = await prisma.clientFundingOrder.findUnique({
@@ -50104,7 +50302,7 @@ var ClientFundingService = class {
           walletId: wallet.id,
           amount: amountDecimal.toString(),
           currency: input.currency || "INR",
-          status: import_client41.FundingTransactionStatus.PENDING,
+          status: import_client44.FundingTransactionStatus.PENDING,
           paymentMethod: input.paymentMethod,
           provider: "RAZORPAY",
           providerOrderId: razorpayOrderId,
@@ -50193,7 +50391,7 @@ var ClientFundingService = class {
         if (order.userId !== userId) {
           throw AppError.forbidden("You do not have access to this funding order", "ACCESS_DENIED");
         }
-        if (order.status === import_client41.FundingTransactionStatus.SUCCEEDED) {
+        if (order.status === import_client44.FundingTransactionStatus.SUCCEEDED) {
           const currentWallet = await prisma.wallet.findUnique({ where: { id: order.walletId } });
           return {
             success: true,
@@ -50222,8 +50420,8 @@ var ClientFundingService = class {
             data: {
               walletId: order.walletId,
               transactionNumber: txNumber,
-              type: import_client41.WalletTransactionType.CREDIT,
-              status: import_client41.WalletTransactionStatus.COMPLETED,
+              type: import_client44.WalletTransactionType.CREDIT,
+              status: import_client44.WalletTransactionStatus.COMPLETED,
               amount: order.amount,
               netAmount: order.amount,
               balanceBefore: currentBalance.toFixed(2),
@@ -50235,7 +50433,7 @@ var ClientFundingService = class {
           const completedOrder = await tx.clientFundingOrder.update({
             where: { id: order.id },
             data: {
-              status: import_client41.FundingTransactionStatus.SUCCEEDED,
+              status: import_client44.FundingTransactionStatus.SUCCEEDED,
               providerPaymentId: razorpayPaymentId,
               paidAt: /* @__PURE__ */ new Date(),
               walletTransactionId: walletTx.id
@@ -50342,7 +50540,7 @@ var ClientFundingService = class {
             where: { providerOrderId: rzpOrderId }
           });
           if (order) {
-            if (order.status === import_client41.FundingTransactionStatus.SUCCEEDED) {
+            if (order.status === import_client44.FundingTransactionStatus.SUCCEEDED) {
               if (eventKey) this.processedWebhookEvents.add(eventKey);
               return { received: true, alreadyProcessed: true };
             }
@@ -50485,17 +50683,17 @@ var ClientFundingService = class {
           prisma.wallet.update({
             where: { id: wallet.id },
             data: {
-              availableBalance: new import_client41.Prisma.Decimal(newAvailable),
-              balance: new import_client41.Prisma.Decimal(newAvailable),
-              totalWithdrawn: { increment: new import_client41.Prisma.Decimal(requestedAmount) }
+              availableBalance: new import_client44.Prisma.Decimal(newAvailable),
+              balance: new import_client44.Prisma.Decimal(newAvailable),
+              totalWithdrawn: { increment: new import_client44.Prisma.Decimal(requestedAmount) }
             }
           }),
           prisma.withdrawalRequest.create({
             data: {
               memberId: distributorProfile ? distributorProfile.id : userId,
-              amount: new import_client41.Prisma.Decimal(requestedAmount),
-              fee: new import_client41.Prisma.Decimal(0),
-              netAmount: new import_client41.Prisma.Decimal(requestedAmount),
+              amount: new import_client44.Prisma.Decimal(requestedAmount),
+              fee: new import_client44.Prisma.Decimal(0),
+              netAmount: new import_client44.Prisma.Decimal(requestedAmount),
               status: "PROCESSING",
               payoutProvider: "INSTANT_IMPS",
               bankAccountId: input.bankAccountId,
@@ -50597,7 +50795,7 @@ var ClientFundingService = class {
 };
 
 // backend/src/services/bankAccount.service.ts
-var import_client42 = require("@prisma/client");
+var import_client45 = require("@prisma/client");
 init_database();
 init_logger();
 init_appError();
@@ -50668,7 +50866,7 @@ var BankAccountService = class {
         const created = await prisma.bankAccount.create({
           data: {
             distributorId,
-            status: import_client42.BankAccountStatus.PENDING_VERIFICATION,
+            status: import_client45.BankAccountStatus.PENDING_VERIFICATION,
             isPrimary: Boolean(input.isPrimary),
             bankName: input.bankName.trim(),
             accountHolderName: input.accountHolderName.trim(),
@@ -50749,11 +50947,11 @@ var BankAccountService = class {
         if (account.distributor.userId !== userId) {
           throw AppError.forbidden("You do not have permission to verify this bank account", "ACCESS_DENIED");
         }
-        if (account.status === import_client42.BankAccountStatus.VERIFIED) {
+        if (account.status === import_client45.BankAccountStatus.VERIFIED) {
           return this.formatBankAccount({ ...account, userId });
         }
         const isVerified = simulatedSuccess;
-        const newStatus = isVerified ? import_client42.BankAccountStatus.VERIFIED : import_client42.BankAccountStatus.REJECTED;
+        const newStatus = isVerified ? import_client45.BankAccountStatus.VERIFIED : import_client45.BankAccountStatus.REJECTED;
         const verificationRef = `pvd_ref_${Date.now()}`;
         const updated = await prisma.bankAccount.update({
           where: { id: bankAccountId },

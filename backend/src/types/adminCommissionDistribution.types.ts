@@ -33,6 +33,8 @@ export interface CommissionDistributionSummary {
   corporateAccountNumber: string;
   corporateIfsc: string;
   activeCycleCode: string;
+  poolAmount?: number;
+  remainingInPool?: number;
 }
 
 export interface EligibleBeneficiaryPreviewItem {
@@ -67,6 +69,8 @@ export interface DistributionPreviewResponse {
   readyCount: number;
   quarantinedCount: number;
   beneficiaries: EligibleBeneficiaryPreviewItem[];
+  poolAmount?: number;
+  remainingInPool?: number;
 }
 
 export interface CreateBatchInput {

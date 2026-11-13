@@ -13,6 +13,8 @@ import { BVService } from './bv.service';
 import { OrderService } from './order.service';
 import { OrderCommissionLifecycleService } from './orderCommissionLifecycle.service';
 import { WalletService } from './wallet.service';
+import { exclusiveLineGst, gstRateOf } from '../utils/gst';
+import { getRazorpayCredentials, isRazorpayConfigured } from '../utils/razorpay';
 
 export class PaymentService {
   private static processedWebhookEvents = new Set<string>();
@@ -23,23 +25,21 @@ export class PaymentService {
   }
 
   public static getRazorpayCredentials() {
-    const keyId =
-      process.env.RAZORPAY_KEY_ID ||
-      env.RAZORPAY_KEY_ID ||
-      env.FUNDING_PROVIDER_KEY_ID ||
-      'rzp_live_ToerZRsvekgL2z';
-    const keySecret =
-      process.env.RAZORPAY_KEY_SECRET ||
-      env.RAZORPAY_KEY_SECRET ||
-      env.FUNDING_PROVIDER_KEY_SECRET ||
-      '4mq7WOEx4mxvpkX6LOkSK32p';
-    const webhookSecret =
-      process.env.RAZORPAY_WEBHOOK_SECRET ||
-      env.RAZORPAY_WEBHOOK_SECRET ||
-      env.FUNDING_PROVIDER_WEBHOOK_SECRET ||
-      'your_webhook_secret_min_32_chars';
+    // Credentials come only from backend/.env (see utils/razorpay.ts) — never hardcoded.
+    return getRazorpayCredentials();
+  }
 
-    return { keyId, keySecret, webhookSecret };
+
+  /** Marks a just-created order CANCELLED (and its pending payment FAILED) when no gateway order could be created. */
+  private static async cancelUnpayableOrder(orderId: string) {
+    try {
+      await prisma.$transaction([
+        prisma.order.update({ where: { id: orderId }, data: { status: 'CANCELLED', cancelledAt: new Date() } }),
+        prisma.payment.updateMany({ where: { orderId, status: 'PENDING' }, data: { status: 'FAILED' } }),
+      ]);
+    } catch (err: any) {
+      logger.error({ error: err.message, orderId }, 'Failed to cancel unpayable order');
+    }
   }
 
   /**
@@ -68,12 +68,15 @@ export class PaymentService {
     });
 
     const amountInPaise = Math.round(Number(order.totalAmount) * 100);
-    let razorpayOrderId = `order_${Date.now()}_${Math.floor(1000 + Math.random() * 9000)}`;
+    let razorpayOrderId = `order_mock_${Date.now()}_${Math.floor(1000 + Math.random() * 9000)}`;
 
-    // If real Razorpay credentials are provided, invoke Razorpay Orders API
-    const isMockKey = !keyId || keyId.includes('your_key_id') || isTest;
-
-    if (!isMockKey) {
+    // Outside tests a REAL Razorpay order is mandatory: without it Checkout would take a
+    // payment that is not bound to this order and can never be signature-verified.
+    if (!isTest) {
+      if (!isRazorpayConfigured()) {
+        await this.cancelUnpayableOrder(order.id);
+        throw new AppError('Payment gateway is not configured on the server.', 503, 'PAYMENT_GATEWAY_NOT_CONFIGURED');
+      }
       try {
         const authHeader = 'Basic ' + Buffer.from(`${keyId}:${keySecret}`).toString('base64');
         const res = await fetch('https://api.razorpay.com/v1/orders', {
@@ -94,17 +97,16 @@ export class PaymentService {
           }),
         });
 
-        if (res.ok) {
-          const rzpData = (await res.json()) as any;
-          if (rzpData && rzpData.id) {
-            razorpayOrderId = rzpData.id;
-          }
-        } else {
-          const errText = await res.text();
-          logger.warn({ errText, orderId: order.id }, 'Razorpay API non-200 response, using fallback order ID');
+        const rzpData = res.ok ? ((await res.json()) as any) : null;
+        if (!rzpData?.id) {
+          const errText = res.ok ? 'missing order id' : await res.text();
+          throw new Error(errText);
         }
+        razorpayOrderId = rzpData.id;
       } catch (err: any) {
-        logger.warn({ error: err.message, orderId: order.id }, 'Razorpay order fetch exception, using fallback');
+        logger.error({ error: err.message, orderId: order.id }, 'Razorpay order creation failed');
+        await this.cancelUnpayableOrder(order.id);
+        throw new AppError('Could not create payment order with Razorpay. Please try again.', 502, 'PAYMENT_GATEWAY_ERROR');
       }
     }
 
@@ -271,6 +273,7 @@ export class PaymentService {
     // Pre-calculate authoritative order total from database products
     let itemsSubtotal = new Prisma.Decimal(0);
     let itemsTotalBV = new Prisma.Decimal(0);
+    let itemsTax = new Prisma.Decimal(0);
 
     const validatedItems: Array<{
       product: any;
@@ -314,6 +317,10 @@ export class PaymentService {
 
       itemsSubtotal = itemsSubtotal.add(totalPrice);
       itemsTotalBV = itemsTotalBV.add(totalBV);
+      // DP is GST-exclusive: add GST on top for distributor orders (MRP is GST-inclusive)
+      if (isDistributor) {
+        itemsTax = itemsTax.add(exclusiveLineGst(totalPrice, gstRateOf(product)));
+      }
 
       validatedItems.push({
         product,
@@ -331,7 +338,9 @@ export class PaymentService {
       userId,
     });
 
-    const totalPayableNum = Number(itemsSubtotal);
+    // Total payable = DP subtotal + GST
+    const itemsTotal = itemsSubtotal.add(itemsTax);
+    const totalPayableNum = Number(itemsTotal);
     if (wallet.availableBalance < totalPayableNum) {
       throw AppError.badRequest(
         `Insufficient commission balance in wallet. Available: INR ${wallet.availableBalance.toFixed(
@@ -405,10 +414,10 @@ export class PaymentService {
           customerId,
           status: 'PAID',
           subtotal: itemsSubtotal,
-          taxAmount: new Prisma.Decimal(0),
+          taxAmount: itemsTax,
           shippingAmount: new Prisma.Decimal(0),
           discountAmount: new Prisma.Decimal(0),
-          totalAmount: itemsSubtotal,
+          totalAmount: itemsTotal,
           totalBV: itemsTotalBV,
           commissionableBusinessVolume: itemsTotalBV,
           shippingAddressId: shippingId,
@@ -429,6 +438,7 @@ export class PaymentService {
             totalPrice: vi.totalPrice,
             totalBV: vi.totalBV,
             commissionableBV: vi.totalBV,
+            gstRate: vi.product.gstRate ?? 18,
           },
         });
 
@@ -454,8 +464,8 @@ export class PaymentService {
       await tx.wallet.update({
         where: { id: currentWallet.id },
         data: {
-          availableBalance: { decrement: itemsSubtotal },
-          balance: { decrement: itemsSubtotal },
+          availableBalance: { decrement: itemsTotal },
+          balance: { decrement: itemsTotal },
         },
       });
 
@@ -467,9 +477,9 @@ export class PaymentService {
           transactionNumber: walletTxNumber,
           type: 'ORDER_PAYMENT',
           status: 'COMPLETED',
-          amount: itemsSubtotal,
+          amount: itemsTotal,
           feeAmount: new Prisma.Decimal(0),
-          netAmount: itemsSubtotal,
+          netAmount: itemsTotal,
           balanceBefore: new Prisma.Decimal(prevBal.toFixed(2)),
           balanceAfter: new Prisma.Decimal(newBal.toFixed(2)),
           referenceId: orderNumber,
@@ -485,7 +495,7 @@ export class PaymentService {
           paymentNumber: `PAY-${Date.now().toString().slice(-6)}-${Math.floor(1000 + Math.random() * 9000)}`,
           method: 'WALLET',
           status: 'COMPLETED',
-          amount: itemsSubtotal,
+          amount: itemsTotal,
           currency: 'INR',
           gatewayTransactionId: walletTxNumber,
           paidAt: new Date(),

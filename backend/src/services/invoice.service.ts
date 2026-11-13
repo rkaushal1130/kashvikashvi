@@ -1,5 +1,7 @@
 import { prisma } from '../config/database';
 import { AppError } from '../utils/appError';
+import { Prisma } from '@prisma/client';
+import { exclusiveLineGst } from '../utils/gst';
 
 export interface InvoiceItem {
   name: string;
@@ -233,11 +235,26 @@ export class InvoiceService {
     let totalBV = 0;
     let grandTotal = 0;
 
+    // Orders created with GST added on top of DP store it in taxAmount (> 0).
+    // Older orders / MRP orders have taxAmount = 0 and a GST-inclusive line price.
+    const isGstExclusive = Number((order as any).taxAmount ?? 0) > 0;
+
     const items: InvoiceItem[] = order.items.map((item, idx) => {
-      const lineTotal = Number(item.totalPrice);
-      // Tax-inclusive math: Taxable Value = Total / 1.18
-      const taxable = Math.round((lineTotal / 1.18) * 100) / 100;
-      const totalGst = Math.round((lineTotal - taxable) * 100) / 100;
+      // GST rate: snapshot on the order line, else the product's current rate, else legacy 18%
+      const gstRate = Number(item.gstRate ?? item.product?.gstRate ?? 18);
+      let taxable: number;
+      let totalGst: number;
+      if (isGstExclusive) {
+        // Tax-exclusive math (DP + GST): Taxable Value = line price; GST = line x rate%
+        taxable = Number(item.totalPrice);
+        totalGst = Number(exclusiveLineGst(new Prisma.Decimal(item.totalPrice), gstRate));
+      } else {
+        // Tax-inclusive math: Taxable Value = Total x 100 / (100 + rate); GST = Total - Taxable
+        const inclusiveTotal = Number(item.totalPrice);
+        taxable = Math.round(((inclusiveTotal * 100) / (100 + gstRate)) * 100) / 100;
+        totalGst = Math.round((inclusiveTotal - taxable) * 100) / 100;
+      }
+      const lineTotal = Math.round((taxable + totalGst) * 100) / 100;
       const cgst = isInterState ? 0 : Math.round((totalGst / 2) * 100) / 100;
       const sgst = isInterState ? 0 : Math.round((totalGst - cgst) * 100) / 100;
       const igst = isInterState ? totalGst : 0;
@@ -258,7 +275,7 @@ export class InvoiceService {
         unitPrice: Number(item.unitPrice),
         totalPrice: lineTotal,
         taxableValue: taxable,
-        gstRate: 18,
+        gstRate,
         cgstAmount: cgst,
         sgstAmount: sgst,
         igstAmount: igst,
@@ -395,7 +412,7 @@ export class InvoiceService {
     pdf.setColor(71, 85, 105);
     pdf.addText(`Address: ${data.buyer.address}, ${data.buyer.city}`, 35, 650, 8.5, false);
     pdf.addText(`State: ${data.buyer.state} (Code: ${data.buyer.stateCode}) | Phone: ${data.buyer.phone}`, 35, 639, 8.5, false);
-    pdf.addText(`Place of Supply: ${data.buyer.state} | Tax Type: ${data.isInterState ? 'IGST (Inter-State 18%)' : 'CGST (9%) + SGST (9%) (Intra-State)'}`, 35, 628, 8.5, false);
+    pdf.addText(`Place of Supply: ${data.buyer.state} | Tax Type: ${data.isInterState ? 'IGST (Inter-State)' : 'CGST + SGST (Intra-State)'} | GST Rates: ${Array.from(new Set(data.items.map((it) => `${it.gstRate}%`))).join(', ')}`, 35, 628, 8.5, false);
 
     // Table Header
     const tableTop = 612;
@@ -425,7 +442,7 @@ export class InvoiceService {
       pdf.addText(item.unitPrice.toFixed(2), 290, currentY, 8, false);
       pdf.addText(item.taxableValue.toFixed(2), 345, currentY, 8, false);
       const gstVal = data.isInterState ? item.igstAmount : (item.cgstAmount + item.sgstAmount);
-      pdf.addText(gstVal.toFixed(2), 400, currentY, 8, false);
+      pdf.addText(`${gstVal.toFixed(2)} (${item.gstRate}%)`, 400, currentY, 7, false);
       pdf.setColor(13, 148, 136); // Teal
       pdf.addText(`+${item.bv}`, 445, currentY, 8, true);
       pdf.setColor(15, 23, 42);
@@ -463,15 +480,15 @@ export class InvoiceService {
     sumY -= 14;
 
     if (data.isInterState) {
-      pdf.addText('Integrated GST (IGST 18%):', rightLabelX, sumY, 8.5, false);
+      pdf.addText('Integrated GST (IGST):', rightLabelX, sumY, 8.5, false);
       pdf.addTextRight(`INR ${data.totals.igstTotal.toFixed(2)}`, rightValX, sumY, 8.5, false);
       sumY -= 14;
     } else {
-      pdf.addText('Central GST (CGST 9%):', rightLabelX, sumY, 8.5, false);
+      pdf.addText('Central GST (CGST):', rightLabelX, sumY, 8.5, false);
       pdf.addTextRight(`INR ${data.totals.cgstTotal.toFixed(2)}`, rightValX, sumY, 8.5, false);
       sumY -= 14;
 
-      pdf.addText('State GST (SGST 9%):', rightLabelX, sumY, 8.5, false);
+      pdf.addText('State GST (SGST):', rightLabelX, sumY, 8.5, false);
       pdf.addTextRight(`INR ${data.totals.sgstTotal.toFixed(2)}`, rightValX, sumY, 8.5, false);
       sumY -= 14;
     }

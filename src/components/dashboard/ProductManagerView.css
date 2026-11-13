@@ -306,6 +306,10 @@
   grid-template-columns: repeat(4, 1fr);
 }
 
+.pm-fields-grid.five-cols {
+  grid-template-columns: repeat(5, 1fr);
+}
+
 .pm-fields-grid.two-cols {
   grid-template-columns: repeat(2, 1fr);
 }
@@ -313,6 +317,7 @@
 @media (max-width: 900px) {
   .pm-fields-grid.three-cols,
   .pm-fields-grid.four-cols,
+  .pm-fields-grid.five-cols,
   .pm-fields-grid.two-cols {
     grid-template-columns: 1fr;
   }

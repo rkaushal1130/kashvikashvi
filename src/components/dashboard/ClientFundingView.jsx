@@ -206,7 +206,7 @@ export default function ClientFundingView({ user, onWalletUpdated }) {
       }
 
       const { order, razorpayOrderId, keyId, amountInPaise } = orderRes.data;
-      const liveKey = keyId || import.meta.env?.VITE_RAZORPAY_KEY_ID || 'rzp_live_ToerZRsvekgL2z';
+      const liveKey = keyId || (await api.getRazorpayKeyId());
       const calculatedPaise = amountInPaise || Math.round(numAmount * 100);
 
       // Check if Razorpay Checkout SDK is available in window

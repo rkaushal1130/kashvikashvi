@@ -64,21 +64,9 @@ export const adminCommissionDistributionApi = {
    * Triggers commission calculation for the selected period.
    */
   async calculateCommission(periodId) {
-    try {
-      const res = await apiClient.post(`${BASE_URL}/calculate`, { periodId });
-      return res.data;
-    } catch (err) {
-      console.warn('[CommissionDistributionApi] calculateCommission fallback:', err);
-      return {
-        success: true,
-        message: `Commission calculation completed for period ${periodId}.`,
-        data: {
-          periodId,
-          calculatedCount: 142,
-          totalAmount: 482500.0,
-        },
-      };
-    }
+    // No offline fallback: a failed calculation must surface as an error, not a fake success.
+    const res = await apiClient.post(`${BASE_URL}/calculate`, { periodId });
+    return res;
   },
 
   /**

@@ -4,6 +4,7 @@ import { logger } from '../config/logger';
 import { AppError } from '../utils/appError';
 import { SafeDecimal } from '../utils/safeDecimal';
 import { CumulativeRankCommissionService } from './cumulativeRankCommission.service';
+import { computeTierSliceDistribution, PoolMember } from './commissionPoolDistribution';
 import {
   DailyFinancialSummary,
   EmployeeDailyCommissionRecord,
@@ -641,116 +642,129 @@ export class AdminFundingCommissionService {
   }
 
   // =========================================================================
-  // 4. ONE-CLICK DISTRIBUTION: PREVIEW & ELIGIBILITY VERIFICATION
+  // 4. ONE-CLICK DISTRIBUTION: POOL PREVIEW (TIER-SLICE SPLIT BY RANK)
   // =========================================================================
+  //
+  // Pool = sum of all APPROVED commissions (including the carry-over row left by the
+  // previous distribution). The pool is split into rank tier slices (see
+  // commissionPoolDistribution.ts). Whatever is not paid out is written back as a single
+  // APPROVED "POOL_CARRYOVER" commission, so it stays in the pool and in the dashboard's
+  // approved total until the next distribution.
 
-  public static async getDistributionPreview(
-    periodId?: string
-  ): Promise<DistributionPreview> {
+  private static resolveRankCode(dist: any): string {
+    return String(dist?.currentLevel?.code || dist?.currentRank?.rankCode || dist?.currentRank?.code || '')
+      .toUpperCase()
+      .replace(/^RANK_/, '');
+  }
+
+  private static isAdminAccount(dist: any): boolean {
+    const role = String(dist?.user?.roleName || dist?.user?.role || '').toUpperCase();
+    return role === 'ADMIN' || role === 'SUPER_ADMIN';
+  }
+
+  public static async buildPoolPlan(db: Prisma.TransactionClient | typeof prisma, periodId?: string) {
     const cyclePeriod = periodId || `CYCLE-${new Date().toISOString().slice(0, 10)}`;
 
-    let approvedCommissions: any[] = [];
-    let pendingCommissions: any[] = [];
-    let paidCommissions: any[] = [];
-    let activeDistributors: any[] = [];
-
-    try {
-      activeDistributors = await prisma.distributorProfile.findMany({
+    const [approvedCommissions, pendingCommissions, paidCommissions, distributors, tiers] = await Promise.all([
+      db.commission.findMany({ where: { status: 'APPROVED' }, select: { id: true, amount: true } }),
+      db.commission.findMany({ where: { status: { in: ['PENDING', 'CALCULATED', 'QUALIFIED'] } }, select: { amount: true } }),
+      db.commission.findMany({ where: { status: 'PAID' }, select: { amount: true } }),
+      db.distributorProfile.findMany({
         include: {
           user: true,
           currentLevel: true,
           currentRank: true,
           wallet: true,
+          bankAccounts: { where: { deletedAt: null }, orderBy: { isPrimary: 'desc' } },
         },
-      });
+      }),
+      CumulativeRankCommissionService.getRankConfigs(db as Prisma.TransactionClient),
+    ]);
 
-      approvedCommissions = await prisma.commission.findMany({
-        where: { status: 'APPROVED' },
-      });
+    const poolAmount = SafeDecimal.round(
+      approvedCommissions.reduce((sum: number, c: any) => sum + Number(c.amount || 0), 0),
+      2
+    );
 
-      pendingCommissions = await prisma.commission.findMany({
-        where: { status: { in: ['PENDING', 'CALCULATED', 'QUALIFIED'] } },
-      });
+    const tierOrderByCode = new Map(tiers.map((t) => [String(t.code).toUpperCase(), t.order]));
+    const distById = new Map<string, any>(distributors.map((d: any) => [d.id, d]));
 
-      paidCommissions = await prisma.commission.findMany({
-        where: { status: 'PAID' },
-      });
-    } catch {
-      // In-memory fallback
-      const ledger = CumulativeRankCommissionService.getInMemoryLedger();
-      approvedCommissions = ledger
-        .filter((c: any) => c.status === 'APPROVED')
-        .map((c: any) => ({
-          distributorId: c.distributorId,
-          amount: c.calculatedAmount,
-          id: c.id || c.businessReference,
-        }));
-      pendingCommissions = ledger
-        .filter((c: any) => c.status === 'CALCULATED')
-        .map((c: any) => ({ amount: c.calculatedAmount }));
-      paidCommissions = ledger
-        .filter((c: any) => c.status === 'PAID')
-        .map((c: any) => ({ amount: c.calculatedAmount }));
-    }
-
-    const distMap = new Map<string, any>();
-    for (const d of activeDistributors) {
-      distMap.set(d.id, d);
-    }
-
-    // Group approved commissions by distributor
-    const memberApprovedMap = new Map<string, { totalAmount: number; count: number }>();
-    for (const comm of approvedCommissions) {
-      const dId = comm.distributorId;
-      const current = memberApprovedMap.get(dId) || { totalAmount: 0, count: 0 };
-      current.totalAmount += Number(comm.amount);
-      current.count += 1;
-      memberApprovedMap.set(dId, current);
-    }
-
-    let eligibleTotalAmount = 0;
-    let excludedTotalAmount = 0;
-    const eligibleEmployees: any[] = [];
-
-    for (const [distId, data] of memberApprovedMap.entries()) {
-      const dist = distMap.get(distId);
-      const isPaidStarter = dist ? dist.paymentStatus === 'PAID' : true;
-      const isActive = dist ? dist.status === 'ACTIVE' : true;
-
-      // Gate: Must have paid starter kit and be ACTIVE
-      if (isPaidStarter && isActive && data.totalAmount > 0) {
-        eligibleTotalAmount += data.totalAmount;
-        eligibleEmployees.push({
-          distributorId: distId,
-          distributorCode: dist?.distributorCode || dist?.distributorId || distId,
-          name: dist?.user?.fullName || `${dist?.firstName || ''} ${dist?.lastName || ''}`.trim() || 'Distributor',
-          rank: dist?.currentLevel?.code || dist?.currentRank?.rankCode || 'SILVER',
-          approvedAmount: SafeDecimal.round(data.totalAmount, 2),
-          commissionCount: data.count,
-          paymentStatus: dist?.paymentStatus || 'PAID',
-          hasActiveWallet: !!dist?.wallet,
-        });
-      } else {
-        excludedTotalAmount += data.totalAmount;
+    // Recipients: ACTIVE, starter kit PAID, holding a rank, and not the company/admin account.
+    const recipients: PoolMember[] = [];
+    let excludedEmployeesCount = 0;
+    for (const d of distributors as any[]) {
+      const rankCode = this.resolveRankCode(d);
+      const rankOrder = tierOrderByCode.get(rankCode) ?? 0;
+      const eligible = d.status === 'ACTIVE' && d.paymentStatus === 'PAID' && rankOrder >= 1 && !this.isAdminAccount(d);
+      if (!eligible) {
+        excludedEmployeesCount++;
+        continue;
       }
+      recipients.push({
+        distributorId: d.id,
+        distributorCode: d.distributorCode || d.distributorId || d.id,
+        name: d.user?.fullName || d.displayName || `${d.firstName || ''} ${d.lastName || ''}`.trim() || 'Distributor',
+        rankCode,
+        rankOrder,
+      });
     }
 
-    const pendingTotal = pendingCommissions.reduce((sum, c) => sum + Number(c.amount || 0), 0);
-    const paidTotal = paidCommissions.reduce((sum, c) => sum + Number(c.amount || 0), 0);
+    const distribution = computeTierSliceDistribution(poolAmount, recipients, tiers);
+
+    // The undistributed remainder is held against the company/admin root profile.
+    const carryoverHolder =
+      (distributors as any[]).find((d) => this.isAdminAccount(d)) ||
+      [...(distributors as any[])].sort((a, b) => +new Date(a.joinedAt || 0) - +new Date(b.joinedAt || 0))[0];
+
+    const sum = (rows: any[]) => rows.reduce((s, c) => s + Number(c.amount || 0), 0);
 
     return {
-      calculationPeriod: cyclePeriod,
-      eligibleEmployeeCount: eligibleEmployees.length,
-      totalCommissionAmount: SafeDecimal.round(eligibleTotalAmount, 2),
-      pendingCommissionsAmount: SafeDecimal.round(pendingTotal, 2),
-      previouslyPaidAmount: SafeDecimal.round(paidTotal, 2),
-      excludedCommissionsAmount: SafeDecimal.round(excludedTotalAmount, 2),
-      eligibleEmployees,
+      cyclePeriod,
+      tiers,
+      approvedCommissions,
+      poolAmount,
+      distribution,
+      distById,
+      carryoverHolderId: carryoverHolder?.id as string | undefined,
+      excludedEmployeesCount,
+      pendingTotal: SafeDecimal.round(sum(pendingCommissions), 2),
+      paidTotal: SafeDecimal.round(sum(paidCommissions), 2),
+    };
+  }
+
+  public static async getDistributionPreview(periodId?: string): Promise<DistributionPreview> {
+    const plan = await this.buildPoolPlan(prisma, periodId);
+    const { distribution } = plan;
+
+    return {
+      calculationPeriod: plan.cyclePeriod,
+      eligibleEmployeeCount: distribution.allocations.length,
+      eligibleEmployeesCount: distribution.allocations.length,
+      totalCommissionAmount: distribution.totalDistributed,
+      pendingCommissionsAmount: plan.pendingTotal,
+      previouslyPaidAmount: plan.paidTotal,
+      excludedCommissionsAmount: 0,
+      excludedEmployeesCount: plan.excludedEmployeesCount,
+      poolAmount: plan.poolAmount,
+      remainingInPool: distribution.remainingInPool,
+      approvedCommissionCount: plan.approvedCommissions.length,
+      slices: distribution.slices,
+      eligibleEmployees: distribution.allocations.map((a) => ({
+        distributorId: a.distributorId,
+        distributorCode: a.distributorCode,
+        name: a.name,
+        rank: a.rankCode,
+        approvedAmount: a.amount,
+        commissionCount: a.tierBreakdown.length,
+        paymentStatus: 'PAID',
+        hasActiveWallet: !!plan.distById.get(a.distributorId)?.wallet,
+        tierBreakdown: a.tierBreakdown,
+      })),
     };
   }
 
   // =========================================================================
-  // 5. ONE-CLICK DISTRIBUTION EXECUTION WITH ATOMIC WALLET CREATION & AUDITING
+  // 5. ONE-CLICK DISTRIBUTION EXECUTION (SINGLE ATOMIC TRANSACTION)
   // =========================================================================
 
   public static async executeOneClickDistribution(
@@ -777,53 +791,50 @@ export class AdminFundingCommissionService {
       const periodId = options?.periodId || `CYCLE-${new Date().toISOString().slice(0, 10)}`;
       const batchNumber = `PB-${now.toString().slice(-6)}-${Math.floor(1000 + Math.random() * 9000)}`;
 
-      // 2. Retrieve all eligible, approved commissions
-      const preview = await this.getDistributionPreview(periodId);
-      if (preview.eligibleEmployeeCount === 0 || preview.totalCommissionAmount <= 0) {
-        throw AppError.badRequest(
-          'No approved and unpaid commissions are eligible for distribution.'
-        );
-      }
+      // All-or-nothing: claiming the pool, wallet credits, carry-over and batch records
+      // either all commit or all roll back.
+      const batchData = await prisma.$transaction(
+        async (tx) => {
+          const plan = await this.buildPoolPlan(tx, periodId);
+          const { distribution } = plan;
 
-      const results: BatchItemExecutionResult[] = [];
-      let successfulCount = 0;
-      let failedCount = 0;
-      let successfulAmount = 0;
-      let failedAmount = 0;
+          if (plan.poolAmount <= 0) {
+            throw AppError.badRequest('The commission pool is empty: there are no approved commissions to distribute.');
+          }
+          if (distribution.totalDistributed <= 0) {
+            throw AppError.badRequest(
+              'No active, paid distributors with a rank are eligible to receive from the commission pool. The pool is unchanged.'
+            );
+          }
+          if (distribution.remainingInPool > 0 && !plan.carryoverHolderId) {
+            throw AppError.badRequest('No root distributor profile is available to hold the undistributed pool balance.');
+          }
 
-      // 3. Process payouts through verified Wallet Credit workflow inside atomic transactions
-      for (const emp of preview.eligibleEmployees) {
-        const amount = emp.approvedAmount;
-        try {
-          // Attempt atomic wallet credit in DB
-          let wtxId: string | undefined = undefined;
+          // 2. Claim every approved commission in the pool (guards against a concurrent run).
+          const approvedIds = plan.approvedCommissions.map((c: any) => c.id);
+          const claimed = await tx.commission.updateMany({
+            where: { id: { in: approvedIds }, status: 'APPROVED' },
+            data: { status: 'PAID', payoutDate: new Date() },
+          });
+          if (claimed.count !== approvedIds.length) {
+            throw AppError.badRequest('Approved commissions changed during distribution. Refresh the preview and retry.');
+          }
 
-          await prisma.$transaction(async (tx) => {
-            const claimed = await tx.commission.updateMany({
-              where: { distributorId: emp.distributorId, status: 'APPROVED' },
-              data: { status: 'PAID', payoutDate: new Date() },
-            });
-            if (claimed.count !== emp.commissionCount) {
-              throw new Error('Approved commission rows changed during payout. Refresh the preview and retry.');
-            }
-
-            const wallet = await tx.wallet.findUnique({
-              where: { distributorId: emp.distributorId },
-            });
-
-            if (!wallet) {
-              throw new Error('Distributor wallet record not found');
-            }
+          // 3. Credit each recipient's wallet (created if missing).
+          const results: BatchItemExecutionResult[] = [];
+          for (const alloc of distribution.allocations) {
+            const wallet =
+              (await tx.wallet.findUnique({ where: { distributorId: alloc.distributorId } })) ||
+              (await tx.wallet.create({ data: { distributorId: alloc.distributorId, currency: 'INR' } }));
 
             const beforeDecimal = new Prisma.Decimal(wallet.availableBalance ?? wallet.balance ?? 0);
-            const amountDecimal = new Prisma.Decimal(amount);
+            const amountDecimal = new Prisma.Decimal(alloc.amount);
             const afterDecimal = beforeDecimal.add(amountDecimal);
-            const wtxNumber = `WTX-DIST-${Date.now().toString().slice(-6)}-${Math.floor(1000 + Math.random() * 9000)}`;
 
             const wtx = await tx.walletTransaction.create({
               data: {
                 walletId: wallet.id,
-                transactionNumber: wtxNumber,
+                transactionNumber: `WTX-DIST-${Date.now().toString().slice(-6)}-${Math.floor(1000 + Math.random() * 9000)}`,
                 type: 'COMMISSION_CREDIT',
                 status: 'COMPLETED',
                 amount: amountDecimal,
@@ -832,11 +843,9 @@ export class AdminFundingCommissionService {
                 balanceBefore: beforeDecimal,
                 balanceAfter: afterDecimal,
                 referenceId: batchNumber,
-                description: `One-Click Commission Distribution: Batch ${batchNumber}`,
+                description: `Commission pool distribution (${alloc.rankCode}): Batch ${batchNumber}`,
               },
             });
-
-            wtxId = wtx.id;
 
             await tx.wallet.update({
               where: { id: wallet.id },
@@ -848,127 +857,123 @@ export class AdminFundingCommissionService {
               },
             });
 
-          });
-
-          successfulCount++;
-          successfulAmount += amount;
-          results.push({
-            distributorId: emp.distributorId,
-            distributorCode: emp.distributorCode,
-            name: emp.name,
-            amount,
-            status: 'SUCCESS',
-            walletTransactionId: wtxId,
-            payoutReference: batchNumber,
-          });
-
-          // Update in-memory cumulative commission records to PAID
-          const inMem = CumulativeRankCommissionService.getInMemoryLedger();
-          for (const item of inMem) {
-            if (item.distributorId === emp.distributorId && item.status === 'APPROVED') {
-              item.status = 'PAID';
-              item.paidAt = new Date();
-              item.walletTransactionId = wtxId;
-            }
+            results.push({
+              distributorId: alloc.distributorId,
+              distributorCode: alloc.distributorCode,
+              name: alloc.name,
+              amount: alloc.amount,
+              status: 'SUCCESS',
+              walletTransactionId: wtx.id,
+              payoutReference: batchNumber,
+            });
           }
-        } catch (itemErr: any) {
-          // Record failure for this specific employee without rolling back other successful members
-          failedCount++;
-          failedAmount += amount;
-          results.push({
-            distributorId: emp.distributorId,
-            distributorCode: emp.distributorCode,
-            name: emp.name,
-            amount,
-            status: 'FAILED',
-            failureReason: itemErr?.message || 'Payment execution failed',
+
+          // 4. Undistributed remainder stays in the pool as a new APPROVED carry-over commission.
+          if (distribution.remainingInPool > 0) {
+            await tx.commission.create({
+              data: {
+                commissionNumber: `POOL-${now.toString().slice(-6)}-${Math.floor(1000 + Math.random() * 9000)}`,
+                businessReference: `POOL_CARRYOVER:${batchNumber}`,
+                distributorId: plan.carryoverHolderId!,
+                type: 'OTHER',
+                status: 'APPROVED',
+                amount: new Prisma.Decimal(distribution.remainingInPool),
+                details: {
+                  kind: 'POOL_CARRYOVER',
+                  sourceBatchNumber: batchNumber,
+                  periodCode: periodId,
+                  poolAmount: distribution.poolAmount,
+                  distributedAmount: distribution.totalDistributed,
+                },
+              },
+            });
+          }
+
+          // 5. Persist the payout batch and its items.
+          const createdBatch = await tx.payoutBatch.create({
+            data: {
+              batchNumber,
+              periodId,
+              initiatedByAdminId: adminUserId,
+              totalAmount: new Prisma.Decimal(distribution.totalDistributed),
+              successfulAmount: new Prisma.Decimal(distribution.totalDistributed),
+              failedAmount: new Prisma.Decimal(0),
+              totalEmployees: results.length,
+              successfulCount: results.length,
+              failedCount: 0,
+              pendingCount: 0,
+              status: 'COMPLETED',
+              payoutMethod: 'WALLET_CREDIT',
+              notes: options?.notes || `Commission pool distribution by ${adminUserId}`,
+              metadata: {
+                poolAmount: distribution.poolAmount,
+                distributedAmount: distribution.totalDistributed,
+                remainingInPool: distribution.remainingInPool,
+                slices: distribution.slices,
+              } as any,
+              completedAt: new Date(),
+            },
           });
-        }
-      }
 
-      const finalStatus =
-        failedCount === 0
-          ? 'COMPLETED'
-          : successfulCount > 0
-          ? 'PARTIALLY_FAILED'
-          : 'FAILED';
+          for (const res of results) {
+            const alloc = distribution.allocations.find((a) => a.distributorId === res.distributorId);
+            await tx.payoutBatchItem.create({
+              data: {
+                batchId: createdBatch.id,
+                distributorId: res.distributorId,
+                distributorName: res.name,
+                distributorCode: res.distributorCode,
+                rankCode: alloc?.rankCode,
+                amount: new Prisma.Decimal(res.amount),
+                status: res.status,
+                walletTransactionId: res.walletTransactionId || null,
+                payoutReference: batchNumber,
+              },
+            });
+          }
 
-      const batchData: DistributionBatchResult = {
-        batchId: `PB-ID-${now}`,
-        batchNumber,
-        periodId,
-        initiatedByAdminId: adminUserId,
-        totalEmployees: preview.eligibleEmployeeCount,
-        successfulCount,
-        failedCount,
-        pendingCount: 0,
-        totalAmount: preview.totalCommissionAmount,
-        successfulAmount: SafeDecimal.round(successfulAmount, 2),
-        failedAmount: SafeDecimal.round(failedAmount, 2),
-        status: finalStatus,
-        payoutMethod: 'WALLET_CREDIT',
-        items: results,
-        createdAt: new Date().toISOString(),
-        completedAt: new Date().toISOString(),
-      };
-
-      // 4. Persist PayoutBatch and PayoutBatchItems in DB
-      try {
-        const createdBatch = await prisma.payoutBatch.create({
-          data: {
+          const result: DistributionBatchResult = {
+            batchId: createdBatch.id,
             batchNumber,
             periodId,
             initiatedByAdminId: adminUserId,
-            totalAmount: new Prisma.Decimal(preview.totalCommissionAmount),
-            successfulAmount: new Prisma.Decimal(successfulAmount),
-            failedAmount: new Prisma.Decimal(failedAmount),
-            totalEmployees: preview.eligibleEmployeeCount,
-            successfulCount,
-            failedCount,
+            totalEmployees: results.length,
+            successfulCount: results.length,
+            failedCount: 0,
             pendingCount: 0,
-            status: finalStatus,
+            totalAmount: distribution.totalDistributed,
+            successfulAmount: distribution.totalDistributed,
+            failedAmount: 0,
+            status: 'COMPLETED',
             payoutMethod: 'WALLET_CREDIT',
-            notes: options?.notes || `Admin One-Click Distribution by ${adminUserId}`,
-            completedAt: new Date(),
-          },
-        });
-        batchData.batchId = createdBatch.id;
+            items: results,
+            createdAt: new Date().toISOString(),
+            completedAt: new Date().toISOString(),
+            poolAmount: distribution.poolAmount,
+            remainingInPool: distribution.remainingInPool,
+            slices: distribution.slices,
+          };
+          return result;
+        },
+        { timeout: 60000, maxWait: 10000 }
+      );
 
-        for (const res of results) {
-          await prisma.payoutBatchItem.create({
-            data: {
-              batchId: createdBatch.id,
-              distributorId: res.distributorId,
-              distributorName: res.name,
-              distributorCode: res.distributorCode,
-              amount: new Prisma.Decimal(res.amount),
-              status: res.status,
-              walletTransactionId: res.walletTransactionId || null,
-              payoutReference: res.payoutReference || batchNumber,
-              failureReason: res.failureReason || null,
-            },
-          });
-        }
-      } catch {
-        // In-memory test store
-        this.inMemoryBatches.set(batchData.batchId, batchData);
-        this.inMemoryBatchItems.set(batchData.batchId, results);
-      }
-
-      // 5. Admin Audit Trail
-      const auditEntry = {
+      // 6. Admin Audit Trail
+      this.inMemoryAuditTrail.push({
         action: 'ONE_CLICK_COMMISSION_DISTRIBUTION',
         batchNumber,
         adminUserId,
-        totalAmount: preview.totalCommissionAmount,
-        successfulAmount,
-        failedAmount,
-        successfulCount,
-        failedCount,
-        status: finalStatus,
+        poolAmount: batchData.poolAmount,
+        totalAmount: batchData.totalAmount,
+        remainingInPool: batchData.remainingInPool,
+        successfulCount: batchData.successfulCount,
+        status: batchData.status,
         timestamp: new Date(),
-      };
-      this.inMemoryAuditTrail.push(auditEntry);
+      });
+      logger.info(
+        { batchNumber, poolAmount: batchData.poolAmount, distributed: batchData.totalAmount, remainingInPool: batchData.remainingInPool },
+        'Commission pool distributed'
+      );
 
       return batchData;
     } finally {

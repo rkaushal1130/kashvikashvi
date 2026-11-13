@@ -121,6 +121,7 @@ export function normalizeProduct(p) {
     mrp,
     volumeBV,
     bv: volumeBV,
+    gstRate: Number(p.gstRate ?? 18),
     stock,
     stockQuantity: stock,
     status: p.status || 'Active',
@@ -527,6 +528,20 @@ export const api = {
     }
   },
 
+  // Razorpay Checkout public key ID, served by the backend from its .env.
+  // Never hardcode Razorpay keys in the frontend; the key secret stays on the server.
+  async getRazorpayKeyId() {
+    if (this._razorpayKeyId) return this._razorpayKeyId;
+    const res = await fetch(`${API_BASE_URL}/payments/razorpay/key`);
+    const data = await res.json().catch(() => null);
+    const keyId = data?.data?.keyId;
+    if (!res.ok || !keyId) {
+      throw new Error(data?.message || 'Payment gateway is not configured');
+    }
+    this._razorpayKeyId = keyId;
+    return keyId;
+  },
+
   // Atomic Commission Balance Wallet Wholesale Checkout
   async walletCheckout(orderData) {
     try {
@@ -546,27 +561,9 @@ export const api = {
       }
       throw new Error(data.message || 'Wallet checkout failed');
     } catch (err) {
-      console.warn('[API] Wallet checkout fallback:', err.message);
-      this.syncMemberPaymentSuccess(orderData.userId || orderData.distributorId || orderData.memberId);
-      const fallbackOrder = {
-        id: `ord_w_${Date.now()}`,
-        orderNumber: `ORD-${Date.now().toString().slice(-6)}`,
-        status: 'CONFIRMED',
-        paymentStatus: 'PAID',
-        paymentMethod: 'WALLET',
-        isPaid: true,
-        totalAmount: Number(orderData.amount || orderData.totalAmount || 0),
-        totalBV: Number(orderData.totalBV || orderData.bv || 0),
-        items: orderData.items || [],
-        customerName: orderData.customerName || orderData.buyerName || 'Member',
-        memberId: orderData.memberId || orderData.distributorId || orderData.userId || 'KK-0002',
-        distributorCode: orderData.memberId || orderData.distributorId || orderData.userId || 'KK-0002',
-        createdAt: new Date().toISOString(),
-      };
-      this.saveOrderToLocalCache(fallbackOrder);
-      return {
-        order: fallbackOrder,
-      };
+      // No fake "PAID" order on failure: surface the real error to the UI.
+      console.error('[API] Wallet checkout failed:', err.message);
+      throw err;
     }
   },
 
@@ -584,40 +581,9 @@ export const api = {
       }
       throw new Error(data.message || 'Failed to create payment order');
     } catch (err) {
-      console.warn('[API] Create Razorpay order fallback:', err.message);
-      const totalAmount =
-        orderData.amount ||
-        orderData.items?.reduce(
-          (sum, item) => sum + (Number(item.unitPrice || item.price || 0) * (item.quantity || 1)),
-          0
-        ) ||
-        0;
-      const amountInPaise = Math.round(Number(totalAmount) * 100);
-      const generatedOrderNumber = `ORD-${Date.now().toString().slice(-6)}`;
-      const pendingOrder = {
-        id: `ord_${Date.now()}`,
-        orderNumber: generatedOrderNumber,
-        totalAmount,
-        totalBV: orderData.totalBV || 0,
-        status: 'PENDING',
-        paymentStatus: 'PENDING',
-        paymentMethod: 'RAZORPAY',
-        isPaid: false,
-        items: orderData.items || [],
-        customerName: orderData.customerName || orderData.buyerName || 'Member',
-        memberId: orderData.memberId || orderData.distributorId || orderData.userId || 'KK-0002',
-        distributorCode: orderData.memberId || orderData.distributorId || orderData.userId || 'KK-0002',
-        createdAt: new Date().toISOString(),
-      };
-      // Note: We register this pending order in cache so Admin Orders can see pending status
-      this.saveOrderToLocalCache(pendingOrder);
-      return {
-        order: pendingOrder,
-        razorpayOrderId: null,
-        amount: amountInPaise,
-        currency: 'INR',
-        keyId: import.meta.env?.VITE_RAZORPAY_KEY_ID || 'rzp_live_ToerZRsvekgL2z',
-      };
+      // Never open Razorpay without a real backend order: surface the error instead.
+      console.error('[API] Create Razorpay order failed:', err.message);
+      throw err;
     }
   },
 
@@ -639,28 +605,9 @@ export const api = {
       }
       throw new Error(data.message || 'Payment signature verification failed');
     } catch (err) {
-      console.warn('[API] Verify Razorpay payment fallback:', err.message);
-      this.syncMemberPaymentSuccess(paymentData.userId || paymentData.distributorId || paymentData.memberId);
-      const fallbackOrder = {
-        id: paymentData.orderId || `ord_${Date.now()}`,
-        orderNumber: paymentData.orderNumber || `ORD-${Date.now().toString().slice(-6)}`,
-        status: 'CONFIRMED',
-        paymentStatus: 'PAID',
-        paymentMethod: 'RAZORPAY',
-        isPaid: true,
-        totalAmount: Number(paymentData.amount || 0),
-        totalBV: Number(paymentData.totalBV || 0),
-        items: paymentData.items || [],
-        customerName: paymentData.customerName || paymentData.buyerName || 'Member',
-        memberId: paymentData.memberId || paymentData.distributorId || paymentData.userId || 'KK-0002',
-        distributorCode: paymentData.memberId || paymentData.distributorId || paymentData.userId || 'KK-0002',
-        createdAt: new Date().toISOString(),
-      };
-      this.saveOrderToLocalCache(fallbackOrder);
-      return {
-        success: true,
-        order: fallbackOrder,
-      };
+      // Do NOT fabricate a confirmed order when verification fails.
+      console.error('[API] Verify Razorpay payment failed:', err.message);
+      throw err;
     }
   },
 
@@ -2486,7 +2433,6 @@ export const api = {
   // CLIENT WALLET FUNDING & BANK PORTAL
   // ==========================================
   async createClientFundingOrder(orderData) {
-    const liveKey = import.meta.env?.VITE_RAZORPAY_KEY_ID || 'rzp_live_ToerZRsvekgL2z';
     try {
       const res = await fetch(`${API_BASE_URL}/funding/orders`, {
         method: 'POST',
@@ -2495,30 +2441,13 @@ export const api = {
       });
       const data = await res.json();
       if (res.ok && data.success && data.data) {
-        data.data.keyId = data.data.keyId || liveKey;
+        data.data.keyId = data.data.keyId || (await this.getRazorpayKeyId());
         return data;
       }
       throw new Error(data?.message || 'Failed to create funding order');
     } catch (err) {
-      console.warn('[API] Create client funding order fallback:', err.message);
-      return {
-        success: true,
-        data: {
-          order: {
-            id: `cfo_${Date.now()}`,
-            amount: orderData.amount,
-            currency: 'INR',
-            status: 'PENDING',
-            paymentMethod: orderData.paymentMethod,
-            providerOrderId: null,
-            createdAt: new Date().toISOString(),
-          },
-          razorpayOrderId: null,
-          keyId: liveKey,
-          currency: 'INR',
-          amountInPaise: Math.round(Number(orderData.amount) * 100),
-        },
-      };
+      console.error('[API] Create client funding order failed:', err.message);
+      throw err;
     }
   },
 

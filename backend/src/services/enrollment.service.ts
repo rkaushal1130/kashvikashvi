@@ -1374,6 +1374,7 @@ export class EnrollmentService {
                   unitBV: pkgBV,
                   totalPrice: pkgPrice,
                   totalBV: pkgBV,
+                  gstRate: (product as any).gstRate ?? 18,
                 },
               },
               payments: {
