@@ -1,9 +1,19 @@
 import EmbeddedPostgres from 'embedded-postgres';
 import path from 'path';
+import fs from 'fs';
 
 async function main() {
   const dataDir = path.resolve(process.cwd(), '.pgdata');
   console.log('Initializing embedded PostgreSQL in:', dataDir);
+
+  const pidFile = path.join(dataDir, 'postmaster.pid');
+  if (fs.existsSync(pidFile)) {
+    try {
+      fs.unlinkSync(pidFile);
+    } catch {
+      // ignore
+    }
+  }
 
   const pg = new EmbeddedPostgres({
     databaseDir: dataDir,

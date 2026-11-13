@@ -22,7 +22,7 @@ function checkPort(port: number, host = '127.0.0.1'): Promise<boolean> {
   });
 }
 
-async function waitForPort(port: number, timeoutMs = 15000): Promise<boolean> {
+async function waitForPort(port: number, timeoutMs = 45000): Promise<boolean> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     if (await checkPort(port)) {
