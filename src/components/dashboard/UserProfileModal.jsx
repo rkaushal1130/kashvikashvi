@@ -347,7 +347,9 @@ export default function UserProfileModal({ isOpen, onClose, user, onSaveSuccess 
               </div>
 
               <div className="profile-field-group field-full">
-                <label className="field-label">Email Address</label>
+                <label className="field-label">
+                  Email Address <span className="optional-badge">(Optional)</span>
+                </label>
                 <div className="input-with-icon">
                   <Mail size={16} className="input-icon" />
                   <input
@@ -355,7 +357,7 @@ export default function UserProfileModal({ isOpen, onClose, user, onSaveSuccess 
                     name="email"
                     value={formData.email}
                     onChange={handleChange}
-                    placeholder="name@example.com"
+                    placeholder="name@example.com (Optional)"
                     className="profile-input"
                   />
                 </div>
