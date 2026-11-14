@@ -179,27 +179,71 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
           ? Number(treeRoot.personalBV)
           : (summary?.personalBV != null ? Number(summary.personalBV) : 250);
 
+        // Dynamically compute authoritative rank qualification from the tree metrics
+        const CANONICAL_RANKS = [
+          { code: 'BASE', name: 'Base', order: 0, minBV: 0, minLeft: 0, minRight: 0 },
+          { code: 'SILVER', name: 'Silver', order: 1, minBV: 250, minLeft: 2000, minRight: 2000 },
+          { code: 'GOLD', name: 'Gold', order: 2, minBV: 250, minLeft: 5000, minRight: 5000 },
+          { code: 'PLATINUM', name: 'Platinum', order: 3, minBV: 500, minLeft: 50000, minRight: 50000 },
+          { code: 'DIAMOND', name: 'Diamond', order: 4, minBV: 1000, minLeft: 60000, minRight: 60000 },
+          { code: 'RUBY', name: 'Ruby', order: 5, minBV: 1000, minLeft: 100000, minRight: 100000 },
+        ];
+        let dynamicRank = CANONICAL_RANKS[0];
+        for (let i = CANONICAL_RANKS.length - 1; i >= 0; i--) {
+          const rk = CANONICAL_RANKS[i];
+          if (rk.code === 'BASE') continue;
+          if (effectivePersonalBV >= rk.minBV && effectiveLeftBV >= rk.minLeft && effectiveRightBV >= rk.minRight) {
+            dynamicRank = rk;
+            break;
+          }
+        }
+        const dynamicNextRank = dynamicRank.order < CANONICAL_RANKS.length - 1 ? CANONICAL_RANKS[dynamicRank.order + 1] : null;
+        let dynamicRankProgress = 100;
+        let dynamicBvGap = 0;
+        let dynamicLeftGap = 0;
+        let dynamicRightGap = 0;
+        if (dynamicNextRank) {
+          dynamicBvGap = Math.max(0, dynamicNextRank.minBV - effectivePersonalBV);
+          dynamicLeftGap = Math.max(0, dynamicNextRank.minLeft - effectiveLeftBV);
+          dynamicRightGap = Math.max(0, dynamicNextRank.minRight - effectiveRightBV);
+          const bvP = dynamicNextRank.minBV > 0 ? (effectivePersonalBV / dynamicNextRank.minBV) * 100 : 100;
+          const leftP = dynamicNextRank.minLeft > 0 ? (effectiveLeftBV / dynamicNextRank.minLeft) * 100 : 100;
+          const rightP = dynamicNextRank.minRight > 0 ? (effectiveRightBV / dynamicNextRank.minRight) * 100 : 100;
+          dynamicRankProgress = Number(Math.min(100, bvP, leftP, rightP).toFixed(1));
+        }
+
+        const effectiveLeftTeamCount = summary?.leftTeamCount ?? treeRoot?.leftTeamCount ?? 0;
+        const effectiveRightTeamCount = summary?.rightTeamCount ?? treeRoot?.rightTeamCount ?? 0;
+
         const treeVolData = {
           leftBV: effectiveLeftBV,
           rightBV: effectiveRightBV,
           personalBV: effectivePersonalBV,
           matchingVolume: Math.min(effectiveLeftBV, effectiveRightBV),
           totalBV: (treeRoot?.totalBV != null) ? Number(treeRoot.totalBV) : (effectivePersonalBV + effectiveLeftBV + effectiveRightBV),
-          leftTeamCount: summary?.leftTeamCount ?? treeRoot?.leftTeamCount ?? 0,
-          rightTeamCount: summary?.rightTeamCount ?? treeRoot?.rightTeamCount ?? 0,
-          totalTeamCount: summary?.totalTeamCount ?? treeRoot?.totalTeamCount ?? 0,
+          leftTeamCount: effectiveLeftTeamCount,
+          rightTeamCount: effectiveRightTeamCount,
+          totalTeamCount: summary?.totalTeamCount ?? treeRoot?.totalTeamCount ?? (effectiveLeftTeamCount + effectiveRightTeamCount),
           directMembers: summary?.directMembers ?? treeRoot?.directMembers ?? 0,
+          dynamicRank,
+          dynamicNextRank,
+          dynamicRankProgress,
+          dynamicBvGap,
+          dynamicLeftGap,
+          dynamicRightGap,
           bc002: {
-            leftBV: Number(treeRoot?.left?.leftBV ?? 1000),
-            rightBV: Number(treeRoot?.left?.rightBV ?? 800),
+            leftBV: Number(treeRoot?.left?.leftBV ?? (treeRoot?.left ? (treeRoot.left.leftTeamCount || 0) * 1000 : 1000)),
+            rightBV: Number(treeRoot?.left?.rightBV ?? (treeRoot?.left ? (treeRoot.left.rightTeamCount || 0) * 800 : 800)),
             personalBV: Number(treeRoot?.left?.personalBV ?? 100),
             name: treeRoot?.left?.name || 'BC 002',
+            teamCount: Number(treeRoot?.left?.totalTeamCount ?? 0),
           },
           bc003: {
-            leftBV: Number(treeRoot?.right?.leftBV ?? 1000),
-            rightBV: Number(treeRoot?.right?.rightBV ?? 800),
+            leftBV: Number(treeRoot?.right?.leftBV ?? (treeRoot?.right ? (treeRoot.right.leftTeamCount || 0) * 1000 : 1000)),
+            rightBV: Number(treeRoot?.right?.rightBV ?? (treeRoot?.right ? (treeRoot.right.rightTeamCount || 0) * 800 : 800)),
             personalBV: Number(treeRoot?.right?.personalBV ?? 100),
             name: treeRoot?.right?.name || 'BC 003',
+            teamCount: Number(treeRoot?.right?.totalTeamCount ?? 0),
           },
         };
 
@@ -216,6 +260,10 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
               leftBV: treeVolData.leftBV,
               rightBV: treeVolData.rightBV,
               matchingVolume: treeVolData.matchingVolume,
+              currentRank: dynamicRank.name,
+              currentRankCode: dynamicRank.code,
+              nextRank: dynamicNextRank ? dynamicNextRank.name : 'Highest Rank Achieved',
+              rankProgressPercent: dynamicRankProgress,
             });
           }
         }
@@ -485,14 +533,25 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
   const displayPaymentStatus = (isDisplayRootAdmin ? 'PAID' : (performance?.paymentStatus || paymentStatus || effectiveUser?.paymentStatus || 'PENDING')).toUpperCase();
   const displayUserStatus = (isDisplayRootAdmin ? 'ACTIVE' : (performance?.accountStatus || userStatus || effectiveUser?.status || (displayPaymentStatus === 'PAID' ? 'ACTIVE' : 'PENDING_PAYMENT'))).toUpperCase();
   const displayMemberSince = performance?.brandPartnerSince || (memberSince !== 'NA' ? memberSince : 'Today');
-  const displayRankName = performance?.currentRank || currentRankName || 'Base';
-  const currentRankCode = performance?.currentRankCode || cumulativeRank?.currentRank || (displayRankName ? displayRankName.toUpperCase() : 'BASE');
-  const displayNextRankName = performance?.nextRank || nextRankName || (performance?.isHighestRank ? 'Highest Rank Achieved' : 'Silver');
-  const displayRankProgress = performance?.rankProgressPercent ?? rankProgressPercent ?? 0;
+  // Dynamic Tree Data, Rank & Leg Metrics (Synchronized with Tree Root)
   const displayPersonalBV = treeVolume?.personalBV ?? performance?.personalBV ?? cumulativeRank?.qualifyingBV ?? 250;
   const displayLeftBV = treeVolume?.leftBV ?? performance?.leftBV ?? cumulativeRank?.leftMatching ?? 0;
   const displayRightBV = treeVolume?.rightBV ?? performance?.rightBV ?? cumulativeRank?.rightMatching ?? 0;
   const displayMatchingVolume = treeVolume?.matchingVolume ?? performance?.matchingVolume ?? cumulativeRank?.matchedVolume ?? Math.min(displayLeftBV, displayRightBV);
+  const displayLeftTeamCount = treeVolume?.leftTeamCount ?? performance?.leftTeamCount ?? 0;
+  const displayRightTeamCount = treeVolume?.rightTeamCount ?? performance?.rightTeamCount ?? 0;
+  const displayTotalTeamCount = treeVolume?.totalTeamCount ?? performance?.totalTeamCount ?? (displayLeftTeamCount + displayRightTeamCount);
+  const displayDirectMembers = treeVolume?.directMembers ?? performance?.directMembers ?? 0;
+  const displayTotalBV = treeVolume?.totalBV ?? performance?.totalBV ?? (displayPersonalBV + displayLeftBV + displayRightBV);
+  const displayCarryoverBV = Math.abs(displayLeftBV - displayRightBV);
+
+  const displayRankName = treeVolume?.dynamicRank?.name || performance?.currentRank || currentRankName || 'Base';
+  const currentRankCode = treeVolume?.dynamicRank?.code || performance?.currentRankCode || cumulativeRank?.currentRank || (displayRankName ? displayRankName.toUpperCase() : 'BASE');
+  const displayNextRankName = treeVolume?.dynamicNextRank?.name || performance?.nextRank || nextRankName || (performance?.isHighestRank ? 'Highest Rank Achieved' : 'Silver');
+  const displayRankProgress = treeVolume?.dynamicRankProgress ?? performance?.rankProgressPercent ?? rankProgressPercent ?? 0;
+  const displayBvGap = treeVolume?.dynamicBvGap ?? performance?.missingRequirements?.bvGap ?? 0;
+  const displayLeftGap = treeVolume?.dynamicLeftGap ?? performance?.missingRequirements?.leftGap ?? 0;
+  const displayRightGap = treeVolume?.dynamicRightGap ?? performance?.missingRequirements?.rightGap ?? 0;
 
   const handleInitiatePayment = async () => {
     setIsPaymentInitiating(true);
@@ -1121,34 +1180,40 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
                       )}
                     </div>
 
-                    {/* BV, Left, Right, Matching Volume Breakdown */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', fontSize: '11.5px', color: '#475569', borderTop: '1px solid #f1f5f9', paddingTop: '8px' }}>
+                    {/* BV, Left, Right, Matching Volume Breakdown (Synchronized with Tree) */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '11.5px', color: '#475569', borderTop: '1px solid #f1f5f9', paddingTop: '8px' }}>
                       <div>
-                        BV: <strong style={{ color: '#0f172a' }}>{displayPersonalBV.toLocaleString()} BV</strong>
-                        {performance?.missingRequirements?.bvGap > 0 && (
+                        Personal BV: <strong style={{ color: '#0f172a' }}>{displayPersonalBV.toLocaleString()} BV</strong>
+                        {displayBvGap > 0 && (
                           <span style={{ color: '#b45309', display: 'block', fontSize: '10px' }}>
-                            Need {performance.missingRequirements.bvGap} more
-                          </span>
-                        )}
-                      </div>
-                      <div>
-                        Left: <strong style={{ color: '#0f172a' }}>{displayLeftBV.toLocaleString()} BV</strong>
-                        {performance?.missingRequirements?.leftGap > 0 && (
-                          <span style={{ color: '#b45309', display: 'block', fontSize: '10px' }}>
-                            Need {performance.missingRequirements.leftGap.toLocaleString()} more
-                          </span>
-                        )}
-                      </div>
-                      <div>
-                        Right: <strong style={{ color: '#0f172a' }}>{displayRightBV.toLocaleString()} BV</strong>
-                        {performance?.missingRequirements?.rightGap > 0 && (
-                          <span style={{ color: '#b45309', display: 'block', fontSize: '10px' }}>
-                            Need {performance.missingRequirements.rightGap.toLocaleString()} more
+                            Need {displayBvGap} more
                           </span>
                         )}
                       </div>
                       <div>
                         Matching: <strong style={{ color: '#0f172a' }}>{displayMatchingVolume.toLocaleString()} BV</strong>
+                      </div>
+                      <div>
+                        Left Leg: <strong style={{ color: '#0f172a' }}>{displayLeftBV.toLocaleString()} BV</strong>
+                        <span style={{ color: '#0284c7', display: 'block', fontSize: '10.5px', fontWeight: 600 }}>
+                          {displayLeftTeamCount} members
+                        </span>
+                        {displayLeftGap > 0 && (
+                          <span style={{ color: '#b45309', display: 'block', fontSize: '10px' }}>
+                            Need {displayLeftGap.toLocaleString()} more
+                          </span>
+                        )}
+                      </div>
+                      <div>
+                        Right Leg: <strong style={{ color: '#0f172a' }}>{displayRightBV.toLocaleString()} BV</strong>
+                        <span style={{ color: '#9333ea', display: 'block', fontSize: '10.5px', fontWeight: 600 }}>
+                          {displayRightTeamCount} members
+                        </span>
+                        {displayRightGap > 0 && (
+                          <span style={{ color: '#b45309', display: 'block', fontSize: '10px' }}>
+                            Need {displayRightGap.toLocaleString()} more
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -1197,17 +1262,29 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
                     <span className="commission-subheading">Estimated Commission</span>
                     <button
                       type="button"
-                      className="status-pill-badge not-qualified"
+                      className={`status-pill-badge ${displayMatchingVolume > 0 || displayPaymentStatus === 'PAID' ? 'qualified' : 'not-qualified'}`}
                       onClick={() => setActiveModal('qualification')}
                       title="Click to view qualification criteria"
+                      style={displayMatchingVolume > 0 || displayPaymentStatus === 'PAID' ? {
+                        backgroundColor: '#dcfce7',
+                        color: '#15803d',
+                        borderColor: '#bbf7d0',
+                        fontWeight: 700,
+                      } : {}}
                     >
-                      Not Commission Qualified
+                      {displayMatchingVolume > 0 || displayPaymentStatus === 'PAID'
+                        ? '✓ Commission Qualified'
+                        : 'Not Commission Qualified'}
                     </button>
                   </div>
 
-                  <div className="commission-amount-val">
-                    {hideCommission ? '•••• CP' : '0.00 CP'}
+                  <div className="commission-amount-val" style={{ color: displayMatchingVolume > 0 ? '#15803d' : '#0f172a' }}>
+                    {hideCommission ? '•••• CP' : `${(displayMatchingVolume * 0.20).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CP`}
                   </div>
+
+                  <p style={{ fontSize: '11px', color: '#64748b', margin: '4px 0 0' }}>
+                    20% Balanced Matching ({displayMatchingVolume.toLocaleString()} BV)
+                  </p>
 
                   <button
                     type="button"
@@ -1292,6 +1369,130 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
                         Learn More
                       </button>
                     </div>
+                  </div>
+                </div>
+              </section>
+
+              {/* Section 1.5: Dynamic Tree Data Metrics Bar (Rank, BV, Matching, Left Leg, Right Leg) */}
+              <section className="dashboard-tree-metrics-bar" style={{ margin: '16px 0' }}>
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                  gap: '12px',
+                }}>
+                  {/* Metric 1: Tree-Derived Rank */}
+                  <div style={{
+                    background: '#ffffff',
+                    border: '1px solid #e2e8f0',
+                    borderTop: `4px solid ${currentRankCode === 'RUBY' ? '#e11d48' : currentRankCode === 'DIAMOND' ? '#2563eb' : currentRankCode === 'PLATINUM' ? '#0891b2' : currentRankCode === 'GOLD' ? '#d97706' : currentRankCode === 'SILVER' ? '#475569' : '#16a34a'}`,
+                    borderRadius: '10px',
+                    padding: '12px 14px',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                  }}>
+                    <span style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <Award size={13} style={{ color: '#0284c7' }} /> Current Tree Rank
+                    </span>
+                    <span style={{ fontSize: '20px', fontWeight: 800, color: '#0f172a', margin: '4px 0 2px' }}>
+                      {displayRankName}
+                    </span>
+                    <span style={{ fontSize: '11px', color: '#16a34a', fontWeight: 600 }}>
+                      {displayRankProgress}% to {displayNextRankName}
+                    </span>
+                  </div>
+
+                  {/* Metric 2: Personal & Network Total BV */}
+                  <div style={{
+                    background: '#ffffff',
+                    border: '1px solid #e2e8f0',
+                    borderTop: '4px solid #059669',
+                    borderRadius: '10px',
+                    padding: '12px 14px',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                  }}>
+                    <span style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      Personal / Total BV
+                    </span>
+                    <span style={{ fontSize: '20px', fontWeight: 800, color: '#059669', margin: '4px 0 2px' }}>
+                      {displayPersonalBV.toLocaleString()} BV
+                    </span>
+                    <span style={{ fontSize: '11px', color: '#64748b' }}>
+                      Total Network: <strong style={{ color: '#0f172a' }}>{displayTotalBV.toLocaleString()} BV</strong>
+                    </span>
+                  </div>
+
+                  {/* Metric 3: Left Leg Team */}
+                  <div style={{
+                    background: '#ffffff',
+                    border: '1px solid #e2e8f0',
+                    borderLeft: '4px solid #0284c7',
+                    borderRadius: '10px',
+                    padding: '12px 14px',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                  }}>
+                    <span style={{ fontSize: '11px', fontWeight: 700, color: '#0284c7', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      Left Leg Team
+                    </span>
+                    <span style={{ fontSize: '20px', fontWeight: 800, color: '#0284c7', margin: '4px 0 2px' }}>
+                      {displayLeftBV.toLocaleString()} BV
+                    </span>
+                    <span style={{ fontSize: '11px', color: '#475569' }}>
+                      <strong style={{ color: '#0284c7' }}>{displayLeftTeamCount}</strong> members downline
+                    </span>
+                  </div>
+
+                  {/* Metric 4: Right Leg Team */}
+                  <div style={{
+                    background: '#ffffff',
+                    border: '1px solid #e2e8f0',
+                    borderLeft: '4px solid #9333ea',
+                    borderRadius: '10px',
+                    padding: '12px 14px',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                  }}>
+                    <span style={{ fontSize: '11px', fontWeight: 700, color: '#9333ea', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      Right Leg Team
+                    </span>
+                    <span style={{ fontSize: '20px', fontWeight: 800, color: '#9333ea', margin: '4px 0 2px' }}>
+                      {displayRightBV.toLocaleString()} BV
+                    </span>
+                    <span style={{ fontSize: '11px', color: '#475569' }}>
+                      <strong style={{ color: '#9333ea' }}>{displayRightTeamCount}</strong> members downline
+                    </span>
+                  </div>
+
+                  {/* Metric 5: Balanced Matching Volume */}
+                  <div style={{
+                    background: '#ffffff',
+                    border: '1px solid #e2e8f0',
+                    borderTop: '4px solid #ea580c',
+                    borderRadius: '10px',
+                    padding: '12px 14px',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                  }}>
+                    <span style={{ fontSize: '11px', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      Balanced Matching
+                    </span>
+                    <span style={{ fontSize: '20px', fontWeight: 800, color: '#ea580c', margin: '4px 0 2px' }}>
+                      {hideCommission ? '••••' : `${displayMatchingVolume.toLocaleString()} BV`}
+                    </span>
+                    <span style={{ fontSize: '11px', color: '#64748b' }}>
+                      Carryover: <strong style={{ color: '#0f172a' }}>{displayCarryoverBV.toLocaleString()} BV</strong>
+                    </span>
                   </div>
                 </div>
               </section>
@@ -1676,7 +1877,7 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
                             </div>
                             <div className="node-bars-row">
                               <div className="node-leg-bar">
-                                <span className="leg-name">Left: {displayLeftBV.toLocaleString()} BV</span>
+                                <span className="leg-name">Left: {displayLeftBV.toLocaleString()} BV ({displayLeftTeamCount} members)</span>
                                 <div className="bar-track">
                                   <div
                                     className="bar-fill pink-fill"
@@ -1687,7 +1888,7 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
                                 </div>
                               </div>
                               <div className="node-leg-bar">
-                                <span className="leg-name">Right: {displayRightBV.toLocaleString()} BV</span>
+                                <span className="leg-name">Right: {displayRightBV.toLocaleString()} BV ({displayRightTeamCount} members)</span>
                                 <div className="bar-track">
                                   <div
                                     className="bar-fill teal-fill"
@@ -2971,20 +3172,26 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
             <div className="modal-body">
               <div className="volume-summary-metrics">
                 <div className="metric-box">
-                  <span className="metric-label">BC 001 Total Left</span>
+                  <span className="metric-label">BC 001 Left Leg</span>
                   <span className="metric-val">{hideCommission ? '••••' : `${displayLeftBV.toLocaleString()} BV`}</span>
+                  <span style={{ fontSize: '11px', color: '#0284c7', fontWeight: 600 }}>{displayLeftTeamCount} members</span>
                 </div>
                 <div className="metric-box">
-                  <span className="metric-label">BC 001 Total Right</span>
+                  <span className="metric-label">BC 001 Right Leg</span>
                   <span className="metric-val">{hideCommission ? '••••' : `${displayRightBV.toLocaleString()} BV`}</span>
+                  <span style={{ fontSize: '11px', color: '#9333ea', fontWeight: 600 }}>{displayRightTeamCount} members</span>
                 </div>
                 <div className="metric-box">
-                  <span className="metric-label">Matching Volume</span>
+                  <span className="metric-label">Balanced Matching</span>
                   <span className="metric-val">{hideCommission ? '••••' : `${displayMatchingVolume.toLocaleString()} BV`}</span>
+                  <span style={{ fontSize: '11px', color: '#16a34a', fontWeight: 600 }}>
+                    Est. 20%: {(displayMatchingVolume * 0.20).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} CP
+                  </span>
                 </div>
                 <div className="metric-box">
                   <span className="metric-label">Carryover Volume</span>
-                  <span className="metric-val">{hideCommission ? '••••' : `${Math.abs(displayLeftBV - displayRightBV).toLocaleString()} BV`}</span>
+                  <span className="metric-val">{hideCommission ? '••••' : `${displayCarryoverBV.toLocaleString()} BV`}</span>
+                  <span style={{ fontSize: '11px', color: '#64748b' }}>Unmatched carried forward</span>
                 </div>
               </div>
               <p className="report-note">

@@ -2759,6 +2759,15 @@ export const api = {
 
   // 16. Cumulative Rank & Commission System
   async getMyCumulativeRank() {
+    const CANONICAL_RANKS = [
+      { code: 'BASE', name: 'Base', order: 0, minBV: 0, minLeft: 0, minRight: 0, percent: 0, cumulativePercent: 0 },
+      { code: 'SILVER', name: 'Silver', order: 1, minBV: 250, minLeft: 2000, minRight: 2000, percent: 24, cumulativePercent: 24 },
+      { code: 'GOLD', name: 'Gold', order: 2, minBV: 250, minLeft: 5000, minRight: 5000, percent: 8, cumulativePercent: 32 },
+      { code: 'PLATINUM', name: 'Platinum', order: 3, minBV: 500, minLeft: 50000, minRight: 50000, percent: 13, cumulativePercent: 45 },
+      { code: 'DIAMOND', name: 'Diamond', order: 4, minBV: 1000, minLeft: 60000, minRight: 60000, percent: 5, cumulativePercent: 50 },
+      { code: 'RUBY', name: 'Ruby', order: 5, minBV: 1000, minLeft: 100000, minRight: 100000, percent: 4, cumulativePercent: 54 },
+    ];
+
     try {
       const res = await fetch(`${API_BASE_URL}/commissions/cumulative/me`, {
         headers: getAuthHeaders(),
@@ -2775,6 +2784,39 @@ export const api = {
             rank.leftMatching = Number(root.leftBV ?? rank.leftMatching ?? 0);
             rank.rightMatching = Number(root.rightBV ?? rank.rightMatching ?? 0);
             rank.matchedVolume = Math.min(rank.leftMatching, rank.rightMatching);
+            rank.qualifyingBV = Number(root.personalBV ?? rank.qualifyingBV ?? 250);
+
+            // Re-evaluate rank dynamically based on tree data
+            let achieved = CANONICAL_RANKS[0];
+            for (let i = CANONICAL_RANKS.length - 1; i >= 0; i--) {
+              const rk = CANONICAL_RANKS[i];
+              if (rk.code === 'BASE') continue;
+              if (rank.qualifyingBV >= rk.minBV && rank.leftMatching >= rk.minLeft && rank.rightMatching >= rk.minRight) {
+                achieved = rk;
+                break;
+              }
+            }
+            rank.currentRank = achieved.code;
+            rank.currentRankName = achieved.name;
+            const nextRk = achieved.order < CANONICAL_RANKS.length - 1 ? CANONICAL_RANKS[achieved.order + 1] : null;
+            rank.nextRankName = nextRk ? nextRk.name : 'Highest Rank Achieved';
+            if (nextRk) {
+              const bvP = nextRk.minBV > 0 ? (rank.qualifyingBV / nextRk.minBV) * 100 : 100;
+              const lP = nextRk.minLeft > 0 ? (rank.leftMatching / nextRk.minLeft) * 100 : 100;
+              const rP = nextRk.minRight > 0 ? (rank.rightMatching / nextRk.minRight) * 100 : 100;
+              rank.rankProgressPercent = Number(Math.min(100, bvP, lP, rP).toFixed(1));
+            } else {
+              rank.rankProgressPercent = 100;
+            }
+            rank.eligibleCommissionTiers = CANONICAL_RANKS
+              .filter((r) => r.order > 0 && r.order <= achieved.order)
+              .map((r) => ({
+                rankCode: r.code,
+                rankName: r.name,
+                percentage: r.percent,
+                cumulativePercentage: r.cumulativePercent,
+              }));
+            rank.cumulativePercentage = rank.eligibleCommissionTiers.reduce((s, t) => s + t.percentage, 0);
           }
         } catch {}
         return rank;
@@ -2782,7 +2824,7 @@ export const api = {
     } catch (err) {
       console.warn('[API] getMyCumulativeRank failed:', err.message);
     }
-    // Resilient fallback for cumulative rank derived from the live tree
+    // Resilient fallback for cumulative rank derived directly from the tree data
     try {
       const authUser = JSON.parse(localStorage.getItem('kashvi_auth') || '{}');
       const cleanId = safeId(authUser.distributorCode || authUser.memberId || 'KK-0001');
@@ -2790,17 +2832,51 @@ export const api = {
       const root = modeled?.root || modeled;
       const leftMatching = Number(root?.leftBV ?? 0);
       const rightMatching = Number(root?.rightBV ?? 0);
+      const qualifyingBV = Number(root?.personalBV ?? 250);
+
+      let achievedRank = CANONICAL_RANKS[0];
+      for (let i = CANONICAL_RANKS.length - 1; i >= 0; i--) {
+        const rk = CANONICAL_RANKS[i];
+        if (rk.code === 'BASE') continue;
+        if (qualifyingBV >= rk.minBV && leftMatching >= rk.minLeft && rightMatching >= rk.minRight) {
+          achievedRank = rk;
+          break;
+        }
+      }
+
+      const nextRank = achievedRank.order < CANONICAL_RANKS.length - 1 ? CANONICAL_RANKS[achievedRank.order + 1] : null;
+      let rankProgressPercent = 100;
+      if (nextRank) {
+        const bvP = nextRank.minBV > 0 ? (qualifyingBV / nextRank.minBV) * 100 : 100;
+        const leftP = nextRank.minLeft > 0 ? (leftMatching / nextRank.minLeft) * 100 : 100;
+        const rightP = nextRank.minRight > 0 ? (rightMatching / nextRank.minRight) * 100 : 100;
+        rankProgressPercent = Number(Math.min(100, bvP, leftP, rightP).toFixed(1));
+      }
+
+      const eligibleCommissionTiers = CANONICAL_RANKS
+        .filter((r) => r.order > 0 && r.order <= achievedRank.order)
+        .map((r) => ({
+          rankCode: r.code,
+          rankName: r.name,
+          percentage: r.percent,
+          cumulativePercentage: r.cumulativePercent,
+        }));
+      const cumulativePercentage = eligibleCommissionTiers.reduce((sum, t) => sum + t.percentage, 0);
+
       return {
         memberId: cleanId,
         distributorCode: cleanId,
-        currentRank: isRootAdmin(cleanId) ? 'SILVER' : 'BASE',
-        qualifyingBV: Number(root?.personalBV ?? 250),
+        currentRank: achievedRank.code,
+        currentRankName: achievedRank.name,
+        nextRankName: nextRank ? nextRank.name : 'Highest Rank Achieved',
+        rankProgressPercent,
+        qualifyingBV,
         leftMatching,
         rightMatching,
         matchedVolume: Math.min(leftMatching, rightMatching),
-        cumulativePercentage: 15,
-        eligibleCommissionTiers: [],
-        isQualified: true,
+        cumulativePercentage: cumulativePercentage || 15,
+        eligibleCommissionTiers,
+        isQualified: Boolean(qualifyingBV >= 100),
       };
     } catch {
       return null;
@@ -2841,7 +2917,51 @@ export const api = {
           if (root && (root.leftBV != null || root.rightBV != null)) {
             perf.leftBV = Number(root.leftBV ?? perf.leftBV ?? 0);
             perf.rightBV = Number(root.rightBV ?? perf.rightBV ?? 0);
+            perf.personalBV = Number(root.personalBV ?? perf.personalBV ?? 250);
             perf.matchingVolume = Math.min(perf.leftBV, perf.rightBV);
+            perf.leftTeamCount = Number(root.leftTeamCount ?? perf.leftTeamCount ?? 0);
+            perf.rightTeamCount = Number(root.rightTeamCount ?? perf.rightTeamCount ?? 0);
+            perf.totalTeamCount = Number(root.totalTeamCount ?? (perf.leftTeamCount + perf.rightTeamCount));
+            perf.directMembers = Number(root.directMembers ?? perf.directMembers ?? 0);
+            perf.totalBV = Number(root.totalBV ?? (perf.personalBV + perf.leftBV + perf.rightBV));
+
+            // Re-evaluate rank dynamically based on tree volumes
+            const ranks = [
+              { code: 'BASE', name: 'Base', order: 0, minBV: 0, minLeft: 0, minRight: 0 },
+              { code: 'SILVER', name: 'Silver', order: 1, minBV: 250, minLeft: 2000, minRight: 2000 },
+              { code: 'GOLD', name: 'Gold', order: 2, minBV: 250, minLeft: 5000, minRight: 5000 },
+              { code: 'PLATINUM', name: 'Platinum', order: 3, minBV: 500, minLeft: 50000, minRight: 50000 },
+              { code: 'DIAMOND', name: 'Diamond', order: 4, minBV: 1000, minLeft: 60000, minRight: 60000 },
+              { code: 'RUBY', name: 'Ruby', order: 5, minBV: 1000, minLeft: 100000, minRight: 100000 },
+            ];
+            let achieved = ranks[0];
+            for (let i = ranks.length - 1; i >= 0; i--) {
+              const rk = ranks[i];
+              if (rk.code === 'BASE') continue;
+              if (perf.personalBV >= rk.minBV && perf.leftBV >= rk.minLeft && perf.rightBV >= rk.minRight) {
+                achieved = rk;
+                break;
+              }
+            }
+            perf.currentRank = achieved.name;
+            perf.currentRankCode = achieved.code;
+            const nextRk = achieved.order < ranks.length - 1 ? ranks[achieved.order + 1] : null;
+            perf.nextRank = nextRk ? nextRk.name : 'Highest Rank Achieved';
+            perf.nextRankCode = nextRk ? nextRk.code : null;
+            if (nextRk) {
+              const bvP = nextRk.minBV > 0 ? (perf.personalBV / nextRk.minBV) * 100 : 100;
+              const lP = nextRk.minLeft > 0 ? (perf.leftBV / nextRk.minLeft) * 100 : 100;
+              const rP = nextRk.minRight > 0 ? (perf.rightBV / nextRk.minRight) * 100 : 100;
+              perf.rankProgressPercent = Number(Math.min(100, bvP, lP, rP).toFixed(1));
+              perf.missingRequirements = {
+                bvGap: Math.max(0, nextRk.minBV - perf.personalBV),
+                leftGap: Math.max(0, nextRk.minLeft - perf.leftBV),
+                rightGap: Math.max(0, nextRk.minRight - perf.rightBV),
+              };
+            } else {
+              perf.rankProgressPercent = 100;
+              perf.missingRequirements = { bvGap: 0, leftGap: 0, rightGap: 0 };
+            }
           }
         } catch {}
         return perf;
@@ -2880,26 +3000,40 @@ export const api = {
       // Sum left and right downline volume directly from binary tree
       let leftBV = Number(userTarget?.leftBV ?? userTarget?.distributorProfile?.businessCenters?.[0]?.leftVolume ?? 0);
       let rightBV = Number(userTarget?.rightBV ?? userTarget?.distributorProfile?.businessCenters?.[0]?.rightVolume ?? 0);
+      let leftTeamCount = 0;
+      let rightTeamCount = 0;
+      let totalTeamCount = 0;
+      let directMembers = 0;
       try {
         const modeled = this.getModeledTree(cleanId || memberId, 3);
         const root = modeled?.root || modeled;
         if (root && (root.leftBV != null || root.rightBV != null)) {
           leftBV = Number(root.leftBV ?? 0);
           rightBV = Number(root.rightBV ?? 0);
+          leftTeamCount = Number(root.leftTeamCount ?? 0);
+          rightTeamCount = Number(root.rightTeamCount ?? 0);
+          totalTeamCount = Number(root.totalTeamCount ?? (leftTeamCount + rightTeamCount));
+          directMembers = Number(root.directMembers ?? 0);
         }
       } catch (err) {
         for (const m of enrolledTree) {
           if (m.placementParent === memberId || m.sponsor === memberId) {
             const legBv = Number(m.bv ?? 100);
-            if (m.position === 'LEFT') leftBV += legBv;
-            else rightBV += legBv;
+            if (m.position === 'LEFT') {
+              leftBV += legBv;
+              leftTeamCount++;
+            } else {
+              rightBV += legBv;
+              rightTeamCount++;
+            }
           }
         }
+        totalTeamCount = leftTeamCount + rightTeamCount;
       }
 
       const matchingVolume = Math.min(leftBV, rightBV);
 
-      // Canonical Rank Qualifications
+      // Canonical Rank Qualifications dynamically calculated from Tree Data
       const ranks = [
         { code: 'BASE', name: 'Base', order: 0, minBV: 0, minLeft: 0, minRight: 0 },
         { code: 'SILVER', name: 'Silver', order: 1, minBV: 250, minLeft: 2000, minRight: 2000 },
@@ -2918,7 +3052,15 @@ export const api = {
       const explicitRankName = typeof profileRank === 'object' ? (profileRank?.name || profileRank?.title) : profileRank;
 
       let achievedRank = ranks[0]; // Base
-      if (explicitRankName) {
+      for (let i = ranks.length - 1; i >= 0; i--) {
+        const rk = ranks[i];
+        if (rk.code === 'BASE') continue;
+        if (personalBV >= rk.minBV && leftBV >= rk.minLeft && rightBV >= rk.minRight) {
+          achievedRank = rk;
+          break;
+        }
+      }
+      if (explicitRankName && achievedRank.code === 'BASE') {
         const matchedRank = ranks.find(
           (r) =>
             r.name.toLowerCase() === String(explicitRankName).toLowerCase() ||
@@ -2926,15 +3068,6 @@ export const api = {
         );
         if (matchedRank) {
           achievedRank = matchedRank;
-        }
-      } else {
-        for (let i = ranks.length - 1; i >= 0; i--) {
-          const rk = ranks[i];
-          if (rk.code === 'BASE') continue;
-          if (personalBV >= rk.minBV && leftBV >= rk.minLeft && rightBV >= rk.minRight) {
-            achievedRank = rk;
-            break;
-          }
         }
       }
 
@@ -2978,6 +3111,11 @@ export const api = {
         leftBV,
         rightBV,
         matchingVolume,
+        leftTeamCount,
+        rightTeamCount,
+        totalTeamCount,
+        directMembers,
+        totalBV: personalBV + leftBV + rightBV,
         isQualified: achievedRank.order > 0,
         isHighestRank: !nextRank,
         missingRequirements: {

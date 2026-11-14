@@ -261,7 +261,7 @@ export class CumulativeRankCommissionService {
       qualifyingBV = Math.max(qualifyingBV, Number(member.currentBB ?? member.lifetimePV ?? 0));
     }
 
-    // 2. Resolve Left and Right Matching Volume Independently
+    // 2. Resolve Left and Right Matching Volume Independently (Synchronized with Network Tree)
     let leftMatching = 0;
     let rightMatching = 0;
 
@@ -270,21 +270,33 @@ export class CumulativeRankCommissionService {
       rightMatching = Number(overrides.rightMatching);
     } else {
       try {
-        if (overrides?.leftMatching !== undefined) {
-          leftMatching = Number(overrides.leftMatching);
+        const { NetworkTreeService } = await import('./networkTree.service');
+        const treeRes = await NetworkTreeService.getNetworkTree(distId, 3);
+        if (treeRes?.root && (treeRes.root.leftBV != null || treeRes.root.rightBV != null)) {
+          leftMatching = Number(treeRes.root.leftBV ?? 0);
+          rightMatching = Number(treeRes.root.rightBV ?? 0);
         } else {
           leftMatching = await BinaryVolumeService.getLeftMatching(distId, undefined, db);
-        }
-
-        if (overrides?.rightMatching !== undefined) {
-          rightMatching = Number(overrides.rightMatching);
-        } else {
           rightMatching = await BinaryVolumeService.getRightMatching(distId, undefined, db);
         }
       } catch {
-        const fallback = overrides?.matching !== undefined ? Number(overrides.matching) : Number(member.currentMatching ?? 0);
-        leftMatching = overrides?.leftMatching !== undefined ? Number(overrides.leftMatching) : fallback;
-        rightMatching = overrides?.rightMatching !== undefined ? Number(overrides.rightMatching) : fallback;
+        try {
+          const { NetworkTreeService } = await import('./networkTree.service');
+          const code = member.distributorCode || member.distributorId || distId;
+          const modeled = NetworkTreeService.getModeledNetworkTree(code, 3);
+          if (modeled?.root && (modeled.root.leftBV != null || modeled.root.rightBV != null)) {
+            leftMatching = Number(modeled.root.leftBV ?? 0);
+            rightMatching = Number(modeled.root.rightBV ?? 0);
+          } else {
+            const fallback = overrides?.matching !== undefined ? Number(overrides.matching) : Number(member.currentMatching ?? 0);
+            leftMatching = overrides?.leftMatching !== undefined ? Number(overrides.leftMatching) : fallback;
+            rightMatching = overrides?.rightMatching !== undefined ? Number(overrides.rightMatching) : fallback;
+          }
+        } catch {
+          const fallback = overrides?.matching !== undefined ? Number(overrides.matching) : Number(member.currentMatching ?? 0);
+          leftMatching = overrides?.leftMatching !== undefined ? Number(overrides.leftMatching) : fallback;
+          rightMatching = overrides?.rightMatching !== undefined ? Number(overrides.rightMatching) : fallback;
+        }
       }
     }
 
