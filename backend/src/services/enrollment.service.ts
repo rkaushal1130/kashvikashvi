@@ -24,7 +24,10 @@ export class EnrollmentService {
    */
   public static async createEnrollment(input: CreateEnrollmentInput) {
     try {
-      const { sponsorId, prospectEmail, prospectPhone, enrollmentType } = input;
+      const { sponsorId, prospectPhone, enrollmentType } = input;
+      const cleanEmail = input.prospectEmail ? input.prospectEmail.trim().toLowerCase() : undefined;
+      const cleanDigits = (prospectPhone || '').replace(/\D/g, '');
+      const finalProspectEmail = cleanEmail || `${cleanDigits || Date.now()}@user.kashvimlm.com`;
 
       // 1. Resolve sponsor by Profile ID or Distributor Code
       const sponsor = await prisma.distributorProfile.findFirst({
@@ -51,7 +54,7 @@ export class EnrollmentService {
       }
 
       // 2. Prevent Self-Sponsorship rule at initialization
-      if (sponsor.user.email.toLowerCase() === prospectEmail.toLowerCase()) {
+      if (cleanEmail && sponsor.user.email.toLowerCase() === cleanEmail) {
         throw AppError.badRequest(
           'Self-sponsorship forbidden: A sponsor cannot enroll their own email address.',
           'ENROLLMENT_SELF_SPONSOR_FORBIDDEN'
@@ -59,14 +62,16 @@ export class EnrollmentService {
       }
 
       // 3. Verify that prospect is not already an existing registered user
-      const existingUser = await prisma.user.findUnique({
-        where: { email: prospectEmail },
-      });
-      if (existingUser) {
-        throw AppError.conflict(
-          'An account with this email address already exists. Please login instead.',
-          'ENROLLMENT_USER_ALREADY_EXISTS'
-        );
+      if (cleanEmail) {
+        const existingUser = await prisma.user.findUnique({
+          where: { email: cleanEmail },
+        });
+        if (existingUser) {
+          throw AppError.conflict(
+            'An account with this email address already exists. Please login instead.',
+            'ENROLLMENT_USER_ALREADY_EXISTS'
+          );
+        }
       }
 
       const enrollmentNumber = `ENR-${Math.floor(100000 + Math.random() * 900000)}`;
@@ -78,7 +83,7 @@ export class EnrollmentService {
             enrollmentNumber,
             enrollmentType: enrollmentType as UserRole,
             sponsorId: sponsor.id,
-            prospectEmail,
+            prospectEmail: finalProspectEmail,
             prospectPhone,
             status: 'DRAFT',
             currentStep: 1,
@@ -120,7 +125,10 @@ export class EnrollmentService {
   }
 
   private static createFallbackEnrollment(input: CreateEnrollmentInput) {
-    const { sponsorId, prospectEmail, prospectPhone, enrollmentType } = input;
+    const { sponsorId, prospectPhone, enrollmentType } = input;
+    const cleanEmail = input.prospectEmail ? input.prospectEmail.trim().toLowerCase() : undefined;
+    const cleanDigits = (prospectPhone || '').replace(/\D/g, '');
+    const finalProspectEmail = cleanEmail || `${cleanDigits || Date.now()}@user.kashvimlm.com`;
 
     // Check invalid sponsor scenarios
     if (sponsorId.toUpperCase().includes('INVALID') || sponsorId === 'NON_EXISTENT') {
@@ -138,7 +146,7 @@ export class EnrollmentService {
     }
 
     // Check duplicate user scenario
-    if (prospectEmail.toLowerCase() === 'existing.user@kashvimlm.com') {
+    if (cleanEmail && cleanEmail === 'existing.user@kashvimlm.com') {
       throw AppError.conflict(
         'An account with this email address already exists. Please login instead.',
         'ENROLLMENT_USER_ALREADY_EXISTS'
@@ -147,8 +155,9 @@ export class EnrollmentService {
 
     // Self sponsorship check
     if (
-      sponsorId.toLowerCase() === prospectEmail.toLowerCase() ||
-      prospectEmail.toLowerCase().includes('rahul.sharma@kashvimlm.com')
+      cleanEmail &&
+      (sponsorId.toLowerCase() === cleanEmail ||
+        cleanEmail.includes('rahul.sharma@kashvimlm.com'))
     ) {
       throw AppError.badRequest(
         'Self-sponsorship forbidden: A sponsor cannot enroll their own email address.',
@@ -167,7 +176,7 @@ export class EnrollmentService {
       status: 'DRAFT',
       currentStep: 1,
       sponsorId: 'KV-DEMO-1001',
-      prospectEmail,
+      prospectEmail: finalProspectEmail,
       prospectPhone: prospectPhone || null,
       legalName: null,
       dateOfBirth: null,
@@ -311,8 +320,9 @@ export class EnrollmentService {
           throw AppError.badRequest('This enrollment has already been completed.', 'ENROLLMENT_COMPLETED');
         }
 
+        const rawEmail = (input.email || '').trim().toLowerCase();
         // Prevent Self-Sponsorship check
-        if (enrollment.sponsor?.user?.email.toLowerCase() === input.email.toLowerCase()) {
+        if (rawEmail && enrollment.sponsor?.user?.email && enrollment.sponsor.user.email.toLowerCase() === rawEmail) {
           throw AppError.badRequest(
             'Self-sponsorship forbidden: Prospect email matches sponsor email.',
             'ENROLLMENT_SELF_SPONSOR_FORBIDDEN'
@@ -320,15 +330,20 @@ export class EnrollmentService {
         }
 
         // Check if another active user exists with this email
-        const existingUser = await prisma.user.findUnique({
-          where: { email: input.email },
-        });
-        if (existingUser && existingUser.id !== enrollment.createdUserId) {
-          throw AppError.conflict(
-            'A user with this email address already exists.',
-            'ENROLLMENT_USER_ALREADY_EXISTS'
-          );
+        if (rawEmail) {
+          const existingUser = await prisma.user.findUnique({
+            where: { email: rawEmail },
+          });
+          if (existingUser && existingUser.id !== enrollment.createdUserId) {
+            throw AppError.conflict(
+              'A user with this email address already exists.',
+              'ENROLLMENT_USER_ALREADY_EXISTS'
+            );
+          }
         }
+
+        const cleanDigits = (input.mobile || '').replace(/\D/g, '');
+        const finalEmail = rawEmail || `${cleanDigits || Date.now()}@user.kashvimlm.com`;
 
         const dob = new Date(input.dateOfBirth);
 
@@ -360,7 +375,7 @@ export class EnrollmentService {
           return await tx.enrollment.update({
             where: { id },
             data: {
-              prospectEmail: input.email,
+              prospectEmail: finalEmail,
               prospectPhone: input.mobile,
               legalName: input.legalName,
               dateOfBirth: dob,
@@ -394,7 +409,10 @@ export class EnrollmentService {
     if (fallback.status === 'COMPLETED') {
       throw AppError.badRequest('This enrollment has already been completed.', 'ENROLLMENT_COMPLETED');
     }
-    fallback.prospectEmail = input.email;
+    const fallbackRawEmail = (input.email || '').trim().toLowerCase();
+    const fallbackDigits = (input.mobile || '').replace(/\D/g, '');
+    const fallbackFinalEmail = fallbackRawEmail || `${fallbackDigits || Date.now()}@user.kashvimlm.com`;
+    fallback.prospectEmail = fallbackFinalEmail;
     fallback.prospectPhone = input.mobile;
     fallback.legalName = input.legalName;
     fallback.dateOfBirth = new Date(input.dateOfBirth);
@@ -521,7 +539,12 @@ export class EnrollmentService {
         }
 
         // 2. Prevent self-sponsorship
-        if (sponsor.user.email.toLowerCase() === enrollment.prospectEmail.toLowerCase()) {
+        if (
+          enrollment.prospectEmail &&
+          !enrollment.prospectEmail.endsWith('@user.kashvimlm.com') &&
+          sponsor.user?.email &&
+          sponsor.user.email.toLowerCase() === enrollment.prospectEmail.toLowerCase()
+        ) {
           throw AppError.badRequest(
             'Self-sponsorship forbidden: Sponsor and prospect cannot be the same user.',
             'ENROLLMENT_SELF_SPONSOR_FORBIDDEN'
@@ -1007,12 +1030,16 @@ export class EnrollmentService {
     const step3Data = stepMap.get(3)?.stepData as any;
     const step5Data = stepMap.get(5)?.stepData as any;
 
-    const email = (enrollment.prospectEmail || step1Data?.email).toLowerCase();
+    const step1Email = step1Data?.email ? String(step1Data.email).trim().toLowerCase() : '';
+    const rawEmail = (enrollment.prospectEmail || step1Email).trim().toLowerCase();
+    const phone = enrollment.prospectPhone || step1Data?.mobile;
+    const cleanDigits = (phone || '').replace(/\D/g, '');
+    const isSyntheticEmail = rawEmail.endsWith('@user.kashvimlm.com');
+    const email = (rawEmail && !isSyntheticEmail) ? rawEmail : `${cleanDigits || Date.now()}@user.kashvimlm.com`;
     const legalName = enrollment.legalName || step1Data?.legalName || 'Distributor';
     const nameParts = legalName.trim().split(/\s+/);
     const firstName = nameParts[0] || 'Distributor';
     const lastName = nameParts.slice(1).join(' ') || nameParts[0];
-    const phone = enrollment.prospectPhone || step1Data?.mobile;
 
     // Use security PIN hash or generate initial secure password hash
     const initialPasswordHash = enrollment.securityPinHash || (await hashPassword('ChangeMe@123'));
@@ -1020,14 +1047,16 @@ export class EnrollmentService {
     // ATOMIC REGISTRATION TRANSACTION (Prompt 5: exactly 12 steps in ONE database transaction)
     const result = await prisma.$transaction(async (tx) => {
       // 1. Validate applicant
-      const existingUser = await tx.user.findUnique({
-        where: { email },
-      });
-      if (existingUser) {
-        throw AppError.conflict(
-          'An account with this email address already exists. Please login instead.',
-          'ENROLLMENT_USER_ALREADY_EXISTS'
-        );
+      if (rawEmail && !isSyntheticEmail) {
+        const existingUser = await tx.user.findUnique({
+          where: { email },
+        });
+        if (existingUser) {
+          throw AppError.conflict(
+            'An account with this email address already exists. Please login instead.',
+            'ENROLLMENT_USER_ALREADY_EXISTS'
+          );
+        }
       }
 
       // 2. Validate sponsor
@@ -1536,8 +1565,10 @@ export class EnrollmentService {
    * If ANY operation fails: ROLLBACK EVERYTHING.
    */
   public static async completeDirectEnrollment(input: CompleteEnrollmentInput) {
-    const email = input.email.toLowerCase().trim();
+    const rawEmail = (input.email || '').trim().toLowerCase();
     const phone = input.phone.trim();
+    const cleanDigits = phone.replace(/\D/g, '');
+    const email = rawEmail || `${cleanDigits || Date.now()}@user.kashvimlm.com`;
     const legalName = input.fullName.trim();
     const nameParts = legalName.split(/\s+/);
     const firstName = nameParts[0] || 'Distributor';
@@ -1548,14 +1579,16 @@ export class EnrollmentService {
       // Execute within a single database transaction with automatic rollback
       const result = await prisma.$transaction(async (tx) => {
         // 1. Validate applicant
-        const existingUser = await tx.user.findUnique({
-          where: { email },
-        });
-        if (existingUser) {
-          throw AppError.conflict(
-            'An account with this email address already exists. Please login instead.',
-            'ENROLLMENT_USER_ALREADY_EXISTS'
-          );
+        if (rawEmail) {
+          const existingUser = await tx.user.findUnique({
+            where: { email: rawEmail },
+          });
+          if (existingUser) {
+            throw AppError.conflict(
+              'An account with this email address already exists. Please login instead.',
+              'ENROLLMENT_USER_ALREADY_EXISTS'
+            );
+          }
         }
 
         // 2. Validate sponsor
@@ -1592,7 +1625,7 @@ export class EnrollmentService {
         }
 
         // Prevent self-sponsorship
-        if (sponsor.user?.email && sponsor.user.email.toLowerCase() === email) {
+        if (rawEmail && sponsor.user?.email && sponsor.user.email.toLowerCase() === rawEmail) {
           throw AppError.badRequest(
             'Self-sponsorship forbidden: Sponsor and applicant cannot have the same email address.',
             'SELF_SPONSOR_FORBIDDEN'
@@ -1857,7 +1890,7 @@ export class EnrollmentService {
             centerNumber: bc.centerNumber,
           },
         };
-      });
+      }, { timeout: 30000, maxWait: 10000 });
 
       // Register enrolled member into dynamic tree
       try {

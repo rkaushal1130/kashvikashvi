@@ -15,12 +15,13 @@ export const protectMlmFields = (req: Request, _res: Response, next: NextFunctio
     let userId = (req as any).user?.id;
     const path = req.originalUrl || req.path || '';
 
-    // Allow admin level configuration, admin paths, dedicated admin BV adjustment endpoints, and safe read queries
+    // Allow admin level configuration, admin paths, dedicated admin BV adjustment endpoints, safe read queries, and enrollment endpoints
     if (
       path.includes('/admin/config') ||
       path.includes('/admin/levels') ||
       path.includes('/admin') ||
       path.endsWith('/bv') ||
+      path.includes('/enrollments') ||
       ['GET', 'HEAD', 'OPTIONS'].includes(req.method)
     ) {
       return next();

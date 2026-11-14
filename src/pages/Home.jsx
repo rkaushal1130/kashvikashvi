@@ -1040,12 +1040,11 @@ function Home() {
 
                   <div className="form-field-row">
                     <div className="form-field">
-                      <label htmlFor="modal-email">Email Address *</label>
+                      <label htmlFor="modal-email">Email Address (Optional)</label>
                       <input
                         id="modal-email"
                         type="email"
-                        required
-                        placeholder="you@domain.com"
+                        placeholder="you@domain.com (optional)"
                         value={joinForm.email}
                         onChange={(e) =>
                           setJoinForm((prev) => ({ ...prev, email: e.target.value }))

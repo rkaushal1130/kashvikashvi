@@ -48,6 +48,23 @@ describe('ENROLLMENT MODULE AUTOMATED TESTS (Supertest + Vitest)', () => {
         expect(valid.success).toBe(true);
       });
 
+      it('should accept valid applicant without an email address (optional email)', () => {
+        const validWithoutEmail = step1PersonalInfoSchema.safeParse({
+          legalName: 'Alexander Hamilton',
+          mobile: '+1 (555) 234-5678',
+          dateOfBirth: '1990-01-11',
+        });
+        expect(validWithoutEmail.success).toBe(true);
+
+        const validWithEmptyEmail = step1PersonalInfoSchema.safeParse({
+          legalName: 'Alexander Hamilton',
+          email: '',
+          mobile: '+1 (555) 234-5678',
+          dateOfBirth: '1990-01-11',
+        });
+        expect(validWithEmptyEmail.success).toBe(true);
+      });
+
       it('should reject applicant under 18 years old', () => {
         const today = new Date();
         const underageDob = `${today.getFullYear() - 16}-01-01`;
@@ -367,6 +384,24 @@ describe('ENROLLMENT MODULE AUTOMATED TESTS (Supertest + Vitest)', () => {
     it('should validate completeEnrollmentSchema correctly', () => {
       const parsed = completeEnrollmentSchema.safeParse(validPayload);
       expect(parsed.success).toBe(true);
+    });
+
+    it('should validate completeEnrollmentSchema correctly when email is omitted or empty', () => {
+      const { email, ...payloadWithoutEmail } = validPayload;
+      const parsedWithout = completeEnrollmentSchema.safeParse(payloadWithoutEmail);
+      expect(parsedWithout.success).toBe(true);
+      if (parsedWithout.success) {
+        expect(parsedWithout.data.email).toBeUndefined();
+      }
+
+      const parsedWithEmpty = completeEnrollmentSchema.safeParse({
+        ...validPayload,
+        email: '',
+      });
+      expect(parsedWithEmpty.success).toBe(true);
+      if (parsedWithEmpty.success) {
+        expect(parsedWithEmpty.data.email).toBeUndefined();
+      }
     });
 
     it('should reject when sponsorId is missing', () => {

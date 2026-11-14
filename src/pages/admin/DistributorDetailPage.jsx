@@ -620,13 +620,13 @@ export default function DistributorDetailPage() {
                 </div>
 
                 <div className="admin-form-group">
-                  <label className="admin-form-label">Email Address</label>
+                  <label className="admin-form-label">Email Address (Optional)</label>
                   <input
                     type="email"
                     className="admin-form-input"
+                    placeholder="name@example.com (optional)"
                     value={editForm.email}
                     onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
-                    required
                   />
                 </div>
 

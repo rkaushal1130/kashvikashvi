@@ -495,15 +495,14 @@ function Profile({ defaultNav }) {
 
                   <div className="auth-input-group">
                     <label htmlFor="reg-email" className="auth-label">
-                      <span>Email *</span>
+                      <span>Email (Optional)</span>
                     </label>
                     <div className="auth-input-wrapper">
                       <Mail size={17} className="auth-input-icon" />
                       <input
                         id="reg-email"
                         type="email"
-                        required
-                        placeholder="Email"
+                        placeholder="Email (optional)"
                         value={registerForm.email}
                         onChange={(e) =>
                           setRegisterForm((prev) => ({ ...prev, email: e.target.value }))

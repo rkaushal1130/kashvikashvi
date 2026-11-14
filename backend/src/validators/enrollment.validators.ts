@@ -7,9 +7,29 @@ export const enrollmentIdParamSchema = z.object({
   id: z.string().uuid('Enrollment ID must be a valid UUID'),
 });
 
+export const optionalEmailSchema = z.preprocess(
+  (val) => {
+    if (typeof val === 'string') {
+      const trimmed = val.trim().toLowerCase();
+      return trimmed === '' ? undefined : trimmed;
+    }
+    return val;
+  },
+  z.string().email('Please enter a valid email address').optional()
+);
+
 export const createEnrollmentSchema = z.object({
   sponsorId: z.string().min(1, 'Sponsor ID or code is required').trim(),
-  prospectEmail: z.string().email('Please enter a valid prospect email').toLowerCase().trim(),
+  prospectEmail: z.preprocess(
+    (val) => {
+      if (typeof val === 'string') {
+        const trimmed = val.trim().toLowerCase();
+        return trimmed === '' ? undefined : trimmed;
+      }
+      return val;
+    },
+    z.string().email('Please enter a valid prospect email').optional()
+  ),
   prospectPhone: z.string().trim().optional(),
   enrollmentType: enrollmentTypeEnum.default('DISTRIBUTOR'),
 });
@@ -17,7 +37,7 @@ export const createEnrollmentSchema = z.object({
 // Step 1: Personal Info
 export const step1PersonalInfoSchema = z.object({
   legalName: z.string().min(2, 'Legal name must be at least 2 characters').max(100).trim(),
-  email: z.string().email('Please enter a valid email address').toLowerCase().trim(),
+  email: optionalEmailSchema,
   mobile: z
     .string()
     .min(7, 'Mobile number must be at least 7 digits')
@@ -92,7 +112,7 @@ export const updateEnrollmentSchema = z.object({
 
 export const completeEnrollmentSchema = z.object({
   fullName: z.string().min(2, 'Full name must be at least 2 characters').trim(),
-  email: z.string().email('Please enter a valid email address').toLowerCase().trim(),
+  email: optionalEmailSchema,
   phone: z.string().min(7, 'Phone number must be at least 7 digits').trim(),
   dob: z.string().optional(),
   gender: z.string().optional(),

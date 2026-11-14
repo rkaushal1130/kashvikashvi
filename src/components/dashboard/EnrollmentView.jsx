@@ -202,8 +202,8 @@ function EnrollmentView({ user, onNavigate }) {
 
   const handleSubmitEnrollment = (e) => {
     e.preventDefault();
-    if (!formData.fullName.trim() || !formData.email.trim() || !formData.phone.trim()) {
-      alert('Please fill in applicant full name, email, and phone number in Step 1.');
+    if (!formData.fullName.trim() || !formData.phone.trim()) {
+      alert('Please fill in applicant full name and phone number in Step 1.');
       setCurrentStep(1);
       return;
     }
@@ -238,7 +238,7 @@ function EnrollmentView({ user, onNavigate }) {
       // Step 1: Submit enrollment as PENDING to generate unique KV ID and assign parent
       const preRes = await api.submitCompleteEnrollment({
         fullName: formData.fullName,
-        email: formData.email,
+        email: formData.email.trim() || undefined,
         phone: formData.phone,
         dob: formData.dob || undefined,
         gender: formData.gender,
@@ -416,7 +416,7 @@ function EnrollmentView({ user, onNavigate }) {
       // Create pending enrollment first
       const preRes = await api.submitCompleteEnrollment({
         fullName: formData.fullName,
-        email: formData.email,
+        email: formData.email.trim() || undefined,
         phone: formData.phone,
         dob: formData.dob || undefined,
         gender: formData.gender,
@@ -506,7 +506,7 @@ function EnrollmentView({ user, onNavigate }) {
 
     const enrollPayload = {
       fullName: formData.fullName,
-      email: formData.email,
+      email: formData.email.trim() || undefined,
       phone: formData.phone,
       dob: formData.dob || undefined,
       gender: formData.gender,
@@ -975,11 +975,10 @@ function EnrollmentView({ user, onNavigate }) {
 
                 {/* 2. Email */}
                 <div className="form-group">
-                  <label className="field-label">Email <span className="req">*</span></label>
+                  <label className="field-label">Email (Optional)</label>
                   <input
                     type="email"
-                    required
-                    placeholder="Email"
+                    placeholder="Email (optional)"
                     value={formData.email}
                     onChange={(e) => handleInputChange('email', e.target.value)}
                     className="field-input"

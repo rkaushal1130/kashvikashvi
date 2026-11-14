@@ -188,8 +188,8 @@ function Join() {
       return;
     }
 
-    if (!formData.fullName.trim() || !formData.email.trim() || !formData.phone.trim()) {
-      alert('Please fill in your full name, email, and phone number.');
+    if (!formData.fullName.trim() || !formData.phone.trim()) {
+      alert('Please fill in your full name and phone number.');
       return;
     }
 
@@ -212,7 +212,7 @@ function Join() {
 
     const payload = {
       fullName: formData.fullName,
-      email: formData.email,
+      email: formData.email.trim() || undefined,
       phone: formData.phone,
       dob: formData.dob || undefined,
       gender: formData.gender,
@@ -586,12 +586,11 @@ function Join() {
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label">Email Address *</label>
+                  <label className="form-label">Email Address (Optional)</label>
                   <input
                     type="email"
-                    required
                     className="form-input"
-                    placeholder="name@example.com"
+                    placeholder="name@example.com (optional)"
                     value={formData.email}
                     onChange={(e) => handleInputChange('email', e.target.value)}
                   />

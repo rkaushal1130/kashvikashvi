@@ -601,14 +601,14 @@ export default function DistributorManagementPage() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   <div>
                     <label style={{ fontSize: '12px', fontWeight: 600, display: 'block', marginBottom: '4px', color: '#334155' }}>
-                      Email
+                      Email (Optional)
                     </label>
                     <input
                       type="email"
                       name="email"
                       className="admin-search-input"
                       style={{ width: '100%' }}
-                      placeholder="distributor@example.com"
+                      placeholder="distributor@example.com (optional)"
                       value={addForm.email}
                       onChange={(e) => setAddForm({ ...addForm, email: e.target.value })}
                     />
