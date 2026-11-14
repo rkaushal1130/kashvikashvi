@@ -653,7 +653,7 @@ export class TreePlacementService {
         }
 
         return newNode;
-      });
+      }, { timeout: 30000, maxWait: 10000 });
 
       // Prompt 16: Audit Logging for Tree Placement & Sponsor Assignment
       try {

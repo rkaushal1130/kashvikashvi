@@ -163,7 +163,7 @@ export class DistributorService {
           });
 
           return this.formatProfile(updatedProfile);
-        });
+        }, { timeout: 30000, maxWait: 10000 });
       }
     } catch {
       // Prisma offline or connection error

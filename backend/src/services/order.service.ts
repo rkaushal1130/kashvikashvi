@@ -698,7 +698,9 @@ export class OrderService {
     const customerId = user.customer?.id;
     const primaryBc = user.distributorProfile?.businessCenters[0];
 
-    // ATOMIC DATABASE TRANSACTION
+    const ancestorDistributorIds: string[] = [];
+
+    // ATOMIC DATABASE TRANSACTION (Order, inventory, and ledger updates)
     const createdOrder = await prisma.$transaction(async (tx) => {
       // Step 1 & 2: Validate products & live stock from DB
       const validatedItems: Array<{
@@ -945,7 +947,6 @@ export class OrderService {
       });
 
       // Step 9: Create BV ledger entries
-      const ancestorDistributorIds: string[] = [];
       if (distributorId && Number(orderTotalBV) > 0) {
         // Accrue Personal Order Volume via immutable BVLedger
         await BVService.creditBV(
@@ -1034,58 +1035,6 @@ export class OrderService {
         }
       }
 
-      // Step 10: Trigger commission processing only after the order qualifies according to configuration
-      // If order is paid/confirmed, invoke commission calculation and automatic level promotion
-      if (orderStatus === 'PAID') {
-        // Activate purchaser's MLM status to PAID and turn ID green upon successful order payment
-        const purchaserIdentifier = distributorId || userId;
-        if (purchaserIdentifier) {
-          try {
-            const { AuthService } = await import('./auth.service');
-            await AuthService.activateDistributorAndPlace(purchaserIdentifier, {
-              orderId: order.id,
-              bv: Number(orderTotalBV),
-            });
-          } catch (actErr: any) {
-            logger.warn({ error: actErr.message, purchaserIdentifier }, 'Order purchaser auto-activation notification');
-          }
-        }
-
-        await CommissionService.processOrderCommissions(order.id, tx);
-
-        // 5-Level Unilevel Commission Lifecycle Engine (Prompt 21)
-        try {
-          await OrderCommissionLifecycleService.processOrderCommission(order.id, { tx });
-        } catch (commErr: any) {
-          logger.warn({ error: commErr.message, orderId: order.id }, 'Order unilevel commission lifecycle warning');
-        }
-
-        // 5-Level Legacy Unilevel Commission Engine (Prompt 12)
-        try {
-          await LevelCommissionService.calculateCommissionsForOrder(order.id, tx);
-        } catch (levelCommErr: any) {
-          logger.warn({ error: levelCommErr.message, orderId: order.id }, 'Level commission calculation warning');
-        }
-
-        // Automatic Level Promotion: Evaluate purchaser (Personal BB updated)
-        if (distributorId) {
-          try {
-            await LevelPromotionService.evaluateAndPromote(distributorId, tx);
-          } catch (promoErr: any) {
-            logger.warn({ error: promoErr.message, distributorId }, 'Purchaser level promotion evaluation warning');
-          }
-        }
-
-        // Automatic Level Promotion: Evaluate binary upline ancestors (Matching volume updated)
-        for (const ancestorDistId of ancestorDistributorIds) {
-          try {
-            await LevelPromotionService.evaluateAndPromote(ancestorDistId, tx);
-          } catch (promoErr: any) {
-            logger.warn({ error: promoErr.message, ancestorDistId }, 'Ancestor level promotion evaluation warning');
-          }
-        }
-      }
-
       // Clear user cart if order was checked out from cart
       if (fromCart || (!inputItems || inputItems.length === 0)) {
         const cart = await tx.cart.findUnique({ where: { userId } });
@@ -1095,12 +1044,67 @@ export class OrderService {
       }
 
       return order;
-    });
+    }, { timeout: 30000, maxWait: 10000 });
 
     logger.info(
       { orderId: createdOrder.id, orderNumber: createdOrder.orderNumber, totalAmount: createdOrder.totalAmount },
-      'Order created successfully across 10 atomic transactional steps'
+      'Order created successfully across atomic transactional steps'
     );
+
+    // Step 10: Trigger commission processing & promotions AFTER order transaction has safely committed
+    // This prevents nested transaction lock contention and avoids Prisma transaction timeout on distributorProfile.update
+    if (createdOrder.status === 'PAID') {
+      const purchaserIdentifier = distributorId || userId;
+      if (purchaserIdentifier) {
+        try {
+          const { AuthService } = await import('./auth.service');
+          await AuthService.activateDistributorAndPlace(purchaserIdentifier, {
+            orderId: createdOrder.id,
+            bv: Number(createdOrder.totalBV),
+          });
+        } catch (actErr: any) {
+          logger.warn({ error: actErr.message, purchaserIdentifier }, 'Order purchaser auto-activation notification');
+        }
+      }
+
+      try {
+        await CommissionService.processOrderCommissions(createdOrder.id);
+      } catch (commErr: any) {
+        logger.warn({ error: commErr.message, orderId: createdOrder.id }, 'Order commission calculation warning');
+      }
+
+      // 5-Level Unilevel Commission Lifecycle Engine (Prompt 21)
+      try {
+        await OrderCommissionLifecycleService.processOrderCommission(createdOrder.id);
+      } catch (commErr: any) {
+        logger.warn({ error: commErr.message, orderId: createdOrder.id }, 'Order unilevel commission lifecycle warning');
+      }
+
+      // 5-Level Legacy Unilevel Commission Engine (Prompt 12)
+      try {
+        await LevelCommissionService.calculateCommissionsForOrder(createdOrder.id);
+      } catch (levelCommErr: any) {
+        logger.warn({ error: levelCommErr.message, orderId: createdOrder.id }, 'Level commission calculation warning');
+      }
+
+      // Automatic Level Promotion: Evaluate purchaser (Personal BB updated)
+      if (distributorId) {
+        try {
+          await LevelPromotionService.evaluateAndPromote(distributorId);
+        } catch (promoErr: any) {
+          logger.warn({ error: promoErr.message, distributorId }, 'Purchaser level promotion evaluation warning');
+        }
+      }
+
+      // Automatic Level Promotion: Evaluate binary upline ancestors (Matching volume updated)
+      for (const ancestorDistId of ancestorDistributorIds) {
+        try {
+          await LevelPromotionService.evaluateAndPromote(ancestorDistId);
+        } catch (promoErr: any) {
+          logger.warn({ error: promoErr.message, ancestorDistId }, 'Ancestor level promotion evaluation warning');
+        }
+      }
+    }
 
     const resultOrder = await this.getOrderById(userId, user.roleName, createdOrder.id);
     this.saveInMemoryOrder(resultOrder);
@@ -1425,7 +1429,7 @@ export class OrderService {
           payments: true,
         },
       });
-    });
+    }, { timeout: 30000, maxWait: 10000 });
 
     logger.info({ orderId: cancelled.id, orderNumber: cancelled.orderNumber }, 'Order cancelled and restocked');
     return this.formatOrder(cancelled);

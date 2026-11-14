@@ -205,7 +205,7 @@ export class LevelPromotionService {
 
     if (!tx) {
       try {
-        return await prisma.$transaction(runner);
+        return await prisma.$transaction(runner, { timeout: 30000, maxWait: 10000 });
       } catch (err: any) {
         if (
           err.name === 'PrismaClientInitializationError' ||

@@ -526,7 +526,7 @@ export class PaymentService {
       }
 
       return order;
-    });
+    }, { timeout: 30000, maxWait: 10000 });
 
     // Trigger Commission Lifecycle & Distributor Placement
     try {

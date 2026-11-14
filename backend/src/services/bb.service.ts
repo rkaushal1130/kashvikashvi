@@ -344,7 +344,7 @@ export class BBService {
       };
     };
 
-    const execute = async () => (tx ? runner(tx) : prisma.$transaction(runner));
+    const execute = async () => (tx ? runner(tx) : prisma.$transaction(runner, { timeout: 30000, maxWait: 10000 }));
     return tx ? execute() : MLMSecurityService.withMemberLock(memberId, execute);
   }
 
@@ -478,7 +478,7 @@ export class BBService {
       };
     };
 
-    const execute = async () => (tx ? runner(tx) : prisma.$transaction(runner));
+    const execute = async () => (tx ? runner(tx) : prisma.$transaction(runner, { timeout: 30000, maxWait: 10000 }));
     return tx ? execute() : MLMSecurityService.withMemberLock(input.memberId, execute);
   }
 

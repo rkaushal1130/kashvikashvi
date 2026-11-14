@@ -1809,7 +1809,7 @@ export class AuthService {
           expiresIn: 900, // 15 minutes
         },
       };
-    });
+    }, { timeout: 30000, maxWait: 10000 });
   }
 
   /**
@@ -2081,7 +2081,7 @@ export class AuthService {
         where: { userId: resetToken.userId, isRevoked: false },
         data: { isRevoked: true },
       });
-    });
+    }, { timeout: 30000, maxWait: 10000 });
 
     logger.info({ userId: resetToken.userId }, 'Password reset successfully completed');
 
@@ -2207,7 +2207,7 @@ export class AuthService {
               where: { distributorId: profile.id },
               data: { status: 'ACTIVE' },
             });
-          });
+          }, { timeout: 30000, maxWait: 10000 });
 
           // If node already exists from registration, link it; otherwise trigger auto-placement
           let existingNode = await prisma.mLMNode.findFirst({

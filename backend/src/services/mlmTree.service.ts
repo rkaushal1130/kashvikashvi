@@ -257,7 +257,7 @@ export class MlmTreeService {
       );
 
       return newNode;
-    });
+    }, { timeout: 30000, maxWait: 10000 });
   }
 
   /**

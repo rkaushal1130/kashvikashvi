@@ -1474,7 +1474,9 @@ export class LevelService {
       return await (tx
         ? runner(tx)
         : prisma.$transaction(runner, {
-            isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+            timeout: 30000,
+            maxWait: 10000,
+            isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
           }));
     } finally {
       releaseLock!();
