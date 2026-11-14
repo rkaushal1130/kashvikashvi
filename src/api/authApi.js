@@ -54,6 +54,13 @@ export const authApi = {
   },
 
   /**
+   * Update authenticated user profile (Personal Details, Proper Delivery Address, Bank Details)
+   */
+  async updateProfile(profileData) {
+    return apiClient.put('/auth/profile', profileData);
+  },
+
+  /**
    * Securely change password
    */
   async changePassword({ currentPassword, newPassword, confirmPassword }) {

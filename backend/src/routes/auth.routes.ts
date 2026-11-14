@@ -55,6 +55,13 @@ router.get(
   AuthController.me
 );
 
+// Update current user profile (Personal Details, Proper Delivery Address, Bank Details)
+router.put(
+  '/profile',
+  authenticate,
+  AuthController.updateProfile
+);
+
 // Forgot Password: Rate limited (5/15m) + Zod validated
 router.post(
   '/forgot-password',

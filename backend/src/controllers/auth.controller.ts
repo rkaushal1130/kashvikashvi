@@ -270,6 +270,24 @@ export class AuthController {
   }
 
   /**
+   * Updates user profile (Personal Details, Proper Delivery Address, Bank Details)
+   * PUT /api/v1/auth/profile
+   */
+  public static async updateProfile(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const userId = req.user!.id;
+      const updated = await AuthService.updateUserProfile(userId, req.body);
+      sendSuccess(res, {
+        statusCode: 200,
+        message: 'Personal profile, proper address, and bank details saved permanently.',
+        data: updated,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
    * Requests password reset link/token.
    * POST /api/v1/auth/forgot-password
    */

@@ -927,6 +927,23 @@ export const api = {
     return null;
   },
 
+  async updateUserProfile(profileData) {
+    try {
+      const res = await fetch(`${API_BASE_URL}/auth/profile`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(profileData),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        return data.data;
+      }
+    } catch (err) {
+      console.warn('[API] Update profile failed:', err.message);
+    }
+    return null;
+  },
+
   // 7. Notifications
   async getNotifications(params = {}) {
     try {

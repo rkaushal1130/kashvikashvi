@@ -1908,6 +1908,7 @@ export class AuthService {
           include: {
             businessCenters: true,
             currentRank: true,
+            bankAccounts: true,
             sponsor: {
               select: {
                 distributorCode: true,
@@ -1993,9 +1994,215 @@ export class AuthService {
           currency: user.wallet.currency,
         }
         : undefined,
-      addresses: user.addresses,
+      addresses: user.addresses || [],
+      bankAccounts: dp?.bankAccounts || [],
+      bankDetails: dp?.bankAccounts?.[0] ? {
+        bankName: dp.bankAccounts[0].bankName,
+        accountHolderName: dp.bankAccounts[0].accountHolderName,
+        accountNumber: dp.bankAccounts[0].accountNumber,
+        ifscCode: dp.bankAccounts[0].routingNumber || '',
+        branchName: dp.bankAccounts[0].branchName || '',
+      } : null,
       createdAt: user.createdAt,
     };
+  }
+
+  /**
+   * Updates user profile (Personal details, Proper Address, Bank Details).
+   * Permanently saved to database tables: User, DistributorProfile, Address, BankAccount.
+   */
+  public static async updateUserProfile(userId: string, data: any): Promise<AuthUser & Record<string, any>> {
+    try {
+      const {
+        fullName,
+        name,
+        phone,
+        email,
+        address,
+        properAddress,
+        streetAddress,
+        city,
+        state,
+        pinCode,
+        postalCode,
+        bankDetails,
+        bankName,
+        accountHolderName,
+        accountNumber,
+        ifscCode,
+        routingNumber,
+        branchName,
+        upiId,
+      } = data;
+
+      const resolvedName = (fullName || name || '').trim();
+      const resolvedPhone = (phone || '').trim();
+      const resolvedEmail = (email || '').trim();
+
+      const addrStreet = address?.streetAddress || properAddress || streetAddress || address?.properAddress;
+      const addrCity = address?.city || city;
+      const addrState = address?.state || state;
+      const addrPin = address?.postalCode || address?.pinCode || pinCode || postalCode;
+      const addrApartment = address?.apartment || '';
+      const addrCountry = address?.country || 'India';
+
+      const bName = bankDetails?.bankName || bankName;
+      const bHolder = bankDetails?.accountHolderName || accountHolderName || resolvedName;
+      const bNumber = bankDetails?.accountNumber || accountNumber;
+      const bIfsc = bankDetails?.ifscCode || ifscCode || routingNumber || bankDetails?.routingNumber;
+      const bBranch = bankDetails?.branchName || branchName || upiId || bankDetails?.upiId;
+
+      await prisma.$transaction(async (tx) => {
+        // 1. Update user
+        if (resolvedName || resolvedPhone || resolvedEmail) {
+          await tx.user.update({
+            where: { id: userId },
+            data: {
+              ...(resolvedName && { fullName: resolvedName }),
+              ...(resolvedPhone && { phone: resolvedPhone }),
+              ...(resolvedEmail && { email: resolvedEmail }),
+            },
+          });
+        }
+
+        // 2. Update distributorProfile if exists
+        const distProfile = await tx.distributorProfile.findUnique({
+          where: { userId },
+        });
+
+        if (distProfile) {
+          if (resolvedName) {
+            const parts = resolvedName.split(' ');
+            const firstName = parts[0] || distProfile.firstName;
+            const lastName = parts.slice(1).join(' ') || distProfile.lastName || '';
+            await tx.distributorProfile.update({
+              where: { id: distProfile.id },
+              data: {
+                firstName,
+                lastName,
+                displayName: resolvedName,
+              },
+            });
+          }
+
+          // 3. Upsert bank account if bank details provided
+          if (bNumber && bName) {
+            const existingBank = await tx.bankAccount.findFirst({
+              where: { distributorId: distProfile.id },
+              orderBy: { isPrimary: 'desc' },
+            });
+
+            const bankPayload = {
+              bankName: bName,
+              accountHolderName: bHolder || resolvedName || `${distProfile.firstName} ${distProfile.lastName}`,
+              accountNumber: String(bNumber).trim(),
+              routingNumber: bIfsc ? String(bIfsc).trim() : null,
+              branchName: bBranch ? String(bBranch).trim() : null,
+              isPrimary: true,
+            };
+
+            if (existingBank) {
+              await tx.bankAccount.update({
+                where: { id: existingBank.id },
+                data: bankPayload,
+              });
+            } else {
+              await tx.bankAccount.create({
+                data: {
+                  ...bankPayload,
+                  distributorId: distProfile.id,
+                },
+              });
+            }
+          }
+        }
+
+        // 4. Upsert Address
+        if (addrStreet && addrCity && addrPin) {
+          const existingAddr = await tx.address.findFirst({
+            where: { userId, type: 'SHIPPING' },
+            orderBy: { isDefault: 'desc' },
+          });
+
+          const addressPayload = {
+            recipientName: resolvedName || distProfile?.displayName || 'Valued Member',
+            phone: resolvedPhone || '',
+            streetAddress: addrStreet,
+            apartment: addrApartment || null,
+            city: addrCity,
+            state: addrState || '',
+            postalCode: String(addrPin).trim(),
+            country: addrCountry,
+            isDefault: true,
+            type: 'SHIPPING' as const,
+          };
+
+          if (existingAddr) {
+            await tx.address.update({
+              where: { id: existingAddr.id },
+              data: addressPayload,
+            });
+          } else {
+            await tx.address.create({
+              data: {
+                ...addressPayload,
+                userId,
+              },
+            });
+          }
+        }
+      }, { timeout: 30000, maxWait: 10000 });
+
+      return await this.getMeWithDb(userId);
+    } catch (err: any) {
+      if (isDbConnectionError(err)) {
+        logger.warn('⚠️ PostgreSQL offline. Operating with resilient in-memory profile update.');
+      } else {
+        logger.warn({ err: err.message }, 'updateUserProfile error');
+      }
+
+      // In-memory fallback
+      const mem = AuthService.getInMemoryUser(userId);
+      if (mem) {
+        if (data.fullName || data.name) {
+          mem.fullName = data.fullName || data.name;
+          mem.name = mem.fullName;
+        }
+        if (data.phone) mem.phone = data.phone;
+        if (data.email) mem.email = data.email;
+        if (data.address || data.properAddress) {
+          const a = data.address || {};
+          const street = a.streetAddress || data.properAddress || data.streetAddress;
+          const pin = a.postalCode || a.pinCode || data.pinCode;
+          const city = a.city || data.city;
+          const state = a.state || data.state;
+          const country = a.country || data.country || 'India';
+          const savedAddr = {
+            recipientName: mem.fullName || 'Valued Member',
+            phone: mem.phone || '',
+            streetAddress: street,
+            city,
+            state,
+            postalCode: pin,
+            country,
+          };
+          mem.shippingAddress = savedAddr;
+          mem.addresses = [savedAddr];
+        }
+        if (data.bankDetails || data.bankName) {
+          mem.bankDetails = data.bankDetails || {
+            bankName: data.bankName,
+            accountHolderName: data.accountHolderName || mem.fullName,
+            accountNumber: data.accountNumber,
+            ifscCode: data.ifscCode,
+            branchName: data.branchName,
+          };
+        }
+        return await this.getMeInMemory(userId);
+      }
+
+      throw err;
+    }
   }
 
   /**

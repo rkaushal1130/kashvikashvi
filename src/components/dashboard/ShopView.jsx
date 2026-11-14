@@ -92,19 +92,20 @@ function ShopView({ user, catalog, onNavigate }) {
   // Shipping Address State: loaded from permanently saved address or user profile
   const [shippingAddress, setShippingAddress] = useState(() => {
     try {
-      const stored = localStorage.getItem('kashvi_saved_shipping_address');
+      const stored = localStorage.getItem('kashvi_saved_shipping_address') || localStorage.getItem('kashvi_pc_permanent_address');
       if (stored) return JSON.parse(stored);
     } catch (e) {
       console.warn('Failed to parse saved shipping address', e);
     }
+    const addr = user?.addresses?.[0] || {};
     return {
-      recipientName: user?.fullName || user?.name || memberName || 'Valued Member',
-      phone: user?.phone || '07719561597',
-      streetAddress: user?.addresses?.[0]?.streetAddress || 'Plot No. 43, Shiv TP Nagar, Baldev Nagar',
-      city: user?.addresses?.[0]?.city || 'Ambala City',
-      state: user?.addresses?.[0]?.state || 'Haryana',
-      postalCode: user?.addresses?.[0]?.postalCode || '134007',
-      country: 'India',
+      recipientName: addr.recipientName || user?.fullName || user?.name || memberName || 'Valued Member',
+      phone: addr.phone || user?.phone || '07719561597',
+      streetAddress: addr.streetAddress || 'Plot No. 43, Shiv TP Nagar, Baldev Nagar',
+      city: addr.city || 'Ambala City',
+      state: addr.state || 'Haryana',
+      postalCode: addr.postalCode || addr.pinCode || '134007',
+      country: addr.country || 'India',
     };
   });
   const [isEditingAddress, setIsEditingAddress] = useState(false);
@@ -131,6 +132,7 @@ function ShopView({ user, catalog, onNavigate }) {
     setShippingAddress(tempAddress);
     try {
       localStorage.setItem('kashvi_saved_shipping_address', JSON.stringify(tempAddress));
+      localStorage.setItem('kashvi_pc_permanent_address', JSON.stringify(tempAddress));
       window.dispatchEvent(new CustomEvent('kashvi_address_updated', { detail: tempAddress }));
     } catch (err) {
       console.warn('Could not save updated address to localStorage', err);

@@ -38,6 +38,7 @@ import ShopView from './ShopView';
 import ProductManagerView from './ProductManagerView';
 import NetworkTreePage from '../../pages/NetworkTreePage';
 import ClientFundingView from './ClientFundingView';
+import UserProfileModal from './UserProfileModal';
 import { api } from '../../services/api.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 
@@ -610,6 +611,16 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
                   </div>
                 </div>
                 <div className="dropdown-divider" />
+                <button
+                  type="button"
+                  className="dropdown-item"
+                  onClick={() => {
+                    setActiveModal('profile');
+                  }}
+                >
+                  <User size={16} />
+                  <span>My Profile</span>
+                </button>
                 <button
                   type="button"
                   className="dropdown-item"
@@ -2209,6 +2220,16 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
       {/* =======================================================================
           MODAL DIALOGS (Fully functional for all interactive buttons)
           ======================================================================= */}
+
+      {/* 0. My Profile Modal */}
+      <UserProfileModal
+        isOpen={activeModal === 'profile'}
+        onClose={() => setActiveModal(null)}
+        user={effectiveUser}
+        onSaveSuccess={(updatedUser, savedAddress) => {
+          showToast('Profile, proper address & bank details saved permanently!');
+        }}
+      />
 
       {/* 1. Market Selection Modal */}
       {activeModal === 'market' && (
