@@ -18,6 +18,7 @@ import {
   Image as ImageIcon,
   CheckCircle2,
   CheckSquare,
+  RefreshCw,
 } from 'lucide-react';
 import {
   PRODUCT_CATEGORIES,
@@ -1123,6 +1124,34 @@ function ProductManagerView({ user, catalog = [], onUpdateCatalog, onNavigate })
               >
                 <Trash2 size={15} />
                 <span>Delete All</span>
+              </button>
+
+              <button
+                type="button"
+                className="btn-pm-refresh"
+                onClick={async () => {
+                  await fetchProductsFromDb();
+                  setToastMsg('Product catalog & stock refreshed from database');
+                  setTimeout(() => setToastMsg(''), 3000);
+                }}
+                disabled={isLoading}
+                title="Refresh product stocks and catalog from database"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '8px 14px',
+                  backgroundColor: '#f1f5f9',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '6px',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  color: '#334155',
+                  cursor: 'pointer'
+                }}
+              >
+                <RefreshCw size={15} className={isLoading ? 'animate-spin' : ''} />
+                <span>{isLoading ? 'Refreshing...' : 'Refresh'}</span>
               </button>
 
               <button

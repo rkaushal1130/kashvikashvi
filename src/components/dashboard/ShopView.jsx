@@ -304,6 +304,9 @@ function ShopView({ user, catalog, onNavigate }) {
         });
         setCartItems({});
         setCheckoutModal(false);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new Event('kashvi_catalog_update'));
+        }
         showToast('Wholesale order placed & paid via Commission Balance Wallet!');
       } else {
         // Option B (UPI) or Option C (CARD) via Razorpay
@@ -393,6 +396,9 @@ function ShopView({ user, catalog, onNavigate }) {
                 });
                 setCartItems({});
                 setCheckoutModal(false);
+                if (typeof window !== 'undefined') {
+                  window.dispatchEvent(new Event('kashvi_catalog_update'));
+                }
                 showToast('Payment verified & Wholesale order confirmed!');
               } catch (err) {
                 // Do NOT show a confirmed order: the backend has not verified this payment.

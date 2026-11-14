@@ -179,6 +179,15 @@ export class PaymentService {
       include: {
         user: true,
         payments: true,
+        items: {
+          include: {
+            product: {
+              include: {
+                inventory: true,
+              },
+            },
+          },
+        },
       },
     });
 
@@ -195,7 +204,7 @@ export class PaymentService {
       };
     }
 
-    // Atomically transition order and payment to completed
+    // Atomically transition order and payment to completed, decrement warehouse stock, and accrue BV
     await prisma.$transaction(async (tx) => {
       await tx.order.update({
         where: { id: order.id },
@@ -219,6 +228,68 @@ export class PaymentService {
           },
         },
       });
+
+      // Step 3 (Deferred to verified purchase): Decrement product stock & record inventory fulfillment
+      if (order.items) {
+        for (const item of order.items) {
+          if (item.product) {
+            const updatedStock = Math.max(0, item.product.stock - item.quantity);
+            await tx.product.update({
+              where: { id: item.product.id },
+              data: {
+                stock: updatedStock,
+                status: updatedStock <= 0 ? 'OUT_OF_STOCK' : item.product.status,
+              },
+            });
+
+            if (item.product.inventory) {
+              await tx.inventory.update({
+                where: { productId: item.product.id },
+                data: {
+                  quantityOnHand: { decrement: item.quantity },
+                },
+              });
+
+              await tx.inventoryTransaction.create({
+                data: {
+                  inventoryId: item.product.inventory.id,
+                  productId: item.product.id,
+                  type: 'ORDER_FULFILLMENT',
+                  quantity: -item.quantity,
+                  balanceAfter: Math.max(
+                    0,
+                    (item.product.inventory.quantityOnHand ?? item.product.stock) - item.quantity
+                  ),
+                  referenceNumber: order.orderNumber,
+                  notes: `Order fulfillment for verified purchase ${order.orderNumber}`,
+                },
+              });
+            }
+          }
+        }
+      }
+
+      // Step 9 (Deferred to verified purchase): Accrue BV ledger on confirmed purchase
+      if (order.distributorId && Number(order.totalBV) > 0) {
+        await BVService.creditBV(
+          {
+            distributorId: order.distributorId,
+            sourceType: 'ORDER',
+            sourceId: order.id,
+            orderId: order.id,
+            bv: Number(order.totalBV),
+            description: `Order BV accrual for ${order.orderNumber}`,
+          },
+          tx
+        );
+
+        await tx.distributorProfile.update({
+          where: { id: order.distributorId },
+          data: {
+            lifetimePV: { increment: order.totalBV },
+          },
+        });
+      }
     });
 
     // Authoritative Commission Lifecycle Trigger & Distributor Placement

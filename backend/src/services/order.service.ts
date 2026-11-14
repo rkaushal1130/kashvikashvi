@@ -786,23 +786,26 @@ export class OrderService {
           );
         }
 
-        // Step 3: Lock inventory (decrement immediately inside transaction)
-        const updatedStock = product.stock - item.quantity;
-        await tx.product.update({
-          where: { id: product.id },
-          data: {
-            stock: updatedStock,
-            status: updatedStock <= 0 ? 'OUT_OF_STOCK' : product.status,
-          },
-        });
-
-        if (product.inventory) {
-          await tx.inventory.update({
-            where: { productId: product.id },
+        // Step 3: Decrement stock ONLY for orders that are confirmed and paid at creation (markPaid === true)
+        // For orders pending payment (e.g. gateway checkout initiation), stock is validated but not decremented until payment is confirmed.
+        if (markPaid) {
+          const updatedStock = product.stock - item.quantity;
+          await tx.product.update({
+            where: { id: product.id },
             data: {
-              quantityOnHand: { decrement: item.quantity },
+              stock: updatedStock,
+              status: updatedStock <= 0 ? 'OUT_OF_STOCK' : product.status,
             },
           });
+
+          if (product.inventory) {
+            await tx.inventory.update({
+              where: { productId: product.id },
+              data: {
+                quantityOnHand: { decrement: item.quantity },
+              },
+            });
+          }
         }
 
         // Step 4: Calculate wholesale price (authoritative from DB)
@@ -928,8 +931,8 @@ export class OrderService {
           },
         });
 
-        // Step 8: Create inventory transaction
-        if (vi.product.inventory) {
+        // Step 8: Create inventory transaction (only when order is paid)
+        if (markPaid && vi.product.inventory) {
           await tx.inventoryTransaction.create({
             data: {
               inventoryId: vi.product.inventory.id,
@@ -957,8 +960,8 @@ export class OrderService {
         },
       });
 
-      // Step 9: Create BV ledger entries
-      if (distributorId && Number(orderTotalBV) > 0) {
+      // Step 9: Create BV ledger entries (only on paid orders)
+      if (markPaid && distributorId && Number(orderTotalBV) > 0) {
         // Accrue Personal Order Volume via immutable BVLedger
         await BVService.creditBV(
           {
@@ -1339,61 +1342,64 @@ export class OrderService {
     }
 
     const cancelled = await prisma.$transaction(async (tx) => {
-      // 1. Restock products & inventory
-      for (const item of order.items) {
-        await tx.product.update({
-          where: { id: item.productId },
-          data: {
-            stock: { increment: item.quantity },
-            status: 'ACTIVE',
-          },
-        });
+      // 1. Restock products & inventory ONLY if the order was paid and stock was deducted
+      const wasPaid = order.status === 'PAID' || order.paidAt !== null;
+      if (wasPaid) {
+        for (const item of order.items) {
+          await tx.product.update({
+            where: { id: item.productId },
+            data: {
+              stock: { increment: item.quantity },
+              status: 'ACTIVE',
+            },
+          });
 
-        const inventory = await tx.inventory.findUnique({
-          where: { productId: item.productId },
-        });
-
-        if (inventory) {
-          await tx.inventory.update({
+          const inventory = await tx.inventory.findUnique({
             where: { productId: item.productId },
-            data: {
-              quantityOnHand: { increment: item.quantity },
-            },
           });
 
-          await tx.inventoryTransaction.create({
-            data: {
-              inventoryId: inventory.id,
-              productId: item.productId,
-              type: 'RETURN',
-              quantity: item.quantity,
-              balanceAfter: inventory.quantityOnHand + item.quantity,
-              referenceNumber: order.orderNumber,
-              notes: `Restock from cancelled order ${order.orderNumber}`,
-            },
-          });
+          if (inventory) {
+            await tx.inventory.update({
+              where: { productId: item.productId },
+              data: {
+                quantityOnHand: { increment: item.quantity },
+              },
+            });
+
+            await tx.inventoryTransaction.create({
+              data: {
+                inventoryId: inventory.id,
+                productId: item.productId,
+                type: 'RETURN',
+                quantity: item.quantity,
+                balanceAfter: inventory.quantityOnHand + item.quantity,
+                referenceNumber: order.orderNumber,
+                notes: `Restock from cancelled order ${order.orderNumber}`,
+              },
+            });
+          }
         }
-      }
 
-      // 2. Reverse BV Ledger & deduct Lifetime PV
-      if (order.distributorId && Number(order.totalBV) > 0) {
-        await tx.distributorProfile.update({
-          where: { id: order.distributorId },
-          data: {
-            lifetimePV: { decrement: order.totalBV },
-          },
-        });
+        // 2. Reverse BV Ledger & deduct Lifetime PV
+        if (order.distributorId && Number(order.totalBV) > 0) {
+          await tx.distributorProfile.update({
+            where: { id: order.distributorId },
+            data: {
+              lifetimePV: { decrement: order.totalBV },
+            },
+          });
 
-        await BVService.debitBV(
-          {
-            distributorId: order.distributorId,
-            sourceType: 'ORDER_REFUND',
-            sourceId: order.id,
-            bv: Number(order.totalBV),
-            description: `BV reversal for cancelled order ${order.orderNumber}`,
-          },
-          tx
-        );
+          await BVService.debitBV(
+            {
+              distributorId: order.distributorId,
+              sourceType: 'ORDER_REFUND',
+              sourceId: order.id,
+              bv: Number(order.totalBV),
+              description: `BV reversal for cancelled order ${order.orderNumber}`,
+            },
+            tx
+          );
+        }
       }
 
       // 2b. Reverse 5-level unilevel commissions
@@ -1489,8 +1495,78 @@ export class OrderService {
         },
       });
 
-      // If order transitioned to PAID, mark pending payments COMPLETED as well and activate purchaser
-      if (newStatus === 'PAID') {
+      // If order transitioned to PAID from a non-paid status, decrement product stock, fulfill inventory, mark pending payments COMPLETED and activate purchaser
+      if (newStatus === 'PAID' && order.status !== 'PAID') {
+        const orderFull = await prisma.order.findUnique({
+          where: { id: order.id },
+          include: {
+            items: {
+              include: {
+                product: {
+                  include: { inventory: true },
+                },
+              },
+            },
+          },
+        });
+
+        if (orderFull?.items) {
+          for (const it of orderFull.items) {
+            if (it.product) {
+              const updatedStock = Math.max(0, it.product.stock - it.quantity);
+              await prisma.product.update({
+                where: { id: it.product.id },
+                data: {
+                  stock: updatedStock,
+                  status: updatedStock <= 0 ? 'OUT_OF_STOCK' : it.product.status,
+                },
+              });
+
+              if (it.product.inventory) {
+                await prisma.inventory.update({
+                  where: { productId: it.product.id },
+                  data: {
+                    quantityOnHand: { decrement: it.quantity },
+                  },
+                });
+
+                await prisma.inventoryTransaction.create({
+                  data: {
+                    inventoryId: it.product.inventory.id,
+                    productId: it.product.id,
+                    type: 'ORDER_FULFILLMENT',
+                    quantity: -it.quantity,
+                    balanceAfter: Math.max(
+                      0,
+                      (it.product.inventory.quantityOnHand ?? it.product.stock) - it.quantity
+                    ),
+                    referenceNumber: order.orderNumber,
+                    notes: `Order fulfillment for status update to PAID ${order.orderNumber}`,
+                  },
+                });
+              }
+            }
+          }
+        }
+
+        if (order.distributorId && Number(order.totalBV) > 0) {
+          await BVService.creditBV({
+            distributorId: order.distributorId,
+            sourceType: 'ORDER',
+            sourceId: order.id,
+            orderId: order.id,
+            bv: Number(order.totalBV),
+            description: `Order BV accrual for status update ${order.orderNumber}`,
+          });
+
+          await prisma.distributorProfile.update({
+            where: { id: order.distributorId },
+            data: {
+              lifetimePV: { increment: order.totalBV },
+            },
+          });
+        }
+
         await prisma.payment.updateMany({
           where: { orderId: order.id, status: 'PENDING' },
           data: { status: 'COMPLETED', paidAt: new Date() },
@@ -1507,6 +1583,72 @@ export class OrderService {
           } catch (actErr: any) {
             logger.warn({ error: actErr.message, purchaserIdentifier }, 'Order status transition auto-activation notification');
           }
+        }
+      } else if (newStatus === 'CANCELLED' && (order.status === 'PAID' || order.paidAt !== null)) {
+        // Restock on cancellation only if previously paid
+        const orderFull = await prisma.order.findUnique({
+          where: { id: order.id },
+          include: {
+            items: {
+              include: {
+                product: {
+                  include: { inventory: true },
+                },
+              },
+            },
+          },
+        });
+
+        if (orderFull?.items) {
+          for (const it of orderFull.items) {
+            if (it.product) {
+              await prisma.product.update({
+                where: { id: it.product.id },
+                data: {
+                  stock: { increment: it.quantity },
+                  status: 'ACTIVE',
+                },
+              });
+
+              if (it.product.inventory) {
+                await prisma.inventory.update({
+                  where: { productId: it.product.id },
+                  data: {
+                    quantityOnHand: { increment: it.quantity },
+                  },
+                });
+
+                await prisma.inventoryTransaction.create({
+                  data: {
+                    inventoryId: it.product.inventory.id,
+                    productId: it.product.id,
+                    type: 'RETURN',
+                    quantity: it.quantity,
+                    balanceAfter: (it.product.inventory.quantityOnHand ?? it.product.stock) + it.quantity,
+                    referenceNumber: order.orderNumber,
+                    notes: `Restock from cancelled order ${order.orderNumber}`,
+                  },
+                });
+              }
+            }
+          }
+        }
+
+        if (order.distributorId && Number(order.totalBV) > 0) {
+          await prisma.distributorProfile.update({
+            where: { id: order.distributorId },
+            data: {
+              lifetimePV: { decrement: order.totalBV },
+            },
+          });
+
+          await BVService.debitBV({
+            distributorId: order.distributorId,
+            sourceType: 'ORDER_REFUND',
+            sourceId: order.id,
+            bv: Number(order.totalBV),
+            description: `BV reversal for cancelled order ${order.orderNumber}`,
+          });
         }
       }
 

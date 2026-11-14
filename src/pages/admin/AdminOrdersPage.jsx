@@ -29,6 +29,7 @@ import './AdminPages.css';
 export default function AdminOrdersPage() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [orderStatusFilter, setOrderStatusFilter] = useState('ALL');
@@ -44,9 +45,13 @@ export default function AdminOrdersPage() {
     setTimeout(() => setToastMessage(''), 3500);
   };
 
-  const fetchOrders = useCallback(async () => {
+  const fetchOrders = useCallback(async (isManual = false) => {
     try {
-      setLoading(true);
+      if (isManual) {
+        setIsRefreshing(true);
+      } else {
+        setLoading(true);
+      }
       setError(null);
       const res = await adminApi.getOrders();
       if (res && res.data) {
@@ -55,47 +60,25 @@ export default function AdminOrdersPage() {
       } else {
         setOrders([]);
       }
+      if (isManual) {
+        showToast('Orders refreshed successfully');
+      }
     } catch (err) {
       console.warn('[AdminOrdersPage] Failed to fetch orders from backend:', err);
-      setError('Unable to load orders from server. Please try again.');
+      if (isManual) {
+        showToast('Unable to refresh orders from server. Please try again.');
+      } else {
+        setError('Unable to load orders from server. Please try again.');
+      }
     } finally {
       setLoading(false);
+      setIsRefreshing(false);
     }
   }, []);
 
-  // Real-time synchronization event listeners & background polling
+  // Fetch orders once on component mount without background polling or unprompted auto-refresh loops
   useEffect(() => {
-    fetchOrders();
-
-    const handleRealtimeUpdate = (e) => {
-      console.log('[AdminOrdersPage] Real-time order event detected:', e?.type, e?.detail);
-      fetchOrders();
-    };
-
-    window.addEventListener('kashvi_order_placed', handleRealtimeUpdate);
-    window.addEventListener('kashvi_orders_updated', handleRealtimeUpdate);
-    window.addEventListener('kashvi_member_paid', handleRealtimeUpdate);
-    
-    // Cross-tab storage synchronization
-    const handleStorageChange = (e) => {
-      if (e.key === 'kashvi_orders' || e.key === 'kashvi_auth') {
-        fetchOrders();
-      }
-    };
-    window.addEventListener('storage', handleStorageChange);
-
-    // 15-second background sync to pull newly placed member orders automatically
-    const interval = setInterval(() => {
-      fetchOrders();
-    }, 15000);
-
-    return () => {
-      window.removeEventListener('kashvi_order_placed', handleRealtimeUpdate);
-      window.removeEventListener('kashvi_orders_updated', handleRealtimeUpdate);
-      window.removeEventListener('kashvi_member_paid', handleRealtimeUpdate);
-      window.removeEventListener('storage', handleStorageChange);
-      clearInterval(interval);
-    };
+    fetchOrders(false);
   }, [fetchOrders]);
 
   // Compute 5 KPI summary metrics (Requirement 7)
@@ -350,11 +333,12 @@ export default function AdminOrdersPage() {
           <button
             type="button"
             className="admin-btn admin-btn-secondary"
-            onClick={fetchOrders}
-            disabled={loading}
+            onClick={() => fetchOrders(true)}
+            disabled={loading || isRefreshing}
+            title="Refresh orders from database"
           >
-            <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
-            <span>Refresh</span>
+            <RefreshCw size={15} className={isRefreshing ? 'animate-spin' : ''} />
+            <span>{isRefreshing ? 'Refreshing...' : 'Refresh Orders'}</span>
           </button>
         </div>
       </div>
