@@ -5,6 +5,7 @@ import { AppError } from '../utils/appError';
 import { BBService } from './bb.service';
 import { BinaryVolumeService } from './binaryVolume.service';
 import { LevelPromotionService } from './level/levelPromotion.service';
+import { NetworkTreeService } from './networkTree.service';
 import { CANONICAL_RANK_CONFIGS, RankTierConfig } from '../types/cumulativeRankCommission.types';
 
 export interface MemberPerformanceData {
@@ -108,17 +109,35 @@ export class MemberPerformanceService {
     }
     personalBV = Math.max(personalBV, Number(profile.currentBB ?? profile.lifetimePV ?? 0));
 
-    // 3. Binary volumes (Left BV, Right BV, Matching volume)
+    // 3. Binary volumes (Left BV, Right BV, Matching volume) - Synchronized with the binary network tree
     let leftBV = 0;
     let rightBV = 0;
 
     try {
-      leftBV = await BinaryVolumeService.getLeftVolume(distId, undefined, db);
-      rightBV = await BinaryVolumeService.getRightVolume(distId, undefined, db);
+      const treeRes = await NetworkTreeService.getNetworkTree(distId, 3);
+      if (treeRes?.root && (treeRes.root.leftBV != null || treeRes.root.rightBV != null)) {
+        leftBV = Number(treeRes.root.leftBV ?? 0);
+        rightBV = Number(treeRes.root.rightBV ?? 0);
+      } else {
+        leftBV = await BinaryVolumeService.getLeftVolume(distId, undefined, db);
+        rightBV = await BinaryVolumeService.getRightVolume(distId, undefined, db);
+      }
     } catch {
-      const bc = profile.businessCenters?.[0];
-      leftBV = Number(bc?.accumulatedLeftVolume ?? bc?.leftVolume ?? 0);
-      rightBV = Number(bc?.accumulatedRightVolume ?? bc?.rightVolume ?? 0);
+      try {
+        const modeled = NetworkTreeService.getModeledNetworkTree(distId, 3);
+        if (modeled?.root) {
+          leftBV = Number(modeled.root.leftBV ?? 0);
+          rightBV = Number(modeled.root.rightBV ?? 0);
+        } else {
+          const bc = profile.businessCenters?.[0];
+          leftBV = Number(bc?.accumulatedLeftVolume ?? bc?.leftVolume ?? 0);
+          rightBV = Number(bc?.accumulatedRightVolume ?? bc?.rightVolume ?? 0);
+        }
+      } catch {
+        const bc = profile.businessCenters?.[0];
+        leftBV = Number(bc?.accumulatedLeftVolume ?? bc?.leftVolume ?? 0);
+        rightBV = Number(bc?.accumulatedRightVolume ?? bc?.rightVolume ?? 0);
+      }
     }
 
     const matchingVolume = Math.min(leftBV, rightBV);
@@ -294,8 +313,19 @@ export class MemberPerformanceService {
       isRoot || (rawAccount === 'ACTIVE' && isPaid) ? 'ACTIVE' : rawAccount === 'SUSPENDED' ? 'SUSPENDED' : 'PENDING';
 
     const personalBV = Number(user.bv ?? user.personalBV ?? user.distributorProfile?.lifetimePV ?? 0);
-    const leftBV = Number(user.leftBV ?? user.leftMatching ?? user.distributorProfile?.businessCenters?.[0]?.leftVolume ?? 0);
-    const rightBV = Number(user.rightBV ?? user.rightMatching ?? user.distributorProfile?.businessCenters?.[0]?.rightVolume ?? 0);
+    let leftBV = Number(user.leftBV ?? user.leftMatching ?? user.distributorProfile?.businessCenters?.[0]?.leftVolume ?? 0);
+    let rightBV = Number(user.rightBV ?? user.rightMatching ?? user.distributorProfile?.businessCenters?.[0]?.rightVolume ?? 0);
+
+    try {
+      const modeled = NetworkTreeService.getModeledNetworkTree(distCode, 3);
+      if (modeled?.root) {
+        if (modeled.root.leftBV != null) leftBV = Number(modeled.root.leftBV);
+        if (modeled.root.rightBV != null) rightBV = Number(modeled.root.rightBV);
+      }
+    } catch {
+      // fallback to user object values
+    }
+
     const matchingVolume = Math.min(leftBV, rightBV);
 
     const rankConfigs = [...CANONICAL_RANK_CONFIGS];
