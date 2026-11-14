@@ -335,6 +335,19 @@ function NetworkTreePage({ embedded = false }) {
           setTreeData(normalized?.root
             ? { ...normalized, root: { ...rootNode, legsLoaded: true } }
             : { ...rootNode, legsLoaded: true });
+
+          // Synchronize summary immediately from the tree's perfectly calculated metrics
+          setNetworkSummary((prev) => ({
+            distributorId: rootNodeId,
+            directMembers: rootNode.directMembers ?? prev?.directMembers ?? 0,
+            leftTeamCount: rootNode.leftTeamCount ?? prev?.leftTeamCount ?? 0,
+            rightTeamCount: rootNode.rightTeamCount ?? prev?.rightTeamCount ?? 0,
+            totalTeamCount: rootNode.totalTeamCount ?? prev?.totalTeamCount ?? 0,
+            leftBV: rootNode.leftBV ?? rootNode.businessCenter?.leftVolume ?? 0,
+            rightBV: rootNode.rightBV ?? rootNode.businessCenter?.rightVolume ?? 0,
+            personalBV: rootNode.personalBV ?? 250,
+            totalBV: (rootNode.leftBV ?? 0) + (rootNode.rightBV ?? 0),
+          }));
         } else {
           setError('Unable to load network tree from database.');
         }
@@ -342,7 +355,18 @@ function NetworkTreePage({ embedded = false }) {
         // Keep summary access on the same authorized root as the tree.
         try {
           const summary = await api.getMemberNetworkSummary(isAdmin ? targetId : initialDistributorId);
-          if (summary) setNetworkSummary(summary);
+          if (summary) {
+            setNetworkSummary((prev) => {
+              const currentRoot = data?.root || data;
+              return {
+                ...prev,
+                ...summary,
+                // Always prioritize tree's calculated BV to prevent arbitrary stale DB volume from breaking the UI
+                leftBV: currentRoot?.leftBV != null ? currentRoot.leftBV : (summary.leftBV ?? prev?.leftBV ?? 0),
+                rightBV: currentRoot?.rightBV != null ? currentRoot.rightBV : (summary.rightBV ?? prev?.rightBV ?? 0),
+              };
+            });
+          }
         } catch {
           // The tree remains usable when summary data is temporarily unavailable.
         }
@@ -565,6 +589,27 @@ function NetworkTreePage({ embedded = false }) {
     navigate(`/join?ref=${encodeURIComponent(sponsorId)}`);
   };
 
+  const displayedRootNode = treeData?.root || treeData;
+
+  // Authoritative metrics derived directly from the displayed tree root so the upper summary cards
+  // ALWAYS match the tree's perfectly calculated leg BV and counts!
+  const effectiveLeftBV = (displayedRootNode && displayedRootNode.leftBV !== undefined)
+    ? displayedRootNode.leftBV
+    : (displayedRootNode?.businessCenter?.leftVolume !== undefined
+      ? displayedRootNode.businessCenter.leftVolume
+      : (networkSummary?.leftBV ?? 0));
+
+  const effectiveRightBV = (displayedRootNode && displayedRootNode.rightBV !== undefined)
+    ? displayedRootNode.rightBV
+    : (displayedRootNode?.businessCenter?.rightVolume !== undefined
+      ? displayedRootNode.businessCenter.rightVolume
+      : (networkSummary?.rightBV ?? 0));
+
+  const effectiveLeftCount = networkSummary?.leftTeamCount ?? displayedRootNode?.leftTeamCount ?? 0;
+  const effectiveRightCount = networkSummary?.rightTeamCount ?? displayedRootNode?.rightTeamCount ?? 0;
+  const effectiveTotalCount = networkSummary?.totalTeamCount ?? displayedRootNode?.totalTeamCount ?? (effectiveLeftCount + effectiveRightCount);
+  const effectiveDirectMembers = networkSummary?.directMembers ?? displayedRootNode?.directMembers ?? 0;
+
   return (
     <div className="network-tree-page-container">
       {/* Header Section */}
@@ -642,26 +687,26 @@ function NetworkTreePage({ embedded = false }) {
           {isAdmin && <TreeSearch onSelectMember={handleSelectSearchResult} />}
         </div>
 
-        {/* Network Summary Bar (Prompt 7 Metrics) */}
-        {networkSummary && (
+        {/* Network Summary Bar (Prompt 7 Metrics - Synchronized with Tree Root) */}
+        {(networkSummary || displayedRootNode) && (
           <div className="tree-summary-metrics-bar">
             <div className="tree-stat-card">
               <span className="tree-stat-label">Total Team Count</span>
-              <span className="tree-stat-value">{networkSummary.totalTeamCount ?? 0}</span>
+              <span className="tree-stat-value">{effectiveTotalCount}</span>
             </div>
             <div className="tree-stat-card">
               <span className="tree-stat-label">Direct Members</span>
-              <span className="tree-stat-value">{networkSummary.directMembers ?? 0}</span>
+              <span className="tree-stat-value">{effectiveDirectMembers}</span>
             </div>
             <div className="tree-stat-card left-team">
               <span className="tree-stat-label">Left Leg Team</span>
-              <span className="tree-stat-value">{networkSummary.leftTeamCount ?? 0}</span>
-              <span className="tree-stat-sub">{(networkSummary.leftBV ?? 0).toLocaleString()} BV</span>
+              <span className="tree-stat-value">{effectiveLeftCount}</span>
+              <span className="tree-stat-sub">{(effectiveLeftBV ?? 0).toLocaleString()} BV</span>
             </div>
             <div className="tree-stat-card right-team">
               <span className="tree-stat-label">Right Leg Team</span>
-              <span className="tree-stat-value">{networkSummary.rightTeamCount ?? 0}</span>
-              <span className="tree-stat-sub">{(networkSummary.rightBV ?? 0).toLocaleString()} BV</span>
+              <span className="tree-stat-value">{effectiveRightCount}</span>
+              <span className="tree-stat-sub">{(effectiveRightBV ?? 0).toLocaleString()} BV</span>
             </div>
           </div>
         )}

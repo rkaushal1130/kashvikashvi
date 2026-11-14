@@ -677,10 +677,20 @@ export class NetworkTreeService {
 
       const totalTeamCount = leftTeamCount + rightTeamCount;
 
-      // 3. Left BV & Right BV from Primary Business Center
-      const primaryBC = distributor.businessCenters[0];
-      const leftBV = Number(primaryBC?.accumulatedLeftVolume || primaryBC?.leftVolume || 0);
-      const rightBV = Number(primaryBC?.accumulatedRightVolume || primaryBC?.rightVolume || 0);
+      // 3. Left BV & Right BV synchronized with the binary tree's calculation
+      let leftBV = 0;
+      let rightBV = 0;
+      try {
+        const treeRes = await this.getNetworkTree(distId, 3);
+        if (treeRes?.root) {
+          leftBV = treeRes.root.leftBV ?? 0;
+          rightBV = treeRes.root.rightBV ?? 0;
+        }
+      } catch {
+        const primaryBC = distributor.businessCenters[0];
+        leftBV = Number(primaryBC?.leftVolume || 0);
+        rightBV = Number(primaryBC?.rightVolume || 0);
+      }
 
       return {
         distributorId: distId,

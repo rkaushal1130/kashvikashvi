@@ -2086,24 +2086,20 @@ export const api = {
     } catch (err) {
       console.warn('[API] Get member network summary failed:', err.message);
     }
-    const all = this.getAllModeledDistributors();
     const cleanId = safeId(distributorId) || 'KK-0001';
-    const found = all.find(
-      (m) =>
-        safeId(m.distributorId) === cleanId ||
-        (typeof m.name === 'string' && m.name.toUpperCase().includes(cleanId))
-    );
-    if (found) {
+    const tree = this.getModeledTree(cleanId, 3);
+    const root = tree?.root || tree;
+    if (root) {
       return {
-        distributorId: found.distributorId,
-        directMembers: found.directMembers || 0,
-        leftTeamCount: found.leftTeamCount || 0,
-        rightTeamCount: found.rightTeamCount || 0,
-        totalTeamCount: found.totalTeamCount || 0,
-        leftBV: found.leftBV || 0,
-        rightBV: found.rightBV || 0,
-        personalBV: found.personalBV || 100,
-        totalBV: found.totalBV || 100,
+        distributorId: root.distributorId,
+        directMembers: root.directMembers || 0,
+        leftTeamCount: root.leftTeamCount || 0,
+        rightTeamCount: root.rightTeamCount || 0,
+        totalTeamCount: root.totalTeamCount || 0,
+        leftBV: root.leftBV || 0,
+        rightBV: root.rightBV || 0,
+        personalBV: root.personalBV || 100,
+        totalBV: root.totalBV || 100,
       };
     }
 
