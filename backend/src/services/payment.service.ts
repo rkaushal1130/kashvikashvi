@@ -398,9 +398,20 @@ export class PaymentService {
             state: input.shippingAddress.state,
             postalCode: input.shippingAddress.postalCode,
             country: input.shippingAddress.country || 'India',
+            isDefault: true,
           },
         });
         shippingId = addr.id;
+      }
+
+      if (!shippingId) {
+        const defaultShipping = await tx.address.findFirst({
+          where: { userId, type: 'SHIPPING' },
+          orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
+        });
+        if (defaultShipping) {
+          shippingId = defaultShipping.id;
+        }
       }
 
       const orderNumber = `ORD-${Date.now().toString().slice(-6)}-${Math.floor(1000 + Math.random() * 9000)}`;

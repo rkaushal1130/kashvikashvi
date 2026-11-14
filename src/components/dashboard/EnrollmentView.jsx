@@ -22,6 +22,8 @@ import {
   Sparkles,
   Clock,
   X,
+  ShoppingCart,
+  Trash2,
 } from 'lucide-react';
 import { api } from '../../services/api';
 import { INDIA_STATES_AND_UNION_TERRITORIES } from '../../data/indiaStatesAndUnionTerritories.js';
@@ -92,6 +94,55 @@ function EnrollmentView({ user, onNavigate }) {
   // Mode: 'distributor' (Brand Partner) | 'customer' (Preferred Customer)
   const [enrollType, setEnrollType] = useState('distributor');
 
+  const getInitialFormData = (type) => {
+    try {
+      const draft = localStorage.getItem(`kashvi_enrollment_draft_${type}`);
+      if (draft) {
+        const parsed = JSON.parse(draft);
+        return {
+          fullName: parsed.fullName || '',
+          dob: parsed.dob || '',
+          gender: parsed.gender || 'Male',
+          email: parsed.email || '',
+          phone: parsed.phone || '',
+          panNumber: parsed.panNumber || '',
+          address: parsed.address || '',
+          city: parsed.city || '',
+          state: parsed.state || 'Maharashtra',
+          pincode: parsed.pincode || '',
+          parentBusinessCenter: parsed.parentBusinessCenter || 'BC 001',
+          starterKitId: parsed.starterKitId || 'kit_pro',
+          bankName: parsed.bankName || '',
+          accountNumber: parsed.accountNumber || '',
+          ifscCode: parsed.ifscCode || '',
+          password: parsed.password || '',
+          agreeTerms: parsed.agreeTerms ?? true,
+        };
+      }
+    } catch (e) {
+      console.warn('Failed to parse enrollment draft', e);
+    }
+    return {
+      fullName: '',
+      dob: '',
+      gender: 'Male',
+      email: '',
+      phone: '',
+      panNumber: '',
+      address: '',
+      city: '',
+      state: 'Maharashtra',
+      pincode: '',
+      parentBusinessCenter: 'BC 001',
+      starterKitId: 'kit_pro',
+      bankName: '',
+      accountNumber: '',
+      ifscCode: '',
+      password: '',
+      agreeTerms: true,
+    };
+  };
+
   // Step wizard: 1 (Personal), 2 (Address), 3 (Placement), 4 (Starter Kit), 5 (Bank & Password)
   const [currentStep, setCurrentStep] = useState(1);
   const [showPassword, setShowPassword] = useState(false);
@@ -110,26 +161,57 @@ function EnrollmentView({ user, onNavigate }) {
   const [paymentProcessing, setPaymentProcessing] = useState(false);
   const [paymentError, setPaymentError] = useState(null);
 
-  // Form Data
-  const [formData, setFormData] = useState({
-    fullName: '',
-    dob: '',
-    gender: 'Male',
-    email: '',
-    phone: '',
-    panNumber: '',
-    address: '',
-    city: '',
-    state: 'Maharashtra',
-    pincode: '',
-    parentBusinessCenter: 'BC 001',
-    starterKitId: 'kit_pro',
-    bankName: '',
-    accountNumber: '',
-    ifscCode: '',
-    password: '',
-    agreeTerms: true,
-  });
+  // Form Data with localStorage auto-save draft recovery
+  const [formData, setFormData] = useState(() => getInitialFormData('distributor'));
+  const [lastSavedTime, setLastSavedTime] = useState(null);
+
+  // Auto-save form draft to localStorage whenever fields change
+  useEffect(() => {
+    try {
+      localStorage.setItem(`kashvi_enrollment_draft_${enrollType}`, JSON.stringify(formData));
+      const now = new Date();
+      setLastSavedTime(
+        now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+      );
+    } catch (e) {
+      console.warn('Auto-save draft failed', e);
+    }
+  }, [formData, enrollType]);
+
+  const handleSwitchEnrollType = (newType) => {
+    if (newType === enrollType) return;
+    setEnrollType(newType);
+    setFormData(getInitialFormData(newType));
+    setCurrentStep(1);
+    setSubmitError(null);
+  };
+
+  const handleClearDraft = () => {
+    if (window.confirm('Clear all entered details for this registration form?')) {
+      localStorage.removeItem(`kashvi_enrollment_draft_${enrollType}`);
+      setFormData({
+        fullName: '',
+        dob: '',
+        gender: 'Male',
+        email: '',
+        phone: '',
+        panNumber: '',
+        address: '',
+        city: '',
+        state: 'Maharashtra',
+        pincode: '',
+        parentBusinessCenter: 'BC 001',
+        starterKitId: 'kit_pro',
+        bankName: '',
+        accountNumber: '',
+        ifscCode: '',
+        password: '',
+        agreeTerms: true,
+      });
+      setCurrentStep(1);
+      setLastSavedTime(null);
+    }
+  };
 
   const [copiedKey, setCopiedKey] = useState(null);
   const [enrollmentResult, setEnrollmentResult] = useState(null);
@@ -208,7 +290,13 @@ function EnrollmentView({ user, onNavigate }) {
       return;
     }
 
-    if (!selectedPlacementPosition) {
+    if (!formData.address.trim() || !formData.pincode.trim()) {
+      alert('Please provide complete delivery address and postal PIN code in Step 2.');
+      setCurrentStep(2);
+      return;
+    }
+
+    if (enrollType === 'distributor' && !selectedPlacementPosition) {
       alert('Please select an available binary placement position (LEFT or RIGHT) in Step 3.');
       setCurrentStep(3);
       return;
@@ -219,7 +307,18 @@ function EnrollmentView({ user, onNavigate }) {
       return;
     }
 
-    // Open Razorpay Payment Checkout Modal
+    if (enrollType === 'customer') {
+      // Direct registration for Preferred Customer (No starter kit payment required, permanently saves address & bank details)
+      executeCompleteEnrollment({
+        isVerified: true,
+        paymentId: 'CUSTOMER_DIRECT_ACTIVE',
+        paymentStatus: 'PAID',
+        accountStatus: 'ACTIVE',
+      });
+      return;
+    }
+
+    // Open Razorpay Payment Checkout Modal for Brand Partner / Associate
     setPaymentError(null);
     setPaymentModalOpen(true);
   };
@@ -544,7 +643,13 @@ function EnrollmentView({ user, onNavigate }) {
           name: d.distributor?.displayName || formData.fullName,
           email: d.user?.email || formData.email,
           phone: formData.phone,
-          type: enrollType === 'distributor' ? 'Brand Partner / Associate' : 'Preferred Customer',
+          address: `${formData.address}, ${formData.city}, ${formData.state} - ${formData.pincode}`,
+          bankDetails: formData.bankName
+            ? `${formData.bankName} (A/C: ${formData.accountNumber}, IFSC: ${formData.ifscCode})`
+            : formData.accountNumber
+            ? `A/C: ${formData.accountNumber} (IFSC: ${formData.ifscCode})`
+            : 'Saved in profile',
+          type: enrollType === 'distributor' ? 'Brand Partner / Associate' : 'Preferred Customer (PC)',
           sponsorId: d.sponsor?.distributorId || sponsorInput,
           sponsorName: d.sponsor?.displayName || sponsorData?.sponsor?.name || sponsorName,
           placement: `${selectedPlacementPosition || 'RIGHT'} Leg`,
@@ -553,7 +658,7 @@ function EnrollmentView({ user, onNavigate }) {
           kitName,
           kitPrice,
           paymentId: razorpayPaymentId,
-          paymentMethod: 'Razorpay Gateway',
+          paymentMethod: options.paymentId === 'CUSTOMER_DIRECT_ACTIVE' ? 'Direct Registration' : 'Razorpay Gateway',
           paymentStatus,
           enrolledAt: new Date().toLocaleDateString('en-US', {
             month: 'short',
@@ -562,6 +667,43 @@ function EnrollmentView({ user, onNavigate }) {
           }),
           status: isVerified ? 'Active & Commission Qualified' : 'Pending Payment Activation',
         };
+
+        // Permanently save applicant shipping address for Shipment and Purchasing Orders
+        const savedShippingAddress = {
+          recipientName: formData.fullName,
+          phone: formData.phone,
+          streetAddress: formData.address,
+          city: formData.city,
+          state: formData.state,
+          postalCode: formData.pincode,
+          country: 'India',
+        };
+        try {
+          localStorage.setItem('kashvi_saved_shipping_address', JSON.stringify(savedShippingAddress));
+          window.dispatchEvent(new CustomEvent('kashvi_address_updated', { detail: savedShippingAddress }));
+        } catch (e) {
+          console.warn('Could not save shipping address to localStorage', e);
+        }
+
+        // Permanently save applicant bank account details
+        if (formData.bankName || formData.accountNumber) {
+          const savedBankDetails = {
+            bankName: formData.bankName,
+            accountNumber: formData.accountNumber,
+            ifscCode: formData.ifscCode,
+          };
+          try {
+            localStorage.setItem('kashvi_saved_bank_details', JSON.stringify(savedBankDetails));
+            window.dispatchEvent(new CustomEvent('kashvi_bank_updated', { detail: savedBankDetails }));
+          } catch (e) {
+            console.warn('Could not save bank details to localStorage', e);
+          }
+        }
+
+        // Clean up saved draft after successful registration
+        try {
+          localStorage.removeItem(`kashvi_enrollment_draft_${enrollType}`);
+        } catch {}
 
         // Save into downline history and persistent enrolled tree members in localStorage
         try {
@@ -694,6 +836,20 @@ function EnrollmentView({ user, onNavigate }) {
             </div>
 
             <div className="credential-row">
+              <span className="cred-label">Permanently Saved Delivery Address:</span>
+              <span className="cred-val highlight" style={{ textAlign: 'right', maxWidth: '380px' }}>
+                {enrollmentResult.address}
+              </span>
+            </div>
+
+            <div className="credential-row">
+              <span className="cred-label">Permanently Saved Bank Details:</span>
+              <span className="cred-val" style={{ textAlign: 'right', maxWidth: '380px', color: '#0369a1' }}>
+                {enrollmentResult.bankDetails}
+              </span>
+            </div>
+
+            <div className="credential-row">
               <span className="cred-label">Sponsoring Partner:</span>
               <span className="cred-val">
                 {enrollmentResult.sponsorName} (ID: {enrollmentResult.sponsorId})
@@ -713,24 +869,24 @@ function EnrollmentView({ user, onNavigate }) {
             </div>
 
             <div className="credential-row">
-              <span className="cred-label">Activated Starter Pack:</span>
+              <span className="cred-label">Activated Package / Plan:</span>
               <span className="cred-val">
-                {enrollmentResult.kitName || 'Associate Welcome Pack'} (₹{(enrollmentResult.kitPrice ?? 1499).toLocaleString('en-IN')})
+                {enrollmentResult.kitName || (enrollType === 'customer' ? 'Preferred Customer Membership' : 'Associate Welcome Pack')} (₹{(enrollmentResult.kitPrice ?? 0).toLocaleString('en-IN')})
               </span>
             </div>
 
             <div className="credential-row">
-              <span className="cred-label">Payment Rail:</span>
+              <span className="cred-label">Payment Method:</span>
               <span className="cred-val font-semibold" style={{ color: '#005086' }}>
-                Razorpay Secure Gateway
+                {enrollmentResult.paymentMethod || 'Direct Registration'}
               </span>
             </div>
 
             <div className="credential-row">
-              <span className="cred-label">Razorpay Payment ID:</span>
+              <span className="cred-label">Transaction Reference:</span>
               <div className="cred-val-wrap">
                 <span className="cred-val" style={{ fontFamily: 'monospace', color: '#005086' }}>
-                  {enrollmentResult.paymentId || 'pay_demo_success'}
+                  {enrollmentResult.paymentId || 'REG_COMPLETED'}
                 </span>
                 <button
                   type="button"
@@ -801,6 +957,16 @@ function EnrollmentView({ user, onNavigate }) {
             <button
               type="button"
               className="btn-enroll-action primary"
+              onClick={() => onNavigate && onNavigate('shop')}
+              style={{ backgroundColor: '#059669', borderColor: '#059669' }}
+            >
+              <ShoppingCart size={16} />
+              <span>Purchase / Shop Products (Use Saved Delivery Address)</span>
+            </button>
+
+            <button
+              type="button"
+              className="btn-enroll-action secondary"
               onClick={() => {
                 window.print();
               }}
@@ -815,13 +981,13 @@ function EnrollmentView({ user, onNavigate }) {
               onClick={handleResetForm}
             >
               <RefreshCw size={16} />
-              <span>Enroll Another Partner</span>
+              <span>Enroll Another Person</span>
             </button>
 
             <button
               type="button"
               className="btn-enroll-action outline"
-              onClick={() => onNavigate('dashboard')}
+              onClick={() => onNavigate && onNavigate('dashboard')}
             >
               <ArrowRight size={16} />
               <span>Back to Dashboard</span>
@@ -868,7 +1034,7 @@ function EnrollmentView({ user, onNavigate }) {
         <button
           type="button"
           className={`type-tab-btn ${enrollType === 'distributor' ? 'active' : ''}`}
-          onClick={() => setEnrollType('distributor')}
+          onClick={() => handleSwitchEnrollType('distributor')}
         >
           <Building size={18} />
           <div className="type-tab-text">
@@ -880,7 +1046,7 @@ function EnrollmentView({ user, onNavigate }) {
         <button
           type="button"
           className={`type-tab-btn ${enrollType === 'customer' ? 'active' : ''}`}
-          onClick={() => setEnrollType('customer')}
+          onClick={() => handleSwitchEnrollType('customer')}
         >
           <User size={18} />
           <div className="type-tab-text">
@@ -912,34 +1078,69 @@ function EnrollmentView({ user, onNavigate }) {
             <span className="step-title">Address & PIN</span>
           </button>
 
-          <button
-            type="button"
-            className={`step-bubble ${currentStep === 3 ? 'current' : currentStep > 3 ? 'completed' : ''}`}
-            onClick={() => setCurrentStep(3)}
-          >
-            <span className="step-num">3</span>
-            <span className="step-title">Tree Placement</span>
-          </button>
+          {enrollType === 'distributor' ? (
+            <>
+              <button
+                type="button"
+                className={`step-bubble ${currentStep === 3 ? 'current' : currentStep > 3 ? 'completed' : ''}`}
+                onClick={() => setCurrentStep(3)}
+              >
+                <span className="step-num">3</span>
+                <span className="step-title">Tree Placement</span>
+              </button>
 
-          {enrollType === 'distributor' && (
+              <button
+                type="button"
+                className={`step-bubble ${currentStep === 4 ? 'current' : currentStep > 4 ? 'completed' : ''}`}
+                onClick={() => setCurrentStep(4)}
+              >
+                <span className="step-num">4</span>
+                <span className="step-title">Starter Kit</span>
+              </button>
+
+              <button
+                type="button"
+                className={`step-bubble ${currentStep === 5 ? 'current' : ''}`}
+                onClick={() => setCurrentStep(5)}
+              >
+                <span className="step-num">5</span>
+                <span className="step-title">Bank & Security</span>
+              </button>
+            </>
+          ) : (
             <button
               type="button"
-              className={`step-bubble ${currentStep === 4 ? 'current' : currentStep > 4 ? 'completed' : ''}`}
-              onClick={() => setCurrentStep(4)}
+              className={`step-bubble ${currentStep === 5 ? 'current' : ''}`}
+              onClick={() => setCurrentStep(5)}
             >
-              <span className="step-num">4</span>
-              <span className="step-title">Starter Kit</span>
+              <span className="step-num">3</span>
+              <span className="step-title">Bank Details & Security</span>
             </button>
           )}
+        </div>
 
-          <button
-            type="button"
-            className={`step-bubble ${currentStep === 5 ? 'current' : ''}`}
-            onClick={() => setCurrentStep(5)}
-          >
-            <span className="step-num">{enrollType === 'distributor' ? '5' : '4'}</span>
-            <span className="step-title">Bank & Security</span>
-          </button>
+        {/* Auto-Save Draft Status Bar */}
+        <div className="enroll-autosave-bar">
+          <div className="autosave-badge">
+            <CheckCircle2 size={14} />
+            <span>
+              {enrollType === 'customer'
+                ? 'Preferred Customer details auto-saved'
+                : 'Brand Partner details auto-saved'}
+              {lastSavedTime ? ` (${lastSavedTime})` : ''}
+            </span>
+          </div>
+          {(formData.fullName || formData.phone || formData.address || formData.bankName) && (
+            <button
+              type="button"
+              className="btn-clear-draft"
+              onClick={handleClearDraft}
+              title="Clear entered details to start fresh"
+            >
+              <Trash2 size={12} />
+              <span>Clear Draft</span>
+            </button>
+          )}
         </div>
 
         {/* Form Body */}
@@ -1097,9 +1298,13 @@ function EnrollmentView({ user, onNavigate }) {
                 <button
                   type="button"
                   className="btn-wizard-next"
-                  onClick={() => setCurrentStep(3)}
+                  onClick={() => setCurrentStep(enrollType === 'distributor' ? 3 : 5)}
                 >
-                  <span>Continue to Tree Placement</span>
+                  <span>
+                    {enrollType === 'distributor'
+                      ? 'Continue to Tree Placement'
+                      : 'Continue to Bank Details'}
+                  </span>
                   <ArrowRight size={16} />
                 </button>
               </div>
@@ -1412,9 +1617,15 @@ function EnrollmentView({ user, onNavigate }) {
               <div className="step-header">
                 <Lock size={20} className="step-icon" />
                 <div>
-                  <h3 className="step-main-title">Direct Payout Bank Account & Login Security</h3>
+                  <h3 className="step-main-title">
+                    {enrollType === 'customer'
+                      ? 'Bank Details (For Rebates & Refunds) & Account Password'
+                      : 'Direct Payout Bank Account & Login Security'}
+                  </h3>
                   <p className="step-sub-desc">
-                    Weekly commissions are transferred directly into this account every Monday.
+                    {enrollType === 'customer'
+                      ? 'Personal bank details are saved permanently for direct cashback, discount rebates, and order refunds.'
+                      : 'Weekly commissions are transferred directly into this account every Monday.'}
                   </p>
                 </div>
               </div>
@@ -1499,8 +1710,12 @@ function EnrollmentView({ user, onNavigate }) {
                     />
                     <span>
                       I certify that the applicant has agreed to the{' '}
-                      <strong>KASHVIMLM Distributor Agreement</strong>, Code of Ethics, and policies
-                      governing direct selling under the Consumer Protection (Direct Selling) Rules.
+                      <strong>
+                        {enrollType === 'customer'
+                          ? 'KASHVIMLM Customer Terms & Privacy Policy'
+                          : 'KASHVIMLM Distributor Agreement'}
+                      </strong>
+                      , Code of Ethics, and policies governing direct selling under the Consumer Protection (Direct Selling) Rules.
                     </span>
                   </label>
                 </div>
@@ -1517,7 +1732,7 @@ function EnrollmentView({ user, onNavigate }) {
                 <button
                   type="button"
                   className="btn-wizard-back"
-                  onClick={() => setCurrentStep(enrollType === 'distributor' ? 4 : 3)}
+                  onClick={() => setCurrentStep(enrollType === 'distributor' ? 4 : 2)}
                   disabled={isSubmitting}
                 >
                   Back
@@ -1527,9 +1742,22 @@ function EnrollmentView({ user, onNavigate }) {
                   type="submit"
                   className="btn-wizard-submit"
                   disabled={isSubmitting}
+                  style={enrollType === 'customer' ? { backgroundColor: '#059669', borderColor: '#059669' } : {}}
                 >
-                  {isSubmitting ? <RefreshCw size={18} className="spin" /> : <UserPlus size={18} />}
-                  <span>{isSubmitting ? 'Processing Registration...' : 'Submit & Complete Enrollment'}</span>
+                  {isSubmitting ? (
+                    <RefreshCw size={18} className="spin" />
+                  ) : enrollType === 'customer' ? (
+                    <CheckCircle2 size={18} />
+                  ) : (
+                    <UserPlus size={18} />
+                  )}
+                  <span>
+                    {isSubmitting
+                      ? 'Processing Registration...'
+                      : enrollType === 'customer'
+                      ? 'Complete Customer Registration & Save Details'
+                      : 'Submit & Complete Enrollment'}
+                  </span>
                 </button>
               </div>
             </div>

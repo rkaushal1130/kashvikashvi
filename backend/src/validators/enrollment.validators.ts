@@ -127,8 +127,8 @@ export const completeEnrollmentSchema = z.object({
   sponsorId: z.string().min(1, 'Sponsor ID is required').trim(),
   placementParentId: z.string().trim().optional(),
   placementPosition: z.preprocess(
-    (val) => (typeof val === 'string' ? val.toUpperCase().trim() : val),
-    z.enum(['LEFT', 'RIGHT'])
+    (val) => (typeof val === 'string' && val.trim() ? val.toUpperCase().trim() : 'RIGHT'),
+    z.enum(['LEFT', 'RIGHT']).default('RIGHT')
   ),
   businessCenter: z.string().trim().optional(),
 

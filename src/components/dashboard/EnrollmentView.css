@@ -218,6 +218,43 @@
   color: #059669;
 }
 
+.enroll-autosave-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 20px;
+  background-color: #f0fdf4;
+  border-bottom: 1px solid #dcfce7;
+  font-size: 12px;
+}
+
+.autosave-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #166534;
+  font-weight: 600;
+}
+
+.btn-clear-draft {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  border: none;
+  color: #64748b;
+  font-size: 11.5px;
+  cursor: pointer;
+  padding: 3px 8px;
+  border-radius: 4px;
+  transition: all 0.15s;
+}
+
+.btn-clear-draft:hover {
+  color: #ef4444;
+  background-color: #fee2e2;
+}
+
 .step-num {
   width: 24px;
   height: 24px;

@@ -512,9 +512,13 @@ describe('ENROLLMENT MODULE AUTOMATED TESTS (Supertest + Vitest)', () => {
     beforeEach(() => {
       mockTx = {
         $queryRaw: vi.fn().mockResolvedValue([]),
+        role: {
+          findUnique: vi.fn().mockResolvedValue({ id: 'role-dist-1', name: 'DISTRIBUTOR' }),
+        },
         user: {
           findUnique: vi.fn().mockResolvedValue(null),
           create: vi.fn().mockResolvedValue({ id: 'usr-new-1', email: inputPayload.email, roleName: 'DISTRIBUTOR', status: 'ACTIVE' }),
+          update: vi.fn().mockResolvedValue({ id: 'usr-new-1', email: inputPayload.email }),
         },
         distributorProfile: {
           findFirst: vi.fn().mockImplementation(async (query: any) => {
@@ -579,6 +583,9 @@ describe('ENROLLMENT MODULE AUTOMATED TESTS (Supertest + Vitest)', () => {
         },
         bankAccount: {
           create: vi.fn().mockResolvedValue({ id: 'bank-1' }),
+        },
+        customer: {
+          create: vi.fn().mockResolvedValue({ id: 'cst-1' }),
         },
       };
 

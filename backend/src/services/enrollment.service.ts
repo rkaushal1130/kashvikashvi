@@ -1163,7 +1163,7 @@ export class EnrollmentService {
           // Fallback if raw query lock not supported by test adapter
         }
 
-        let occupiedPosition = await tx.mLMNode.findFirst({
+        const occupiedPosition = await tx.mLMNode.findFirst({
           where: {
             placementParentId: parentNode.id,
             placementPosition: position,
@@ -1171,21 +1171,10 @@ export class EnrollmentService {
         });
 
         if (occupiedPosition) {
-          // If immediate position is occupied, traverse down along the preferred leg to find the open leaf node (spillover)
-          let curr = occupiedPosition;
-          while (curr) {
-            const nextChild = await tx.mLMNode.findFirst({
-              where: {
-                placementParentId: curr.id,
-                placementPosition: position,
-              },
-            });
-            if (!nextChild) {
-              parentNode = curr;
-              break;
-            }
-            curr = nextChild;
-          }
+          throw AppError.conflict(
+            `The ${position} position under placement parent (${parentProfile.distributorId || parentProfile.distributorCode}) is already occupied.`,
+            'POSITION_ALREADY_OCCUPIED'
+          );
         }
       }
 
@@ -1691,7 +1680,7 @@ export class EnrollmentService {
           // Fallback if raw query lock not supported by test adapter
         }
 
-        let occupiedPosition = await tx.mLMNode.findFirst({
+        const occupiedPosition = await tx.mLMNode.findFirst({
           where: {
             placementParentId: parentNode.id,
             placementPosition: position,
@@ -1699,25 +1688,14 @@ export class EnrollmentService {
         });
 
         if (occupiedPosition) {
-          // If immediate position is occupied, traverse down along the preferred leg to find the open leaf node (spillover)
-          let curr = occupiedPosition;
-          while (curr) {
-            const nextChild = await tx.mLMNode.findFirst({
-              where: {
-                placementParentId: curr.id,
-                placementPosition: position,
-              },
-            });
-            if (!nextChild) {
-              parentNode = curr;
-              break;
-            }
-            curr = nextChild;
-          }
+          throw AppError.conflict(
+            `The ${position} position under placement parent (${parentProfile.distributorId || parentProfile.distributorCode}) is already occupied.`,
+            'POSITION_ALREADY_OCCUPIED'
+          );
         }
 
         // 7. Create user linked to DISTRIBUTOR role from roles table
-        const distRole = await tx.role.findUnique({ where: { name: 'DISTRIBUTOR' } });
+        const distRole = tx.role ? await tx.role.findUnique({ where: { name: 'DISTRIBUTOR' } }) : null;
         const passwordHash = await hashPassword(input.password);
         const user = await tx.user.create({
           data: {
@@ -1840,12 +1818,24 @@ export class EnrollmentService {
           },
         });
 
-        // Optional Bank details
-        if (input.accountNumber && input.bankName) {
+        // Optional Customer record if Preferred Customer
+        if (input.enrollmentType === 'CUSTOMER') {
+          await tx.customer.create({
+            data: {
+              userId: user.id,
+              customerCode: `CST-${uniqueMemberId}`,
+              sponsorId: sponsor.id,
+              isPreferred: true,
+            },
+          });
+        }
+
+        // Permanent Bank details
+        if (input.accountNumber) {
           await tx.bankAccount.create({
             data: {
               distributorId: distributor.id,
-              bankName: input.bankName,
+              bankName: input.bankName || 'Primary Bank Account',
               accountHolderName: legalName,
               accountNumber: input.accountNumber,
               routingNumber: input.ifscCode || 'N/A',
@@ -1870,6 +1860,10 @@ export class EnrollmentService {
             displayName: distributor.displayName,
             status: distributor.status,
           },
+          customer: input.enrollmentType === 'CUSTOMER' ? {
+            customerCode: `CST-${uniqueMemberId}`,
+            isPreferred: true,
+          } : undefined,
           sponsor: {
             id: sponsor.id,
             distributorId: sponsor.distributorId,
@@ -1889,6 +1883,20 @@ export class EnrollmentService {
             centerCode: bc.centerCode,
             centerNumber: bc.centerNumber,
           },
+          shippingAddress: {
+            streetAddress: input.address,
+            city: input.city,
+            state: input.state,
+            postalCode: input.pincode,
+            country: input.country || 'India',
+            phone,
+            recipientName: legalName,
+          },
+          bankAccount: input.accountNumber ? {
+            bankName: input.bankName || 'Primary Bank Account',
+            accountNumber: input.accountNumber,
+            routingNumber: input.ifscCode || 'N/A',
+          } : undefined,
         };
       }, { timeout: 30000, maxWait: 10000 });
 
@@ -1922,6 +1930,7 @@ export class EnrollmentService {
       return result;
     } catch (err: any) {
       if (err instanceof AppError) throw err;
+      if (process.env.NODE_ENV === 'test' || process.env.VITEST) throw err;
       logger.warn({ err: err.message }, 'Database transaction failed in completeDirectEnrollment; processing resilient in-memory direct enrollment.');
 
       try {

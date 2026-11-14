@@ -89,6 +89,56 @@ function ShopView({ user, catalog, onNavigate }) {
   const [orderConfirmed, setOrderConfirmed] = useState(null);
   const [toastMsg, setToastMsg] = useState('');
 
+  // Shipping Address State: loaded from permanently saved address or user profile
+  const [shippingAddress, setShippingAddress] = useState(() => {
+    try {
+      const stored = localStorage.getItem('kashvi_saved_shipping_address');
+      if (stored) return JSON.parse(stored);
+    } catch (e) {
+      console.warn('Failed to parse saved shipping address', e);
+    }
+    return {
+      recipientName: user?.fullName || user?.name || memberName || 'Valued Member',
+      phone: user?.phone || '07719561597',
+      streetAddress: user?.addresses?.[0]?.streetAddress || 'Plot No. 43, Shiv TP Nagar, Baldev Nagar',
+      city: user?.addresses?.[0]?.city || 'Ambala City',
+      state: user?.addresses?.[0]?.state || 'Haryana',
+      postalCode: user?.addresses?.[0]?.postalCode || '134007',
+      country: 'India',
+    };
+  });
+  const [isEditingAddress, setIsEditingAddress] = useState(false);
+  const [tempAddress, setTempAddress] = useState(shippingAddress);
+
+  // Sync shipping address dynamically if updated in enrollment or other tabs
+  useEffect(() => {
+    const handleAddressUpdate = (e) => {
+      if (e?.detail) {
+        setShippingAddress(e.detail);
+        setTempAddress(e.detail);
+      }
+    };
+    window.addEventListener('kashvi_address_updated', handleAddressUpdate);
+    return () => window.removeEventListener('kashvi_address_updated', handleAddressUpdate);
+  }, []);
+
+  const handleSaveAddress = (e) => {
+    e.preventDefault();
+    if (!tempAddress.streetAddress || !tempAddress.city || !tempAddress.postalCode) {
+      alert('Please fill in Street Address, City, and Postal PIN Code.');
+      return;
+    }
+    setShippingAddress(tempAddress);
+    try {
+      localStorage.setItem('kashvi_saved_shipping_address', JSON.stringify(tempAddress));
+      window.dispatchEvent(new CustomEvent('kashvi_address_updated', { detail: tempAddress }));
+    } catch (err) {
+      console.warn('Could not save updated address to localStorage', err);
+    }
+    setIsEditingAddress(false);
+    showToast('Delivery address updated and permanently saved!');
+  };
+
   // Payment & Wallet States
   const [walletBalance, setWalletBalance] = useState(42500);
   const [isLoadingWallet, setIsLoadingWallet] = useState(false);
@@ -218,16 +268,6 @@ function ShopView({ user, catalog, onNavigate }) {
       };
     });
 
-    const shippingAddress = {
-      recipientName: memberName || user?.fullName || 'Distributor',
-      phone: user?.phone || '9876543210',
-      streetAddress: 'Plot No. 43, Shiv TP Nagar, Baldev Nagar',
-      city: 'Ambala City',
-      state: 'Haryana',
-      postalCode: '134007',
-      country: 'India',
-    };
-
     try {
       if (selectedPaymentMethod === 'WALLET') {
         if (walletBalance < cartSummary.totalPrice) {
@@ -260,6 +300,7 @@ function ShopView({ user, catalog, onNavigate }) {
           paymentMethod: 'Commission Balance Wallet',
           paymentStatus: 'PAID',
           deliveryEta: '2-4 Business Days via Bluedart Express',
+          shippingAddress: { ...shippingAddress },
         });
         setCartItems({});
         setCheckoutModal(false);
@@ -298,8 +339,8 @@ function ShopView({ user, catalog, onNavigate }) {
             description: `Wholesale Order ${order?.orderNumber || ''}`,
             order_id: razorpayOrderId,
             prefill: {
-              name: memberName || user?.fullName || 'Distributor',
-              contact: user?.phone || '9876543210',
+              name: shippingAddress.recipientName || memberName || user?.fullName || 'Distributor',
+              contact: shippingAddress.phone || user?.phone || '9876543210',
               email: user?.email || 'distributor@kashvimlm.com',
             },
             notes: {
@@ -348,6 +389,7 @@ function ShopView({ user, catalog, onNavigate }) {
                   paymentStatus: 'PAID',
                   deliveryEta: '2-4 Business Days via Bluedart Express',
                   paymentId: response.razorpay_payment_id,
+                  shippingAddress: { ...shippingAddress },
                 });
                 setCartItems({});
                 setCheckoutModal(false);
@@ -874,12 +916,118 @@ function ShopView({ user, catalog, onNavigate }) {
 
             <div className="checkout-body-grid">
               <div className="checkout-left-form">
-                <h4 className="section-subtitle">1. Shipping Address</h4>
-                <div className="address-box-selected">
-                  <strong>{memberName}</strong> (ID: {memberId})
-                  <p>Plot No. 43, Shiv TP Nagar, Baldev Nagar, Ambala City, Haryana - 134007</p>
-                  <p>Phone: +91 98765 43210</p>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <h4 className="section-subtitle" style={{ margin: 0 }}>1. Delivery Address</h4>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTempAddress(shippingAddress);
+                      setIsEditingAddress((prev) => !prev);
+                    }}
+                    style={{
+                      fontSize: '12px',
+                      padding: '4px 10px',
+                      backgroundColor: isEditingAddress ? '#fee2e2' : '#f1f5f9',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '6px',
+                      color: isEditingAddress ? '#b91c1c' : '#0369a1',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {isEditingAddress ? 'Cancel Edit' : 'Change Address'}
+                  </button>
                 </div>
+
+                {!isEditingAddress ? (
+                  <div className="address-box-selected">
+                    <strong>{shippingAddress.recipientName || memberName}</strong>
+                    <p>{shippingAddress.streetAddress}, {shippingAddress.city}, {shippingAddress.state} - {shippingAddress.postalCode}</p>
+                    <p>Phone: {shippingAddress.phone} • Country: {shippingAddress.country || 'India'}</p>
+                    <div style={{ marginTop: '6px', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', color: '#166534', fontWeight: 600 }}>
+                      <Check size={12} />
+                      <span>Permanently saved delivery address</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ backgroundColor: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '14px', marginBottom: '14px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>Recipient Name *</label>
+                        <input
+                          type="text"
+                          value={tempAddress.recipientName || ''}
+                          onChange={(e) => setTempAddress({ ...tempAddress, recipientName: e.target.value })}
+                          style={{ width: '100%', padding: '7px 10px', fontSize: '12px', border: '1px solid #cbd5e1', borderRadius: '6px' }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>Mobile Phone *</label>
+                        <input
+                          type="tel"
+                          value={tempAddress.phone || ''}
+                          onChange={(e) => setTempAddress({ ...tempAddress, phone: e.target.value })}
+                          style={{ width: '100%', padding: '7px 10px', fontSize: '12px', border: '1px solid #cbd5e1', borderRadius: '6px' }}
+                        />
+                      </div>
+                    </div>
+                    <div style={{ marginBottom: '10px' }}>
+                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>Proper Address *</label>
+                      <input
+                        type="text"
+                        value={tempAddress.streetAddress || ''}
+                        onChange={(e) => setTempAddress({ ...tempAddress, streetAddress: e.target.value })}
+                        style={{ width: '100%', padding: '7px 10px', fontSize: '12px', border: '1px solid #cbd5e1', borderRadius: '6px' }}
+                      />
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginBottom: '12px' }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>City *</label>
+                        <input
+                          type="text"
+                          value={tempAddress.city || ''}
+                          onChange={(e) => setTempAddress({ ...tempAddress, city: e.target.value })}
+                          style={{ width: '100%', padding: '7px 10px', fontSize: '12px', border: '1px solid #cbd5e1', borderRadius: '6px' }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>State *</label>
+                        <input
+                          type="text"
+                          value={tempAddress.state || ''}
+                          onChange={(e) => setTempAddress({ ...tempAddress, state: e.target.value })}
+                          style={{ width: '100%', padding: '7px 10px', fontSize: '12px', border: '1px solid #cbd5e1', borderRadius: '6px' }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#475569', marginBottom: '4px' }}>PIN Code *</label>
+                        <input
+                          type="text"
+                          maxLength={6}
+                          value={tempAddress.postalCode || ''}
+                          onChange={(e) => setTempAddress({ ...tempAddress, postalCode: e.target.value })}
+                          style={{ width: '100%', padding: '7px 10px', fontSize: '12px', border: '1px solid #cbd5e1', borderRadius: '6px' }}
+                        />
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingAddress(false)}
+                        style={{ padding: '6px 12px', fontSize: '12px', background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '6px', cursor: 'pointer' }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSaveAddress}
+                        style={{ padding: '6px 14px', fontSize: '12px', background: '#0284c7', color: '#ffffff', border: 'none', borderRadius: '6px', fontWeight: 600, cursor: 'pointer' }}
+                      >
+                        Save & Use Address
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 <h4 className="section-subtitle" style={{ marginTop: '16px' }}>
                   2. Payment Method
@@ -1085,6 +1233,22 @@ function ShopView({ user, catalog, onNavigate }) {
                 <span>Estimated Delivery:</span>
                 <span>{orderConfirmed.deliveryEta}</span>
               </div>
+              {orderConfirmed.shippingAddress && (
+                <>
+                  <div className="inv-row">
+                    <span>Delivery Address:</span>
+                    <span style={{ textAlign: 'right', maxWidth: '320px', fontWeight: 600, color: '#0f172a' }}>
+                      {orderConfirmed.shippingAddress.streetAddress}, {orderConfirmed.shippingAddress.city}, {orderConfirmed.shippingAddress.state} - {orderConfirmed.shippingAddress.postalCode}
+                    </span>
+                  </div>
+                  <div className="inv-row">
+                    <span>Recipient & Contact:</span>
+                    <span>
+                      {orderConfirmed.shippingAddress.recipientName} ({orderConfirmed.shippingAddress.phone})
+                    </span>
+                  </div>
+                </>
+              )}
               {orderConfirmed.paymentId && (
                 <div className="inv-row">
                   <span>Razorpay Payment ID:</span>

@@ -852,9 +852,20 @@ export class OrderService {
             state: inlineShipping.state,
             postalCode: inlineShipping.postalCode,
             country: inlineShipping.country,
+            isDefault: true,
           },
         });
         shippingId = addr.id;
+      }
+
+      if (!shippingId) {
+        const defaultShipping = await tx.address.findFirst({
+          where: { userId, type: 'SHIPPING' },
+          orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
+        });
+        if (defaultShipping) {
+          shippingId = defaultShipping.id;
+        }
       }
 
       if (!billingId && inlineBilling) {
