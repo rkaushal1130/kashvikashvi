@@ -2342,29 +2342,12 @@ export const api = {
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('kashvi_tree_updated', { detail: { action: 'moved', memberId: moveData.memberId } }));
-          window.dispatchEvent(new CustomEvent('kashvi_performance_updated', { detail: { memberId: moveData.memberId } }));
-        }
         return data;
       }
       throw new Error(data.message || 'Failed to move distributor.');
     } catch (err) {
       console.warn('[API] Move distributor error:', err.message);
       // Offline fallback: simulate move and record audit record in local session
-      if (typeof window !== 'undefined') {
-        try {
-          const enrollees = this.getStoredEnrolledMembers();
-          const m = enrollees.find((x) => x.distributorId === moveData.memberId);
-          if (m) {
-            m.placementParent = moveData.newParent;
-            m.position = (moveData.newPosition || 'RIGHT').toUpperCase();
-            localStorage.setItem('kashvi_enrolled_tree_members', JSON.stringify(enrollees));
-          }
-          window.dispatchEvent(new CustomEvent('kashvi_tree_updated', { detail: { action: 'moved', memberId: moveData.memberId } }));
-          window.dispatchEvent(new CustomEvent('kashvi_performance_updated', { detail: { memberId: moveData.memberId } }));
-        } catch {}
-      }
       return {
         success: true,
         message: `Distributor ${moveData.memberId} moved to Parent ${moveData.newParent} (${moveData.newPosition}). (Local simulated)`,
@@ -2764,45 +2747,12 @@ export const api = {
         headers: getAuthHeaders(),
       });
       const data = await res.json();
-      if (res.ok && data.success && data.data) {
-        const rank = data.data;
-        try {
-          const authUser = JSON.parse(localStorage.getItem('kashvi_auth') || '{}');
-          const cleanId = safeId(authUser.distributorCode || authUser.memberId || 'KK-0001');
-          const modeled = this.getModeledTree(cleanId, 3);
-          const root = modeled?.root || modeled;
-          if (root && (root.leftBV != null || root.rightBV != null)) {
-            rank.leftMatching = Number(root.leftBV ?? rank.leftMatching ?? 0);
-            rank.rightMatching = Number(root.rightBV ?? rank.rightMatching ?? 0);
-            rank.matchedVolume = Math.min(rank.leftMatching, rank.rightMatching);
-          }
-        } catch {}
-        return rank;
+      if (res.ok && data.success) {
+        return data.data;
       }
+      return null;
     } catch (err) {
       console.warn('[API] getMyCumulativeRank failed:', err.message);
-    }
-    // Resilient fallback for cumulative rank derived from the live tree
-    try {
-      const authUser = JSON.parse(localStorage.getItem('kashvi_auth') || '{}');
-      const cleanId = safeId(authUser.distributorCode || authUser.memberId || 'KK-0001');
-      const modeled = this.getModeledTree(cleanId, 3);
-      const root = modeled?.root || modeled;
-      const leftMatching = Number(root?.leftBV ?? 0);
-      const rightMatching = Number(root?.rightBV ?? 0);
-      return {
-        memberId: cleanId,
-        distributorCode: cleanId,
-        currentRank: isRootAdmin(cleanId) ? 'SILVER' : 'BASE',
-        qualifyingBV: Number(root?.personalBV ?? 250),
-        leftMatching,
-        rightMatching,
-        matchedVolume: Math.min(leftMatching, rightMatching),
-        cumulativePercentage: 15,
-        eligibleCommissionTiers: [],
-        isQualified: true,
-      };
-    } catch {
       return null;
     }
   },
@@ -2833,18 +2783,7 @@ export const api = {
       });
       const data = await res.json();
       if (res.ok && data.success && data.data) {
-        const perf = data.data;
-        // Synchronize with live binary tree calculations
-        try {
-          const modeled = this.getModeledTree(cleanId, 3);
-          const root = modeled?.root || modeled;
-          if (root && (root.leftBV != null || root.rightBV != null)) {
-            perf.leftBV = Number(root.leftBV ?? perf.leftBV ?? 0);
-            perf.rightBV = Number(root.rightBV ?? perf.rightBV ?? 0);
-            perf.matchingVolume = Math.min(perf.leftBV, perf.rightBV);
-          }
-        } catch {}
-        return perf;
+        return data.data;
       }
     } catch (err) {
       // Backend offline fallback handled below
@@ -2874,26 +2813,17 @@ export const api = {
         userTarget?.personalBV ??
         userTarget?.distributorProfile?.currentBB ??
         userTarget?.distributorProfile?.lifetimePV ??
-        (isRootAdmin(memberId) ? 250 : 100)
+        0
       );
 
-      // Sum left and right downline volume directly from binary tree
+      // Sum left and right downline volume
       let leftBV = Number(userTarget?.leftBV ?? userTarget?.distributorProfile?.businessCenters?.[0]?.leftVolume ?? 0);
       let rightBV = Number(userTarget?.rightBV ?? userTarget?.distributorProfile?.businessCenters?.[0]?.rightVolume ?? 0);
-      try {
-        const modeled = this.getModeledTree(cleanId || memberId, 3);
-        const root = modeled?.root || modeled;
-        if (root && (root.leftBV != null || root.rightBV != null)) {
-          leftBV = Number(root.leftBV ?? 0);
-          rightBV = Number(root.rightBV ?? 0);
-        }
-      } catch (err) {
-        for (const m of enrolledTree) {
-          if (m.placementParent === memberId || m.sponsor === memberId) {
-            const legBv = Number(m.bv ?? 100);
-            if (m.position === 'LEFT') leftBV += legBv;
-            else rightBV += legBv;
-          }
+      for (const m of enrolledTree) {
+        if (m.placementParent === memberId || m.sponsor === memberId) {
+          const legBv = Number(m.bv ?? 100);
+          if (m.position === 'LEFT') leftBV += legBv;
+          else rightBV += legBv;
         }
       }
 
