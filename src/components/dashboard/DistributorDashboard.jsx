@@ -153,8 +153,10 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
 
   useEffect(() => {
     let mounted = true;
-    async function loadPerformanceAndTreeData() {
-      setIsProfileLoading(true);
+    async function loadPerformanceAndTreeData(isInitial = false) {
+      if (isInitial) {
+        setIsProfileLoading(true);
+      }
       try {
         const targetId =
           effectiveUser?.distributorCode ||
@@ -270,16 +272,16 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
       } catch (err) {
         console.warn('Could not load member performance and tree volume:', err);
       } finally {
-        if (mounted) {
+        if (mounted && isInitial) {
           setIsProfileLoading(false);
         }
       }
     }
 
-    loadPerformanceAndTreeData();
+    loadPerformanceAndTreeData(true);
 
     const handleRefresh = () => {
-      loadPerformanceAndTreeData();
+      loadPerformanceAndTreeData(false);
     };
 
     window.addEventListener('kashvi_performance_updated', handleRefresh);
@@ -292,10 +294,10 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
     window.addEventListener('kashvi_profile_updated', handleRefresh);
     window.addEventListener('storage', handleRefresh);
 
-    // Dynamic background heartbeat to guarantee tree BV is synced in real-time
+    // Dynamic background heartbeat to guarantee tree BV is synced in real-time silently without resetting UI state
     const intervalTimer = setInterval(() => {
-      loadPerformanceAndTreeData();
-    }, 4000);
+      loadPerformanceAndTreeData(false);
+    }, 60000);
 
     return () => {
       mounted = false;
@@ -331,7 +333,7 @@ function DistributorDashboard({ user, onSignOut, defaultNav }) {
     return () => {
       mounted = false;
     };
-  }, [user]);
+  }, [user?.id, user?.distributorId, user?.memberId]);
 
   const handleMarkNotification = async (id) => {
     try {
