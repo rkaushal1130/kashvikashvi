@@ -31,6 +31,7 @@ import { adminRoutes } from './modules/admin/admin.routes.js';
 import cartRoutes from './modules/cart/cart.routes.js';
 import newsRoutes from './modules/news/news.routes.js';
 import websiteRoutes from './modules/website/website.routes.js';
+import otpRoutes from './modules/otp/otp.routes.js';
 
 export const app: Express = express();
 
@@ -140,6 +141,7 @@ app.get('/health', (_req: Request, res: Response) => {
 
 // Prompt 3, 4, 5, 6 REST API Endpoints
 app.use('/api/auth', authRoutes);
+app.use('/api/otp', otpRoutes);
 app.use('/api/distributors', distributorRoutes);
 app.use('/api/tree', mlmTreeRoutes);
 app.use('/api/business-volume', businessVolumeRoutes);
@@ -149,6 +151,7 @@ app.use('/api/admin', adminRoutes);
 
 // API v1 Routing Table (14 Modules)
 app.use('/api/v1/auth', authRoutes);
+app.use('/api/v1/otp', otpRoutes);
 app.use('/api/v1/distributors', distributorRoutes);
 app.use('/api/v1/enrollment', enrollmentRoutes);
 app.get('/api/v1/sponsors/:sponsorId', EnrollmentController.verifySponsor);

@@ -4320,24 +4320,91 @@ var init_otp_service = __esm({
           };
         }
         try {
-          const response = await fetch("https://api.msg91.com/api/v5/widget/sendOtp", {
-            method: "POST",
-            headers: {
-              authkey: authKey,
-              "Content-Type": "application/json",
-              Accept: "application/json"
-            },
-            body: JSON.stringify({
-              widgetId,
-              tokenAuth: authKey,
-              identifier
-            })
-          });
-          const data = await response.json();
+          let response = await fetch(
+            "https://control.msg91.com/api/v5/otp?otp_length=4&otp_expiry=15",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Accept: "application/json",
+                tokenAuth: authKey,
+                authkey: authKey
+              },
+              body: JSON.stringify({
+                widgetId,
+                tokenAuth: authKey,
+                identifier,
+                mobile: identifier
+              })
+            }
+          );
+          let data = await response.json().catch(() => ({}));
+          if (!response.ok || data?.type === "error" && !data?.request_id) {
+            try {
+              const altResponse = await fetch(
+                "https://api.msg91.com/api/v5/otp?otp_length=4&otp_expiry=15",
+                {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    Accept: "application/json",
+                    tokenAuth: authKey,
+                    authkey: authKey
+                  },
+                  body: JSON.stringify({
+                    widgetId,
+                    tokenAuth: authKey,
+                    identifier,
+                    mobile: identifier
+                  })
+                }
+              );
+              if (altResponse.ok) {
+                const altData = await altResponse.json().catch(() => ({}));
+                if (altData?.type === "success" || altData?.request_id) {
+                  response = altResponse;
+                  data = altData;
+                }
+              }
+            } catch {
+            }
+          }
+          if (!response.ok || data?.type === "error" && !data?.request_id) {
+            try {
+              const widgetResponse = await fetch("https://control.msg91.com/api/v5/widget/sendOtp", {
+                method: "POST",
+                headers: {
+                  tokenAuth: authKey,
+                  "Content-Type": "application/json",
+                  Accept: "application/json"
+                },
+                body: JSON.stringify({
+                  widgetId,
+                  tokenAuth: authKey,
+                  identifier
+                })
+              });
+              const widgetData = await widgetResponse.json().catch(() => ({}));
+              if (widgetResponse.ok && (widgetData?.type === "success" || widgetData?.request_id || widgetData?.reqId)) {
+                response = widgetResponse;
+                data = widgetData;
+              }
+            } catch {
+            }
+          }
+          if (data?.type === "success" || data?.request_id) {
+            const reqId2 = data?.request_id || data?.reqId || data?.message || data?.data?.reqId;
+            logger.info({ phone: cleanPhone, reqId: reqId2 }, "MSG91 sendOtp succeeded");
+            return {
+              type: "success",
+              message: "OTP sent successfully to your mobile number.",
+              reqId: String(reqId2 || "")
+            };
+          }
           if (!response.ok || data?.type === "error" || data?.hasError || data?.status === "fail") {
             let errMsg = data?.message || "Failed to send OTP via MSG91 gateway.";
-            if (errMsg.includes("Web requests are not allowed")) {
-              errMsg = "Web requests are not allowed for this widget. In your MSG91 dashboard for widget 'SecureOTPWidget4R29', please turn OFF 'Mobile Integration' to enable Web OTP.";
+            if (errMsg === "Invalid request" || errMsg === "IPBlocked" || errMsg.includes("Web requests are not allowed")) {
+              errMsg = "MSG91 OTP gateway could not complete the request. If you are configuring MSG91 widget 'SecureOTPWidget4R29', please ensure Web integration is enabled and IP restrictions are set properly in your MSG91 dashboard.";
             } else if (errMsg.includes("AuthenticationFailure")) {
               errMsg = "MSG91 Authentication Failed (Code 201). Please check that MSG91_AUTH_KEY in backend/.env is your active Authkey from your MSG91 dashboard.";
             }
@@ -4388,10 +4455,10 @@ var init_otp_service = __esm({
           };
         }
         try {
-          const response = await fetch("https://api.msg91.com/api/v5/widget/retryOtp", {
+          let response = await fetch("https://control.msg91.com/api/v5/widget/retryOtp", {
             method: "POST",
             headers: {
-              authkey: authKey,
+              tokenAuth: authKey,
               "Content-Type": "application/json",
               Accept: "application/json"
             },
@@ -4402,7 +4469,38 @@ var init_otp_service = __esm({
               retryChannel: Number(channel) || 11
             })
           });
-          const data = await response.json();
+          let data = await response.json().catch(() => ({}));
+          if (!response.ok || data?.type === "error" || data?.hasError || data?.status === "fail") {
+            const altResponse = await fetch("https://api.msg91.com/api/v5/widget/retryOtp", {
+              method: "POST",
+              headers: {
+                tokenAuth: authKey,
+                "Content-Type": "application/json",
+                Accept: "application/json"
+              },
+              body: JSON.stringify({
+                widgetId,
+                tokenAuth: authKey,
+                reqId: cleanReqId,
+                retryChannel: Number(channel) || 11
+              })
+            });
+            if (altResponse.ok) {
+              const altData = await altResponse.json().catch(() => ({}));
+              if (altData?.type === "success") {
+                response = altResponse;
+                data = altData;
+              }
+            }
+          }
+          if (data?.type === "success") {
+            logger.info({ reqId: cleanReqId }, "MSG91 retryOtp succeeded");
+            return {
+              type: "success",
+              message: "OTP resent successfully.",
+              reqId: cleanReqId
+            };
+          }
           if (!response.ok || data?.type === "error" || data?.hasError || data?.status === "fail") {
             let errMsg = data?.message || "Failed to resend OTP via MSG91 gateway.";
             if (errMsg.includes("Web requests are not allowed")) {
@@ -4465,9 +4563,10 @@ var init_otp_service = __esm({
           throw AppError.badRequest("Incorrect OTP. Please check and try again.", "MSG91_INVALID_OTP");
         }
         try {
-          const response = await fetch("https://api.msg91.com/api/v5/widget/verifyOtp", {
+          let response = await fetch("https://control.msg91.com/api/v5/widget/verifyOtp", {
             method: "POST",
             headers: {
+              tokenAuth: authKey,
               authkey: authKey,
               "Content-Type": "application/json",
               Accept: "application/json"
@@ -4480,7 +4579,35 @@ var init_otp_service = __esm({
               identifier
             })
           });
-          const data = await response.json();
+          let data = await response.json().catch(() => ({}));
+          if (!response.ok || data?.type === "error" || data?.hasError || data?.status === "fail") {
+            try {
+              const altResponse = await fetch("https://api.msg91.com/api/v5/widget/verifyOtp", {
+                method: "POST",
+                headers: {
+                  tokenAuth: authKey,
+                  authkey: authKey,
+                  "Content-Type": "application/json",
+                  Accept: "application/json"
+                },
+                body: JSON.stringify({
+                  widgetId,
+                  tokenAuth: authKey,
+                  otp: cleanOtp,
+                  ...cleanReqId ? { reqId: cleanReqId } : {},
+                  identifier
+                })
+              });
+              if (altResponse.ok) {
+                const altData = await altResponse.json().catch(() => ({}));
+                if (altData?.type === "success" || altData?.["access-token"] || altData?.accessToken) {
+                  response = altResponse;
+                  data = altData;
+                }
+              }
+            } catch {
+            }
+          }
           if (!response.ok || data?.type === "error" || data?.hasError || data?.status === "fail") {
             let errMsg = data?.message || "Incorrect OTP. Please check and try again.";
             if (errMsg.includes("Web requests are not allowed")) {

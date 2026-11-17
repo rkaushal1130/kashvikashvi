@@ -417,9 +417,32 @@ export async function sendOtpToMobile(phone) {
         }
       };
 
-      // 12-second safe timeout: guarantees loading state never hangs permanently
-      const timer = setTimeout(() => {
+      // 3.5-second safe timeout: if client SDK hangs (e.g. headless captcha pending), fall back to server REST API
+      const timer = setTimeout(async () => {
         if (isDone) return;
+        debugLog('Client sendOtp taking >3.5s, triggering server-side REST API fallback...');
+        try {
+          const fallbackRes = await authApi.sendOtp({ phone: digits });
+          if (
+            fallbackRes?.success &&
+            (fallbackRes?.data?.reqId || fallbackRes?.data?.type === 'success')
+          ) {
+            cleanup();
+            const serverReqId = fallbackRes.data.reqId || lastReqId;
+            if (serverReqId) {
+              lastReqId = serverReqId;
+            }
+            resolve({
+              type: 'success',
+              reqId: serverReqId,
+              message: fallbackRes.message || 'OTP sent successfully to your mobile number.',
+            });
+            return;
+          }
+        } catch (fbErr) {
+          debugError('Server REST fallback during timeout also failed:', fbErr?.message);
+        }
+
         cleanup();
 
         // Check if authentication failure occurred
@@ -434,10 +457,10 @@ export async function sendOtpToMobile(phone) {
 
         reject(
           new Error(
-            'OTP request timed out without response from MSG91. Please check your connection and try again.'
+            'Failed to send OTP via MSG91 gateway. Please check your mobile number and try again.'
           )
         );
-      }, 12000);
+      }, 3500);
 
       const handleSuccess = (res) => {
         if (isDone) return;
@@ -491,6 +514,15 @@ export async function sendOtpToMobile(phone) {
           }
         }
 
+        if (
+          errMsg === 'Invalid request' ||
+          errMsg === 'IPBlocked' ||
+          errMsg.includes('Web requests are not allowed')
+        ) {
+          errMsg =
+            'Unable to deliver OTP right now via MSG91. Please check your mobile number or try again.';
+        }
+
         reject(new Error(errMsg));
       };
 
@@ -527,6 +559,15 @@ export async function sendOtpToMobile(phone) {
           if (fbErr?.message && !fbErr.message.includes('fetch failed')) {
             errMsg = fbErr.message;
           }
+        }
+
+        if (
+          errMsg === 'Invalid request' ||
+          errMsg === 'IPBlocked' ||
+          errMsg.includes('Web requests are not allowed')
+        ) {
+          errMsg =
+            'Unable to deliver OTP right now via MSG91. Please check your mobile number or try again.';
         }
 
         reject(new Error(errMsg));
