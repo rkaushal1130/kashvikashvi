@@ -738,17 +738,6 @@ export function Register() {
               </span>
             )}
 
-            {/* MSG91 Custom UI CAPTCHA Container (rendered when CAPTCHA is enabled in MSG91 dashboard) */}
-            <div
-              id="msg91-captcha-container"
-              style={{
-                marginTop: '6px',
-                minHeight: '0px',
-                display: 'flex',
-                justifyContent: 'center',
-              }}
-            />
-
             {/* OTP Input & Verification Row (Shown only after OTP sending is successful and before verification) */}
             {isOtpSent && !isVerified && (
               <div

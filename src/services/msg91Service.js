@@ -220,18 +220,9 @@ export function getWidgetData() {
 }
 
 /**
- * Checks whether anti-spam CAPTCHA has been verified (Method 5: window.isCaptchaVerified())
- * Returns true if verified, or true if captcha is not configured/required by the widget
+ * Anti-spam CAPTCHA helper (disabled - OTP sent directly without CAPTCHA)
  */
 export function isCaptchaVerified() {
-  if (typeof window !== 'undefined' && typeof window.isCaptchaVerified === 'function') {
-    try {
-      return Boolean(window.isCaptchaVerified());
-    } catch (err) {
-      debugWarn('isCaptchaVerified check failed:', err);
-      return false;
-    }
-  }
   return true;
 }
 
@@ -311,24 +302,23 @@ export function loadMsg91Sdk() {
  * - Widget: SecureOTPWidget4R29
  * - exposeMethods: true (Required for Custom UI)
  */
-export async function initMsg91Widget({ onSuccess, onFailure, captchaRenderId = 'msg91-captcha-container' } = {}) {
+export async function initMsg91Widget({ onSuccess, onFailure, captchaRenderId } = {}) {
   const { widgetId, tokenAuth } = getWidgetCredentials();
 
   debugLog('Configuring MSG91 Widget:', {
     widgetId,
     exposeMethods: true,
-    captchaRenderId: captchaRenderId || 'msg91-captcha-container',
     hasTokenAuth: Boolean(tokenAuth),
   });
 
   await loadMsg91Sdk();
 
-  // MSG91 Official Configuration Object
+  // MSG91 Official Configuration Object (Direct OTP without CAPTCHA)
   window.configuration = {
     widgetId,
     tokenAuth,
     exposeMethods: true, // EXPOSES: window.sendOtp, window.retryOtp, window.verifyOtp, window.getWidgetData, window.isCaptchaVerified
-    captchaRenderId: captchaRenderId || 'msg91-captcha-container', // Unique HTML element ID for CAPTCHA rendering
+    ...(captchaRenderId ? { captchaRenderId } : {}),
     success: (data) => {
       debugLog('MSG91 configuration success callback.');
       const token = extractAccessToken(data);
@@ -406,14 +396,6 @@ export async function sendOtpToMobile(phone) {
     }
   }
 
-  // CAPTCHA verification check: ensure CAPTCHA is completed before sending OTP
-  if (typeof window !== 'undefined' && typeof window.isCaptchaVerified === 'function') {
-    if (!window.isCaptchaVerified()) {
-      debugWarn('Blocked sendOtp: CAPTCHA is not yet completed.');
-      throw new Error('Please complete the CAPTCHA verification above before sending OTP.');
-    }
-  }
-
   debugLog(`Initiating sendOtp for 91******${digits.slice(-4)}`);
 
   // Official MSG91 Method 1: window.sendOtp(identifier, success, failure)
@@ -439,16 +421,6 @@ export async function sendOtpToMobile(phone) {
       const timer = setTimeout(() => {
         if (isDone) return;
         cleanup();
-
-        // Check if CAPTCHA was incomplete
-        if (typeof window.isCaptchaVerified === 'function' && !window.isCaptchaVerified()) {
-          reject(
-            new Error(
-              'CAPTCHA verification was not completed. Please solve the CAPTCHA and try again.'
-            )
-          );
-          return;
-        }
 
         // Check if authentication failure occurred
         if (lastInitError) {
@@ -484,7 +456,7 @@ export async function sendOtpToMobile(phone) {
         });
       };
 
-      const handleFailure = (err) => {
+      const handleFailure = async (err) => {
         if (isDone) return;
         cleanup();
         const errMsg =
@@ -492,6 +464,29 @@ export async function sendOtpToMobile(phone) {
           (typeof err === 'string' ? err : null) ||
           'Failed to send OTP via MSG91.';
         debugError('sendOtp failure callback triggered:', errMsg);
+
+        // If client SDK failed due to CAPTCHA restriction, seamlessly fall back to server-side REST API (no CAPTCHA)!
+        if (errMsg.toLowerCase().includes('captcha')) {
+          try {
+            debugLog('Falling back to server-side REST API due to CAPTCHA issue...');
+            const fallbackRes = await authApi.sendOtp({ phone: digits });
+            if (fallbackRes?.success && (fallbackRes?.data?.reqId || fallbackRes?.data?.type === 'success')) {
+              const serverReqId = fallbackRes.data.reqId || lastReqId;
+              if (serverReqId) {
+                lastReqId = serverReqId;
+              }
+              resolve({
+                type: 'success',
+                reqId: serverReqId,
+                message: fallbackRes.message || 'OTP sent successfully to your mobile number.',
+              });
+              return;
+            }
+          } catch (fbErr) {
+            debugError('Server REST fallback after captcha failure also failed:', fbErr?.message);
+          }
+        }
+
         reject(new Error(errMsg));
       };
 

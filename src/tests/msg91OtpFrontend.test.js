@@ -140,7 +140,7 @@ describe('MSG91 OTP FRONTEND SERVICE & REGISTRATION FORM INTEGRATION', () => {
     }
   });
 
-  test('8. initMsg91Widget sets exposeMethods: true, widgetId: SecureOTPWidget4R29, and captchaRenderId', async () => {
+  test('8. initMsg91Widget sets exposeMethods: true and widgetId without requiring CAPTCHA', async () => {
     globalThis.window.initSendOTP = (config) => {
       globalThis.window.configuration = config;
     };
@@ -150,10 +150,6 @@ describe('MSG91 OTP FRONTEND SERVICE & REGISTRATION FORM INTEGRATION', () => {
     assert.equal(
       globalThis.window.configuration.widgetId,
       'SecureOTPWidget4R29'
-    );
-    assert.equal(
-      globalThis.window.configuration.captchaRenderId,
-      'msg91-captcha-container'
     );
   });
 
@@ -202,16 +198,17 @@ describe('MSG91 OTP FRONTEND SERVICE & REGISTRATION FORM INTEGRATION', () => {
     assert.equal(res.accessToken, 'jwt-msg91-verified-token-xyz');
   });
 
-  test('12. sendOtpToMobile blocks if CAPTCHA is required but unverified', async () => {
+  test('12. sendOtpToMobile sends OTP directly without requiring or blocking on CAPTCHA', async () => {
+    let called = false;
     globalThis.window.isCaptchaVerified = () => false;
-    globalThis.window.sendOtp = () => {};
+    globalThis.window.sendOtp = (identifier, success) => {
+      called = true;
+      success({ message: 'req-msg91-direct-otp-12345', type: 'success' });
+    };
 
-    await assert.rejects(
-      async () => {
-        await sendOtpToMobile('9876543210');
-      },
-      /CAPTCHA verification/i
-    );
+    const res = await sendOtpToMobile('9876543210');
+    assert.equal(called, true);
+    assert.equal(res.reqId, 'req-msg91-direct-otp-12345');
   });
 
   test('13. sendOtpToMobile surfaces failure callback with detailed error message', async () => {
