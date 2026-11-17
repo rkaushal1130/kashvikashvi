@@ -283,4 +283,20 @@ describe('MSG91 OTP VERIFICATION & REGISTRATION FLOW (SecureOTPWidget4R29)', () 
       );
     });
   });
+
+  // TEST CASE 15: Mock OTP tokens strictly forbidden in production
+  describe('Test Case 15: Mock OTP tokens forbidden in production', () => {
+    it('should reject mock tokens when running in production mode', async () => {
+      const originalNodeEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = 'production';
+
+      try {
+        await expect(
+          OtpService.verifyAccessToken('mock-token-prod-test', '9876543210')
+        ).rejects.toThrow(/Mock OTP tokens are strictly prohibited in production/i);
+      } finally {
+        process.env.NODE_ENV = originalNodeEnv;
+      }
+    });
+  });
 });

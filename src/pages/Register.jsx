@@ -175,13 +175,7 @@ export function Register() {
 
   // Initialize MSG91 OTP Widget on mount
   useEffect(() => {
-    initMsg91Widget({
-      onSuccess: (data, token) => {
-        if (token) {
-          console.log('[Register] Captured verified token from widget event:', token);
-        }
-      },
-    }).catch((err) => {
+    initMsg91Widget().catch((err) => {
       console.warn('[Register] MSG91 initialization notice:', err?.message);
     });
   }, []);
@@ -715,6 +709,17 @@ export function Register() {
                 {fieldErrors.phone}
               </span>
             )}
+
+            {/* MSG91 Custom UI CAPTCHA Container (rendered when CAPTCHA is enabled in MSG91 dashboard) */}
+            <div
+              id="msg91-captcha-container"
+              style={{
+                marginTop: '6px',
+                minHeight: '0px',
+                display: 'flex',
+                justifyContent: 'center',
+              }}
+            />
 
             {/* OTP Input & Verification Row (Shown only after OTP sending is successful and before verification) */}
             {otpState.sent && !otpState.verified && (

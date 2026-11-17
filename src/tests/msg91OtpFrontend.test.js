@@ -1,13 +1,36 @@
-import { test, describe } from 'node:test';
+import { test, describe, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   normalizePhoneNumber,
   isValidIndianMobile,
   sendOtpToMobile,
+  resendOtp,
   verifyOtpCode,
+  initMsg91Widget,
+  isCaptchaVerified,
+  getWidgetData,
+  getLastReqId,
+  isProduction,
 } from '../services/msg91Service.js';
 
 describe('MSG91 OTP FRONTEND SERVICE & REGISTRATION FORM INTEGRATION', () => {
+  beforeEach(() => {
+    // Clean mock window
+    if (typeof globalThis.window === 'undefined') {
+      globalThis.window = {};
+    }
+  });
+
+  afterEach(() => {
+    delete globalThis.window.sendOtp;
+    delete globalThis.window.retryOtp;
+    delete globalThis.window.verifyOtp;
+    delete globalThis.window.getWidgetData;
+    delete globalThis.window.isCaptchaVerified;
+    delete globalThis.window.initSendOTP;
+    delete globalThis.window.configuration;
+  });
+
   test('1. Mobile number normalization strips non-digits and isolates 10 digits', () => {
     assert.equal(normalizePhoneNumber('+91 98765 43210'), '9876543210');
     assert.equal(normalizePhoneNumber('919876543210'), '9876543210');
@@ -71,5 +94,79 @@ describe('MSG91 OTP FRONTEND SERVICE & REGISTRATION FORM INTEGRATION', () => {
     for (const field of requiredFields) {
       assert.ok(field.length > 0, `Field ${field} is configured`);
     }
+  });
+
+  test('7. initMsg91Widget sets exposeMethods: true, widgetId: SecureOTPWidget4R29, and captchaRenderId', async () => {
+    globalThis.window.initSendOTP = (config) => {
+      globalThis.window.configuration = config;
+    };
+
+    await initMsg91Widget();
+    assert.equal(globalThis.window.configuration.exposeMethods, true);
+    assert.equal(
+      globalThis.window.configuration.widgetId,
+      'SecureOTPWidget4R29'
+    );
+    assert.equal(
+      globalThis.window.configuration.captchaRenderId,
+      'msg91-captcha-container'
+    );
+  });
+
+  test('8. sendOtp uses window.sendOtp with identifier (91+phone) and extracts reqId', async () => {
+    let capturedIdentifier = null;
+    globalThis.window.sendOtp = (identifier, success, failure) => {
+      capturedIdentifier = identifier;
+      success({ message: 'req-msg91-test-12345', type: 'success' });
+    };
+
+    const res = await sendOtpToMobile('9876543210');
+    assert.equal(capturedIdentifier, '919876543210');
+    assert.equal(res.reqId, 'req-msg91-test-12345');
+    assert.equal(getLastReqId(), 'req-msg91-test-12345');
+  });
+
+  test('9. resendOtp passes SMS channel 11 and lastReqId to window.retryOtp', async () => {
+    let capturedChannel = null;
+    let capturedReqId = null;
+
+    globalThis.window.retryOtp = (channel, success, failure, reqId) => {
+      capturedChannel = channel;
+      capturedReqId = reqId;
+      success({ message: 'req-msg91-retry-67890', type: 'success' });
+    };
+
+    const res = await resendOtp();
+    assert.equal(capturedChannel, '11');
+    assert.equal(capturedReqId, 'req-msg91-test-12345');
+    assert.equal(res.reqId, 'req-msg91-retry-67890');
+  });
+
+  test('10. verifyOtpCode passes code and reqId to window.verifyOtp and extracts accessToken', async () => {
+    let capturedOtp = null;
+    let capturedReqId = null;
+
+    globalThis.window.verifyOtp = (otp, success, failure, reqId) => {
+      capturedOtp = otp;
+      capturedReqId = reqId;
+      success({ 'access-token': 'jwt-msg91-verified-token-xyz' });
+    };
+
+    const res = await verifyOtpCode('4321', '9876543210');
+    assert.equal(capturedOtp, '4321');
+    assert.equal(capturedReqId, 'req-msg91-retry-67890');
+    assert.equal(res.accessToken, 'jwt-msg91-verified-token-xyz');
+  });
+
+  test('11. sendOtpToMobile blocks if CAPTCHA is required but unverified', async () => {
+    globalThis.window.isCaptchaVerified = () => false;
+    globalThis.window.sendOtp = () => {};
+
+    await assert.rejects(
+      async () => {
+        await sendOtpToMobile('9876543210');
+      },
+      /CAPTCHA verification/i
+    );
   });
 });

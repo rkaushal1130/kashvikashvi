@@ -1,15 +1,32 @@
 /**
- * Official MSG91 OTP Widget Integration Service
+ * Official MSG91 OTP Web SDK Integration Service
  * Widget: SecureOTPWidget4R29
- * Documentation: https://docs.msg91.com/otp-widget
+ * Mode: Custom UI (Headless) with exposeMethods: true
+ * Official Documentation: https://docs.msg91.com
+ *
+ * Exposed SDK Methods on window:
+ * 1. window.sendOtp(identifier, success, failure)
+ * 2. window.retryOtp(channel, success, failure, reqId)
+ * 3. window.verifyOtp(otp, success, failure, reqId)
+ * 4. window.getWidgetData()
+ * 5. window.isCaptchaVerified()
  *
  * Config:
+ * - SMS Channel Identifier: '11'
+ * - Country Code: 91 without '+'
  * - OTP Length: 4 digits
  * - Resend Interval: 10 seconds
- * - Expiry: 15 minutes
+ * - Session Validity: 15 minutes
  */
 
+// Determine environment
+export const isProduction = Boolean(
+  (typeof import.meta !== 'undefined' && import.meta.env?.PROD) ||
+  (typeof process !== 'undefined' && process.env?.NODE_ENV === 'production')
+);
+
 let sdkPromise = null;
+let lastReqId = null;
 let lastVerifiedAccessToken = null;
 
 /**
@@ -30,6 +47,75 @@ export function isValidIndianMobile(phone) {
 }
 
 /**
+ * Extracts the access token string from MSG91 SDK response
+ */
+export function extractAccessToken(data) {
+  if (!data) return null;
+  if (typeof data === 'string') return data;
+  return (
+    data['access-token'] ||
+    data.accessToken ||
+    data.token ||
+    data.jwt ||
+    data.message ||
+    null
+  );
+}
+
+/**
+ * Extracts request ID (reqId) from MSG91 sendOtp / retryOtp response
+ */
+export function extractReqId(data) {
+  if (!data) return null;
+  if (typeof data === 'string') return data;
+  return data.reqId || data.request_id || data.message || null;
+}
+
+/**
+ * Getter for current request ID
+ */
+export function getLastReqId() {
+  return lastReqId;
+}
+
+/**
+ * Getter for last verified access token
+ */
+export function getLastVerifiedAccessToken() {
+  return lastVerifiedAccessToken;
+}
+
+/**
+ * Returns current widget data from MSG91 SDK (Method 4: window.getWidgetData())
+ */
+export function getWidgetData() {
+  if (typeof window !== 'undefined' && typeof window.getWidgetData === 'function') {
+    try {
+      return window.getWidgetData();
+    } catch (err) {
+      console.warn('[MSG91] getWidgetData call failed:', err);
+    }
+  }
+  return null;
+}
+
+/**
+ * Checks whether anti-spam CAPTCHA has been verified (Method 5: window.isCaptchaVerified())
+ * Returns true if verified, or true if captcha is not configured/required by the widget
+ */
+export function isCaptchaVerified() {
+  if (typeof window !== 'undefined' && typeof window.isCaptchaVerified === 'function') {
+    try {
+      return Boolean(window.isCaptchaVerified());
+    } catch (err) {
+      console.warn('[MSG91] isCaptchaVerified check failed:', err);
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
  * Loads the official MSG91 OTP Widget SDK script (https://verify.msg91.com/otp-provider.js)
  */
 export function loadMsg91Sdk() {
@@ -37,8 +123,13 @@ export function loadMsg91Sdk() {
     return Promise.reject(new Error('Window object is not available'));
   }
 
-  // Already loaded
-  if (typeof window.initSendOTP === 'function' && typeof window.sendOtp === 'function') {
+  // If in node environment without DOM
+  if (typeof document === 'undefined') {
+    return Promise.resolve(window.initSendOTP || null);
+  }
+
+  // Already loaded and ready
+  if (typeof window.initSendOTP === 'function') {
     return Promise.resolve(window.initSendOTP);
   }
 
@@ -47,7 +138,7 @@ export function loadMsg91Sdk() {
   }
 
   sdkPromise = new Promise((resolve, reject) => {
-    // Check if script element already exists
+    // Check if script element already exists in document
     const existing = document.querySelector('script[src*="otp-provider.js"]');
     if (existing) {
       if (typeof window.initSendOTP === 'function') {
@@ -56,7 +147,12 @@ export function loadMsg91Sdk() {
         existing.addEventListener('load', () => resolve(window.initSendOTP));
         existing.addEventListener('error', () => {
           sdkPromise = null;
-          reject(new Error('Failed to load MSG91 OTP Provider script'));
+          if (isProduction) {
+            reject(new Error('Failed to load MSG91 OTP Provider script in production.'));
+          } else {
+            console.warn('[MSG91] Failed to load OTP script. Local mock fallback active for development.');
+            resolve(null);
+          }
         });
       }
       return;
@@ -73,8 +169,18 @@ export function loadMsg91Sdk() {
 
     script.onerror = () => {
       sdkPromise = null;
-      console.warn('⚠️ Could not load MSG91 SDK script from verify.msg91.com (network/sandbox restriction). Local mock fallback enabled.');
-      resolve(null); // Resolve null to enable graceful mock fallback in offline/dev mode
+      if (isProduction) {
+        reject(
+          new Error(
+            'Failed to load MSG91 OTP script from verify.msg91.com in production. Please check network/ad-blocker settings.'
+          )
+        );
+      } else {
+        console.warn(
+          '⚠️ Could not load MSG91 SDK script from verify.msg91.com. Local mock fallback enabled for development.'
+        );
+        resolve(null);
+      }
     };
 
     document.head.appendChild(script);
@@ -85,21 +191,26 @@ export function loadMsg91Sdk() {
 
 /**
  * Initializes the MSG91 OTP widget configuration
+ * - Widget: SecureOTPWidget4R29
+ * - exposeMethods: true (Required for Custom UI)
  */
-export async function initMsg91Widget({ onSuccess, onFailure } = {}) {
+export async function initMsg91Widget({ onSuccess, onFailure, captchaRenderId = 'msg91-captcha-container' } = {}) {
   const widgetId =
-    import.meta.env?.VITE_MSG91_WIDGET_ID || 'SecureOTPWidget4R29';
+    (typeof import.meta !== 'undefined' && import.meta.env?.VITE_MSG91_WIDGET_ID) ||
+    'SecureOTPWidget4R29';
   const tokenAuth =
-    import.meta.env?.VITE_MSG91_TOKEN_AUTH || '';
+    (typeof import.meta !== 'undefined' && import.meta.env?.VITE_MSG91_TOKEN_AUTH) ||
+    '';
 
   const initSendOTP = await loadMsg91Sdk();
 
+  // MSG91 Official Configuration Object
   window.configuration = {
     widgetId,
     tokenAuth,
-    exposeMethods: true, // Exposes window.sendOtp, window.retryOtp, window.verifyOtp
+    exposeMethods: true, // EXPOSES: window.sendOtp, window.retryOtp, window.verifyOtp, window.getWidgetData, window.isCaptchaVerified
+    captchaRenderId: captchaRenderId || 'msg91-captcha-container', // Unique HTML element ID for CAPTCHA rendering
     success: (data) => {
-      // MSG91 success callback
       const token = extractAccessToken(data);
       if (token) {
         lastVerifiedAccessToken = token;
@@ -130,24 +241,9 @@ export async function initMsg91Widget({ onSuccess, onFailure } = {}) {
 }
 
 /**
- * Extracts the access token string from MSG91 SDK response
- */
-function extractAccessToken(data) {
-  if (!data) return null;
-  if (typeof data === 'string') return data;
-  return (
-    data.message ||
-    data['access-token'] ||
-    data.accessToken ||
-    data.token ||
-    data.jwt ||
-    null
-  );
-}
-
-/**
- * Sends OTP to a 10-digit Indian mobile number
- * STEP 2 & 3 in verification flow
+ * STEP 1: Send OTP to 10-digit Indian Mobile
+ * Method: window.sendOtp(identifier, success, failure)
+ * Identifier format: 91 + 10-digit mobile (no '+') e.g. '919876543210'
  */
 export async function sendOtpToMobile(phone) {
   const normalized = normalizePhoneNumber(phone);
@@ -155,75 +251,139 @@ export async function sendOtpToMobile(phone) {
     throw new Error('Please enter a valid 10-digit Indian mobile number.');
   }
 
-  // Format with country code without '+': e.g. '919876543210'
+  // MSG91 requires country code without '+': '919876543210'
   const identifier = `91${normalized}`;
 
   // Ensure widget is initialized
   await initMsg91Widget();
 
-  // If live MSG91 sendOtp is available on window
+  // If the widget SDK methods are still attaching, wait briefly (up to 1500ms) rather than failing immediately
+  if (typeof window !== 'undefined' && typeof window.sendOtp !== 'function') {
+    const start = Date.now();
+    while (Date.now() - start < 1500) {
+      if (typeof window.sendOtp === 'function') break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  }
+
+  // CAPTCHA verification check if enforced by widget
+  if (typeof window !== 'undefined' && typeof window.isCaptchaVerified === 'function') {
+    if (!window.isCaptchaVerified()) {
+      throw new Error('Please complete the CAPTCHA verification above before sending OTP.');
+    }
+  }
+
+  // Official MSG91 Method 1: window.sendOtp(identifier, success, failure)
   if (typeof window !== 'undefined' && typeof window.sendOtp === 'function') {
     return new Promise((resolve, reject) => {
-      try {
-        // Some MSG91 SDK versions accept string identifier, others accept { identifier }
-        const handleSuccess = (res) => resolve(res);
-        const handleFailure = (err) => reject(new Error(err?.message || 'Failed to send OTP via MSG91'));
-
-        try {
-          window.sendOtp(identifier, handleSuccess, handleFailure);
-        } catch {
-          window.sendOtp({ identifier }, handleSuccess, handleFailure);
+      const handleSuccess = (res) => {
+        const reqId = extractReqId(res);
+        if (reqId) {
+          lastReqId = reqId;
         }
+        resolve({
+          type: 'success',
+          response: res,
+          reqId: reqId || lastReqId,
+          message: 'OTP sent successfully to your mobile number.',
+        });
+      };
+
+      const handleFailure = (err) => {
+        const errMsg =
+          err?.message ||
+          (typeof err === 'string' ? err : null) ||
+          'Failed to send OTP via MSG91.';
+        reject(new Error(errMsg));
+      };
+
+      try {
+        window.sendOtp(identifier, handleSuccess, handleFailure);
       } catch (err) {
         reject(err);
       }
     });
   }
 
-  // Fallback for local development/offline testing
-  console.log(`[MSG91-DEV-MOCK] Simulated OTP sent to +91 ${normalized}. Enter 1234 to verify.`);
+  // Production check: mock OTP is strictly disabled in production
+  if (isProduction) {
+    throw new Error(
+      'MSG91 OTP service is currently unavailable. Mock OTP is strictly disabled in production.'
+    );
+  }
+
+  // Fallback for local development / testing ONLY
+  const mockReqId = `mock-req-91${normalized}-${Date.now()}`;
+  lastReqId = mockReqId;
+  console.log(
+    `[MSG91-DEV-MOCK] Simulated OTP sent to +91 ${normalized}. Enter 1234 to verify. (Mock reqId: ${mockReqId})`
+  );
   return {
     type: 'success',
+    reqId: mockReqId,
     message: 'OTP sent successfully (Dev Mock Mode). Use 1234 to verify.',
   };
 }
 
 /**
- * Resends / Retries OTP with 10s cooldown
+ * STEP 2: Resend / Retry OTP
+ * Method: window.retryOtp(channel, success, failure, reqId)
+ * Channel: '11' for SMS
  */
-export async function resendOtp(channel = null) {
+export async function resendOtp(channel = '11') {
+  const retryChannel = channel || '11';
+
+  // Official MSG91 Method 2: window.retryOtp(channel, success, failure, reqId)
   if (typeof window !== 'undefined' && typeof window.retryOtp === 'function') {
     return new Promise((resolve, reject) => {
-      const handleSuccess = (res) => resolve(res);
-      const handleFailure = (err) => reject(new Error(err?.message || 'Failed to resend OTP via MSG91'));
+      const handleSuccess = (res) => {
+        const reqId = extractReqId(res);
+        if (reqId) {
+          lastReqId = reqId;
+        }
+        resolve({
+          type: 'success',
+          response: res,
+          reqId: reqId || lastReqId,
+          message: 'OTP resent successfully.',
+        });
+      };
+
+      const handleFailure = (err) => {
+        const errMsg =
+          err?.message ||
+          (typeof err === 'string' ? err : null) ||
+          'Failed to resend OTP via MSG91.';
+        reject(new Error(errMsg));
+      };
 
       try {
-        if (channel) {
-          window.retryOtp(channel, handleSuccess, handleFailure);
-        } else {
-          window.retryOtp(handleSuccess, handleFailure);
-        }
-      } catch {
-        try {
-          window.retryOtp(null, handleSuccess, handleFailure);
-        } catch (err) {
-          reject(err);
-        }
+        window.retryOtp(retryChannel, handleSuccess, handleFailure, lastReqId || undefined);
+      } catch (err) {
+        reject(err);
       }
     });
   }
 
-  // Fallback for local dev/testing
+  // Production check: mock OTP is strictly disabled in production
+  if (isProduction) {
+    throw new Error(
+      'MSG91 OTP service is currently unavailable. Mock OTP is strictly disabled in production.'
+    );
+  }
+
   console.log('[MSG91-DEV-MOCK] Simulated OTP resent. Enter 1234 to verify.');
   return {
     type: 'success',
+    reqId: lastReqId,
     message: 'OTP resent successfully.',
   };
 }
 
 /**
- * Verifies entered OTP code (4 digits)
- * STEP 5, 6, 7 in verification flow
+ * STEP 3: Verify OTP Code
+ * Method: window.verifyOtp(otp, success, failure, reqId)
+ * Captures access token returned by MSG91 upon success
  */
 export async function verifyOtpCode(otp, phone) {
   const cleanOtp = String(otp || '').trim();
@@ -233,33 +393,44 @@ export async function verifyOtpCode(otp, phone) {
 
   const normalizedPhone = normalizePhoneNumber(phone);
 
+  // Official MSG91 Method 3: window.verifyOtp(otp, success, failure, reqId)
   if (typeof window !== 'undefined' && typeof window.verifyOtp === 'function') {
     return new Promise((resolve, reject) => {
-      try {
-        const handleSuccess = (res) => {
-          const token = extractAccessToken(res) || lastVerifiedAccessToken;
-          resolve({
-            response: res,
-            accessToken: token,
-          });
-        };
-        const handleFailure = (err) => {
-          const msg = err?.message || err || 'Invalid OTP. Please check and try again.';
-          reject(new Error(typeof msg === 'string' ? msg : 'Incorrect OTP.'));
-        };
-
-        try {
-          window.verifyOtp(cleanOtp, handleSuccess, handleFailure);
-        } catch {
-          window.verifyOtp({ otp: cleanOtp }, handleSuccess, handleFailure);
+      const handleSuccess = (res) => {
+        const token = extractAccessToken(res) || lastVerifiedAccessToken;
+        if (token) {
+          lastVerifiedAccessToken = token;
         }
+        resolve({
+          response: res,
+          accessToken: token,
+        });
+      };
+
+      const handleFailure = (err) => {
+        const errMsg =
+          err?.message ||
+          (typeof err === 'string' ? err : null) ||
+          'Invalid OTP. Please check and try again.';
+        reject(new Error(errMsg));
+      };
+
+      try {
+        window.verifyOtp(cleanOtp, handleSuccess, handleFailure, lastReqId || undefined);
       } catch (err) {
         reject(err);
       }
     });
   }
 
-  // Local development / mock mode
+  // Production check: mock OTP is strictly disabled in production
+  if (isProduction) {
+    throw new Error(
+      'MSG91 OTP service is currently unavailable. Mock OTP is strictly disabled in production.'
+    );
+  }
+
+  // Local development / mock mode (only in non-production)
   if (cleanOtp === '1234') {
     const mockAccessToken = `mock-access-token-91${normalizedPhone}-${Date.now()}`;
     lastVerifiedAccessToken = mockAccessToken;

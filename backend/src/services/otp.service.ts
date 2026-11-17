@@ -84,9 +84,25 @@ export class OtpService {
 
     let verifiedPhoneFromMsg91: string | null = null;
 
-    // Check if mock / test token is used (for unit/integration tests and local dev)
+    // Production environment check: strictly forbid mock tokens and verify auth key
+    const isProduction = env.NODE_ENV === 'production' || process.env.NODE_ENV === 'production';
     const isMockToken = cleanToken.startsWith('mock-') || cleanToken.startsWith('test-');
     const authKey = env.MSG91_AUTH_KEY || process.env.MSG91_AUTH_KEY;
+
+    if (isProduction) {
+      if (isMockToken) {
+        throw AppError.badRequest(
+          'Mock OTP tokens are strictly prohibited in production mode.',
+          'MOCK_TOKEN_PROHIBITED_IN_PRODUCTION'
+        );
+      }
+      if (!authKey) {
+        throw AppError.internal(
+          'MSG91_AUTH_KEY is not configured on the production server.',
+          'MSG91_AUTH_KEY_MISSING'
+        );
+      }
+    }
 
     if (isMockToken || process.env.NODE_ENV === 'test' || !authKey) {
       // Test / Mock Token Handling
@@ -128,21 +144,22 @@ export class OtpService {
 
         const data: any = await response.json();
 
-        // MSG91 returns { type: 'success', message: '919876543210' } or { type: 'error', message: '...' }
-        if (!response.ok || data?.type === 'error') {
+        // 5. Validate MSG91 backend response type and actual verification result (not just HTTP status)
+        // Official MSG91 success format: { type: 'success', message: '919876543210' }
+        if (!response.ok || data?.type !== 'success' || !data?.message) {
           const errMsg = data?.message || 'MSG91 access token verification failed.';
-          logger.warn({ errMsg, status: response.status }, 'MSG91 verifyAccessToken rejected');
+          logger.warn(
+            { errMsg, status: response.status, responseType: data?.type },
+            'MSG91 verifyAccessToken rejected'
+          );
           throw AppError.badRequest(errMsg, 'MSG91_VERIFICATION_FAILED');
         }
 
-        if (data?.type === 'success' && data?.message) {
-          verifiedPhoneFromMsg91 = this.normalizePhone(String(data.message));
-        } else if (data?.message) {
-          verifiedPhoneFromMsg91 = this.normalizePhone(String(data.message));
-        } else {
+        verifiedPhoneFromMsg91 = this.normalizePhone(String(data.message));
+        if (!this.isValidIndianPhone(verifiedPhoneFromMsg91)) {
           throw AppError.badRequest(
-            'Unable to extract verified mobile number from MSG91 response.',
-            'MSG91_INVALID_RESPONSE'
+            'Invalid mobile number returned by MSG91 verification gateway.',
+            'MSG91_INVALID_VERIFIED_PHONE'
           );
         }
       } catch (err: any) {
