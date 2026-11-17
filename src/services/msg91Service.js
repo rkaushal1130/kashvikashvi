@@ -459,31 +459,35 @@ export async function sendOtpToMobile(phone) {
       const handleFailure = async (err) => {
         if (isDone) return;
         cleanup();
-        const errMsg =
+        let errMsg =
           err?.message ||
           (typeof err === 'string' ? err : null) ||
           'Failed to send OTP via MSG91.';
-        debugError('sendOtp failure callback triggered:', errMsg);
+        debugError('sendOtp failure callback triggered:', errMsg, err);
 
-        // If client SDK failed due to CAPTCHA restriction, seamlessly fall back to server-side REST API (no CAPTCHA)!
-        if (errMsg.toLowerCase().includes('captcha')) {
-          try {
-            debugLog('Falling back to server-side REST API due to CAPTCHA issue...');
-            const fallbackRes = await authApi.sendOtp({ phone: digits });
-            if (fallbackRes?.success && (fallbackRes?.data?.reqId || fallbackRes?.data?.type === 'success')) {
-              const serverReqId = fallbackRes.data.reqId || lastReqId;
-              if (serverReqId) {
-                lastReqId = serverReqId;
-              }
-              resolve({
-                type: 'success',
-                reqId: serverReqId,
-                message: fallbackRes.message || 'OTP sent successfully to your mobile number.',
-              });
-              return;
+        // Always attempt server-side REST API fallback if client SDK fails!
+        try {
+          debugLog('Client sendOtp failed, attempting server-side REST API fallback...');
+          const fallbackRes = await authApi.sendOtp({ phone: digits });
+          if (
+            fallbackRes?.success &&
+            (fallbackRes?.data?.reqId || fallbackRes?.data?.type === 'success')
+          ) {
+            const serverReqId = fallbackRes.data.reqId || lastReqId;
+            if (serverReqId) {
+              lastReqId = serverReqId;
             }
-          } catch (fbErr) {
-            debugError('Server REST fallback after captcha failure also failed:', fbErr?.message);
+            resolve({
+              type: 'success',
+              reqId: serverReqId,
+              message: fallbackRes.message || 'OTP sent successfully to your mobile number.',
+            });
+            return;
+          }
+        } catch (fbErr) {
+          debugError('Server REST fallback after client failure also failed:', fbErr?.message);
+          if (fbErr?.message && !fbErr.message.includes('fetch failed')) {
+            errMsg = fbErr.message;
           }
         }
 
@@ -491,14 +495,40 @@ export async function sendOtpToMobile(phone) {
       };
 
       // Listen to global MSG91 failure callback in case window.sendOtp fails silently
-      failureHandler = (globalErr) => {
+      failureHandler = async (globalErr) => {
         if (isDone) return;
         cleanup();
-        const errMsg =
+        let errMsg =
           globalErr?.message ||
           (typeof globalErr === 'string' ? globalErr : null) ||
           'MSG91 Service Error';
         debugError('Global failure caught during sendOtp:', errMsg);
+
+        try {
+          debugLog('Global failure caught, attempting server-side REST API fallback...');
+          const fallbackRes = await authApi.sendOtp({ phone: digits });
+          if (
+            fallbackRes?.success &&
+            (fallbackRes?.data?.reqId || fallbackRes?.data?.type === 'success')
+          ) {
+            const serverReqId = fallbackRes.data.reqId || lastReqId;
+            if (serverReqId) {
+              lastReqId = serverReqId;
+            }
+            resolve({
+              type: 'success',
+              reqId: serverReqId,
+              message: fallbackRes.message || 'OTP sent successfully to your mobile number.',
+            });
+            return;
+          }
+        } catch (fbErr) {
+          debugError('Server REST fallback after global failure also failed:', fbErr?.message);
+          if (fbErr?.message && !fbErr.message.includes('fetch failed')) {
+            errMsg = fbErr.message;
+          }
+        }
+
         reject(new Error(errMsg));
       };
       globalFailureListeners.add(failureHandler);

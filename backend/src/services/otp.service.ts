@@ -279,15 +279,23 @@ export class OtpService {
         },
         body: JSON.stringify({
           widgetId,
+          tokenAuth: authKey,
           identifier,
         }),
       });
 
       const data: any = await response.json();
 
-      if (!response.ok || data?.type === 'error') {
-        const errMsg = data?.message || 'Failed to send OTP via MSG91 gateway.';
-        logger.warn({ errMsg, status: response.status }, 'MSG91 sendOtp rejected');
+      if (!response.ok || data?.type === 'error' || data?.hasError || data?.status === 'fail') {
+        let errMsg = data?.message || 'Failed to send OTP via MSG91 gateway.';
+        if (errMsg.includes('Web requests are not allowed')) {
+          errMsg =
+            "Web requests are not allowed for this widget. In your MSG91 dashboard for widget 'SecureOTPWidget4R29', please turn OFF 'Mobile Integration' to enable Web OTP.";
+        } else if (errMsg.includes('AuthenticationFailure')) {
+          errMsg =
+            'MSG91 Authentication Failed (Code 201). Please check that MSG91_AUTH_KEY in backend/.env is your active Authkey from your MSG91 dashboard.';
+        }
+        logger.warn({ errMsg, status: response.status, data }, 'MSG91 sendOtp rejected');
         throw AppError.badRequest(errMsg, 'MSG91_SEND_OTP_FAILED');
       }
 
@@ -302,7 +310,8 @@ export class OtpService {
       if (err instanceof AppError) throw err;
       logger.error({ err: err?.message }, 'Failed to call MSG91 sendOtp API');
       throw AppError.badRequest(
-        'Unable to reach OTP delivery gateway. Please check your connection and try again.',
+        err?.message ||
+          'Unable to reach OTP delivery gateway. Please check your connection and try again.',
         'MSG91_GATEWAY_ERROR'
       );
     }
@@ -353,6 +362,7 @@ export class OtpService {
         },
         body: JSON.stringify({
           widgetId,
+          tokenAuth: authKey,
           reqId: cleanReqId,
           retryChannel: Number(channel) || 11,
         }),
@@ -360,9 +370,13 @@ export class OtpService {
 
       const data: any = await response.json();
 
-      if (!response.ok || data?.type === 'error') {
-        const errMsg = data?.message || 'Failed to resend OTP via MSG91 gateway.';
-        logger.warn({ errMsg, status: response.status }, 'MSG91 retryOtp rejected');
+      if (!response.ok || data?.type === 'error' || data?.hasError || data?.status === 'fail') {
+        let errMsg = data?.message || 'Failed to resend OTP via MSG91 gateway.';
+        if (errMsg.includes('Web requests are not allowed')) {
+          errMsg =
+            "Web requests are not allowed for this widget. In your MSG91 dashboard for widget 'SecureOTPWidget4R29', please turn OFF 'Mobile Integration' to enable Web OTP.";
+        }
+        logger.warn({ errMsg, status: response.status, data }, 'MSG91 retryOtp rejected');
         throw AppError.badRequest(errMsg, 'MSG91_RETRY_OTP_FAILED');
       }
 
@@ -376,7 +390,8 @@ export class OtpService {
       if (err instanceof AppError) throw err;
       logger.error({ err: err?.message }, 'Failed to call MSG91 retryOtp API');
       throw AppError.badRequest(
-        'Unable to reach OTP delivery gateway. Please check your connection and try again.',
+        err?.message ||
+          'Unable to reach OTP delivery gateway. Please check your connection and try again.',
         'MSG91_GATEWAY_ERROR'
       );
     }
@@ -440,6 +455,7 @@ export class OtpService {
         },
         body: JSON.stringify({
           widgetId,
+          tokenAuth: authKey,
           otp: cleanOtp,
           ...(cleanReqId ? { reqId: cleanReqId } : {}),
           identifier,
@@ -448,9 +464,13 @@ export class OtpService {
 
       const data: any = await response.json();
 
-      if (!response.ok || data?.type === 'error') {
-        const errMsg = data?.message || 'Incorrect OTP. Please check and try again.';
-        logger.warn({ errMsg, status: response.status }, 'MSG91 verifyOtp rejected');
+      if (!response.ok || data?.type === 'error' || data?.hasError || data?.status === 'fail') {
+        let errMsg = data?.message || 'Incorrect OTP. Please check and try again.';
+        if (errMsg.includes('Web requests are not allowed')) {
+          errMsg =
+            "Web requests are not allowed for this widget. In your MSG91 dashboard for widget 'SecureOTPWidget4R29', please turn OFF 'Mobile Integration' to enable Web OTP.";
+        }
+        logger.warn({ errMsg, status: response.status, data }, 'MSG91 verifyOtp rejected');
         throw AppError.badRequest(errMsg, 'MSG91_VERIFICATION_FAILED');
       }
 
@@ -478,7 +498,8 @@ export class OtpService {
       if (err instanceof AppError) throw err;
       logger.error({ err: err?.message }, 'Failed to call MSG91 verifyOtp API');
       throw AppError.badRequest(
-        'Unable to complete OTP verification. Please check your connection and try again.',
+        err?.message ||
+          'Unable to complete OTP verification. Please check your connection and try again.',
         'MSG91_GATEWAY_ERROR'
       );
     }
