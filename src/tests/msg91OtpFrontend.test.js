@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   normalizePhoneNumber,
   isValidIndianMobile,
+  parseIndianMobile,
   sendOtpToMobile,
   resendOtp,
   verifyOtpCode,
@@ -11,6 +12,7 @@ import {
   getWidgetData,
   getLastReqId,
   isProduction,
+  getWidgetCredentials,
 } from '../services/msg91Service.js';
 
 describe('MSG91 OTP FRONTEND SERVICE & REGISTRATION FORM INTEGRATION', () => {
@@ -48,18 +50,60 @@ describe('MSG91 OTP FRONTEND SERVICE & REGISTRATION FORM INTEGRATION', () => {
     assert.equal(isValidIndianMobile('5876543210'), false); // invalid starting digit
     assert.equal(isValidIndianMobile('12345'), false); // too short
     assert.equal(isValidIndianMobile('abcdefghij'), false); // non-digits
+    assert.equal(isValidIndianMobile('09876543210'), false); // leading zero rejected
   });
 
-  test('3. sendOtpToMobile validates phone before sending', async () => {
+  test('3. parseIndianMobile strictly enforces Indian mobile rules and rejects leading zero without slicing', () => {
+    // Leading zero rejection
+    const zeroRes = parseIndianMobile('09876543210');
+    assert.equal(zeroRes.valid, false);
+    assert.match(zeroRes.error, /cannot begin with 0/i);
+
+    // Number starting with 0 after +91
+    const countryZeroRes = parseIndianMobile('+91 0987654321');
+    assert.equal(countryZeroRes.valid, false);
+    assert.match(countryZeroRes.error, /cannot begin with 0/i);
+
+    // Invalid starting digit (< 6)
+    const invalidStart = parseIndianMobile('5876543210');
+    assert.equal(invalidStart.valid, false);
+    assert.match(invalidStart.error, /must start with 6, 7, 8, or 9/i);
+
+    // Short number
+    const shortNum = parseIndianMobile('98765');
+    assert.equal(shortNum.valid, false);
+    assert.match(shortNum.error, /exactly 10 digits/i);
+
+    // Valid 10-digit number
+    const validNum = parseIndianMobile('9876543210');
+    assert.equal(validNum.valid, true);
+    assert.equal(validNum.digits, '9876543210');
+    assert.equal(validNum.formattedIdentifier, '919876543210');
+
+    // Valid 10-digit number with +91 and spaces
+    const validWithCountry = parseIndianMobile('+91 98765 43210');
+    assert.equal(validWithCountry.valid, true);
+    assert.equal(validWithCountry.digits, '9876543210');
+    assert.equal(validWithCountry.formattedIdentifier, '919876543210');
+  });
+
+  test('4. sendOtpToMobile validates phone before sending', async () => {
     await assert.rejects(
       async () => {
         await sendOtpToMobile('12345');
       },
-      /valid 10-digit Indian mobile number/i
+      /exactly 10 digits/i
+    );
+
+    await assert.rejects(
+      async () => {
+        await sendOtpToMobile('09876543210');
+      },
+      /cannot begin with 0/i
     );
   });
 
-  test('4. verifyOtpCode enforces 4-digit OTP length constraint', async () => {
+  test('5. verifyOtpCode enforces 4-digit OTP length constraint', async () => {
     await assert.rejects(
       async () => {
         await verifyOtpCode('12', '9876543210');
@@ -75,13 +119,13 @@ describe('MSG91 OTP FRONTEND SERVICE & REGISTRATION FORM INTEGRATION', () => {
     );
   });
 
-  test('5. verifyOtpCode verifies 4-digit code and returns access token', async () => {
+  test('6. verifyOtpCode in mock mode returns mock access token when no window.verifyOtp', async () => {
     const result = await verifyOtpCode('1234', '9876543210');
     assert.ok(result.accessToken, 'Access token must be returned');
     assert.ok(result.accessToken.includes('mock-access-token-919876543210'));
   });
 
-  test('6. Registration form retains all original fields and contract', async () => {
+  test('7. Registration form retains all original fields and contract', async () => {
     const requiredFields = [
       'fullName',
       'phone',
@@ -96,7 +140,7 @@ describe('MSG91 OTP FRONTEND SERVICE & REGISTRATION FORM INTEGRATION', () => {
     }
   });
 
-  test('7. initMsg91Widget sets exposeMethods: true, widgetId: SecureOTPWidget4R29, and captchaRenderId', async () => {
+  test('8. initMsg91Widget sets exposeMethods: true, widgetId: SecureOTPWidget4R29, and captchaRenderId', async () => {
     globalThis.window.initSendOTP = (config) => {
       globalThis.window.configuration = config;
     };
@@ -113,7 +157,7 @@ describe('MSG91 OTP FRONTEND SERVICE & REGISTRATION FORM INTEGRATION', () => {
     );
   });
 
-  test('8. sendOtp uses window.sendOtp with identifier (91+phone) and extracts reqId', async () => {
+  test('9. sendOtp uses window.sendOtp with identifier (91+phone) and extracts reqId', async () => {
     let capturedIdentifier = null;
     globalThis.window.sendOtp = (identifier, success, failure) => {
       capturedIdentifier = identifier;
@@ -126,7 +170,7 @@ describe('MSG91 OTP FRONTEND SERVICE & REGISTRATION FORM INTEGRATION', () => {
     assert.equal(getLastReqId(), 'req-msg91-test-12345');
   });
 
-  test('9. resendOtp passes SMS channel 11 and lastReqId to window.retryOtp', async () => {
+  test('10. resendOtp passes SMS channel 11 and lastReqId to window.retryOtp', async () => {
     let capturedChannel = null;
     let capturedReqId = null;
 
@@ -142,7 +186,7 @@ describe('MSG91 OTP FRONTEND SERVICE & REGISTRATION FORM INTEGRATION', () => {
     assert.equal(res.reqId, 'req-msg91-retry-67890');
   });
 
-  test('10. verifyOtpCode passes code and reqId to window.verifyOtp and extracts accessToken', async () => {
+  test('11. verifyOtpCode passes code and reqId to window.verifyOtp and extracts accessToken', async () => {
     let capturedOtp = null;
     let capturedReqId = null;
 
@@ -158,7 +202,7 @@ describe('MSG91 OTP FRONTEND SERVICE & REGISTRATION FORM INTEGRATION', () => {
     assert.equal(res.accessToken, 'jwt-msg91-verified-token-xyz');
   });
 
-  test('11. sendOtpToMobile blocks if CAPTCHA is required but unverified', async () => {
+  test('12. sendOtpToMobile blocks if CAPTCHA is required but unverified', async () => {
     globalThis.window.isCaptchaVerified = () => false;
     globalThis.window.sendOtp = () => {};
 
@@ -168,5 +212,24 @@ describe('MSG91 OTP FRONTEND SERVICE & REGISTRATION FORM INTEGRATION', () => {
       },
       /CAPTCHA verification/i
     );
+  });
+
+  test('13. sendOtpToMobile surfaces failure callback with detailed error message', async () => {
+    globalThis.window.sendOtp = (identifier, success, failure) => {
+      failure({ message: 'Invalid token auth credentials' });
+    };
+
+    await assert.rejects(
+      async () => {
+        await sendOtpToMobile('9876543210');
+      },
+      /Invalid token auth credentials/i
+    );
+  });
+
+  test('14. getWidgetCredentials filters out placeholder env strings and falls back to SecureOTPWidget4R29', () => {
+    const creds = getWidgetCredentials();
+    assert.equal(creds.widgetId, 'SecureOTPWidget4R29');
+    assert.ok(creds.widgetId.length > 0);
   });
 });

@@ -29,23 +29,30 @@ export class OtpService {
   }
 
   /**
-   * Normalizes an Indian phone number to exactly 10 digits
+   * Normalizes an Indian phone number to exactly 10 digits without silently stripping leading zeros
    */
   public static normalizePhone(phone: string): string {
     if (!phone) return '';
-    const digits = phone.replace(/\D/g, '');
-    if (digits.length >= 10) {
-      return digits.slice(-10);
+    const clean = String(phone).trim().replace(/[\s\-\(\)\.]/g, '');
+    let digits = clean;
+    if (digits.startsWith('+91')) {
+      digits = digits.slice(3);
+    } else if (digits.startsWith('91') && digits.length === 12) {
+      digits = digits.slice(2);
     }
     return digits;
   }
 
   /**
-   * Validates a 10-digit Indian phone number format (starts with 6-9)
+   * Validates a 10-digit Indian phone number format (starts with 6-9, rejects leading zeros)
    */
   public static isValidIndianPhone(phone: string): boolean {
-    const normalized = this.normalizePhone(phone);
-    return /^[6-9]\d{9}$/.test(normalized);
+    if (!phone) return false;
+    const clean = String(phone).trim().replace(/[\s\-\(\)\.]/g, '');
+    if (clean.startsWith('0')) return false;
+    const digits = this.normalizePhone(phone);
+    if (digits.startsWith('0') || digits.length !== 10) return false;
+    return /^[6-9]\d{9}$/.test(digits);
   }
 
   /**
@@ -65,13 +72,22 @@ export class OtpService {
       throw AppError.badRequest('MSG91 access token is required.', 'OTP_TOKEN_REQUIRED');
     }
 
-    const cleanPhone = this.normalizePhone(requestedPhone);
-    if (!cleanPhone || cleanPhone.length !== 10) {
+    const rawPhone = String(requestedPhone || '').trim();
+    if (rawPhone.startsWith('0')) {
       throw AppError.badRequest(
-        'Please provide a valid 10-digit mobile number.',
+        'Mobile number cannot begin with 0. Please provide a valid 10-digit Indian mobile number.',
         'INVALID_MOBILE_NUMBER'
       );
     }
+
+    if (!this.isValidIndianPhone(requestedPhone)) {
+      throw AppError.badRequest(
+        'Please provide a valid 10-digit Indian mobile number starting with 6, 7, 8, or 9.',
+        'INVALID_MOBILE_NUMBER'
+      );
+    }
+
+    const cleanPhone = this.normalizePhone(requestedPhone);
 
     // 1. Prevent Token Reuse: Hash the access token and check if already used
     const tokenHash = createHash('sha256').update(cleanToken).digest('hex');

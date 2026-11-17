@@ -46,7 +46,7 @@ describe('MSG91 OTP VERIFICATION & REGISTRATION FLOW (SecureOTPWidget4R29)', () 
 
       await expect(
         OtpService.verifyAccessToken('mock-token-1', '12345')
-      ).rejects.toThrow('Please provide a valid 10-digit mobile number.');
+      ).rejects.toThrow(/Please provide a valid 10-digit Indian mobile number/i);
     });
   });
 
