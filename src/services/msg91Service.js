@@ -615,7 +615,7 @@ export async function sendOtpToMobile(phone) {
     if (isProduction) {
       throw new Error(
         serverErr?.message ||
-          'Failed to send OTP via MSG91 gateway. Please check your mobile number and try again.'
+        'Failed to send OTP via MSG91 gateway. Please check your mobile number and try again.'
       );
     }
 
