@@ -19,6 +19,8 @@
  * - Session Validity: 15 minutes
  */
 
+import { authApi } from '../api/authApi.js';
+
 // Determine environment
 export const isProduction = Boolean(
   (typeof import.meta !== 'undefined' && import.meta.env?.PROD) ||
@@ -139,9 +141,13 @@ export function normalizePhoneNumber(phone) {
  */
 export function getWidgetCredentials() {
   const envWidgetId =
-    (typeof import.meta !== 'undefined' && import.meta.env?.VITE_MSG91_WIDGET_ID) || '';
+    (typeof import.meta !== 'undefined' && import.meta.env?.VITE_MSG91_WIDGET_ID) ||
+    (typeof process !== 'undefined' && process.env?.VITE_MSG91_WIDGET_ID) ||
+    '';
   const envTokenAuth =
-    (typeof import.meta !== 'undefined' && import.meta.env?.VITE_MSG91_TOKEN_AUTH) || '';
+    (typeof import.meta !== 'undefined' && import.meta.env?.VITE_MSG91_TOKEN_AUTH) ||
+    (typeof process !== 'undefined' && process.env?.VITE_MSG91_TOKEN_AUTH) ||
+    '';
 
   const isPlaceholder = (val) =>
     !val ||
@@ -155,7 +161,7 @@ export function getWidgetCredentials() {
 
   const tokenAuth = !isPlaceholder(envTokenAuth)
     ? envTokenAuth.trim()
-    : '';
+    : '585491TWZBFW9dY06afafddcP1';
 
   return { widgetId, tokenAuth };
 }
@@ -369,7 +375,7 @@ export async function initMsg91Widget({ onSuccess, onFailure, captchaRenderId = 
 
 /**
  * STEP 1: Send OTP to 10-digit Indian Mobile
- * Method: window.sendOtp(identifier, success, failure)
+ * Method: window.sendOtp(identifier, success, failure) with server-side REST API fallback
  * Identifier format: 91 + 10-digit mobile (no '+') e.g. '919876543210'
  */
 export async function sendOtpToMobile(phone) {
@@ -384,8 +390,12 @@ export async function sendOtpToMobile(phone) {
     throw new Error('An OTP request is already in progress. Please wait.');
   }
 
-  // Ensure widget is initialized
-  await initMsg91Widget();
+  // Attempt widget initialization if client-side SDK is available
+  try {
+    await initMsg91Widget();
+  } catch (err) {
+    debugWarn('initMsg91Widget notice:', err?.message);
+  }
 
   // If the widget SDK methods are still attaching, wait briefly (up to 1200ms) rather than failing immediately
   if (typeof window !== 'undefined' && typeof window.sendOtp !== 'function') {
@@ -432,17 +442,29 @@ export async function sendOtpToMobile(phone) {
 
         // Check if CAPTCHA was incomplete
         if (typeof window.isCaptchaVerified === 'function' && !window.isCaptchaVerified()) {
-          reject(new Error('CAPTCHA verification was not completed. Please solve the CAPTCHA and try again.'));
+          reject(
+            new Error(
+              'CAPTCHA verification was not completed. Please solve the CAPTCHA and try again.'
+            )
+          );
           return;
         }
 
         // Check if authentication failure occurred
         if (lastInitError) {
-          reject(new Error(`MSG91 Error: ${lastInitError}. Please check your MSG91 Widget configuration.`));
+          reject(
+            new Error(
+              `MSG91 Error: ${lastInitError}. Please check your MSG91 Widget configuration.`
+            )
+          );
           return;
         }
 
-        reject(new Error('OTP request timed out without response from MSG91. Please check your connection and try again.'));
+        reject(
+          new Error(
+            'OTP request timed out without response from MSG91. Please check your connection and try again.'
+          )
+        );
       }, 12000);
 
       const handleSuccess = (res) => {
@@ -495,27 +517,57 @@ export async function sendOtpToMobile(phone) {
     });
   }
 
-  // Production check: mock OTP is strictly disabled in production
-  if (isProduction) {
-    throw new Error(
-      'MSG91 OTP service is currently unavailable. Mock OTP is strictly disabled in production.'
-    );
-  }
+  // SERVER-SIDE REST FALLBACK:
+  // When window.sendOtp is not available (ad-blocker, script loading blocked, or SDK error),
+  // send the real SMS OTP via backend REST API (POST /api/otp/send) using official MSG91 REST endpoint.
+  debugLog('Attempting server-side MSG91 REST API sendOtp...');
+  try {
+    const res = await authApi.sendOtp({ phone: digits });
+    if (res?.success && (res?.data?.reqId || res?.data?.type === 'success')) {
+      const serverReqId = res.data.reqId || lastReqId;
+      if (serverReqId) {
+        lastReqId = serverReqId;
+      }
+      return {
+        type: 'success',
+        reqId: serverReqId,
+        message: res.message || 'OTP sent successfully to your mobile number.',
+      };
+    }
+    if (res?.success) {
+      return {
+        type: 'success',
+        reqId: lastReqId,
+        message: res.message || 'OTP sent successfully to your mobile number.',
+      };
+    }
+    throw new Error(res?.message || 'Failed to send OTP via server gateway.');
+  } catch (serverErr) {
+    debugError('Server-side sendOtp failed:', serverErr?.message);
 
-  // Fallback for local development / testing ONLY
-  const mockReqId = `mock-req-91${digits}-${Date.now()}`;
-  lastReqId = mockReqId;
-  debugLog(`[DEV-MOCK] Simulated OTP sent to +91 ${digits}. Enter 1234 to verify.`);
-  return {
-    type: 'success',
-    reqId: mockReqId,
-    message: 'OTP sent successfully (Dev Mock Mode). Use 1234 to verify.',
-  };
+    // In production mode: surface actual gateway error from backend, never throw mock error
+    if (isProduction) {
+      throw new Error(
+        serverErr?.message ||
+          'Failed to send OTP via MSG91 gateway. Please check your mobile number and try again.'
+      );
+    }
+
+    // Fallback for local development / testing ONLY when running offline without backend
+    const mockReqId = `mock-req-91${digits}-${Date.now()}`;
+    lastReqId = mockReqId;
+    debugLog(`[DEV-MOCK] Simulated OTP sent to +91 ${digits}. Enter 1234 to verify.`);
+    return {
+      type: 'success',
+      reqId: mockReqId,
+      message: 'OTP sent successfully (Dev Mock Mode). Use 1234 to verify.',
+    };
+  }
 }
 
 /**
  * STEP 2: Resend / Retry OTP
- * Method: window.retryOtp(channel, success, failure, reqId)
+ * Method: window.retryOtp(channel, success, failure, reqId) with server-side REST API fallback
  * Channel: '11' for SMS
  */
 export async function resendOtp(channel = '11') {
@@ -523,92 +575,113 @@ export async function resendOtp(channel = '11') {
 
   // Official MSG91 Method 2: window.retryOtp(channel, success, failure, reqId)
   if (typeof window !== 'undefined' && typeof window.retryOtp === 'function') {
-    return new Promise((resolve, reject) => {
-      let isDone = false;
-      let failureHandler = null;
+    try {
+      const clientResult = await new Promise((resolve, reject) => {
+        let isDone = false;
+        let failureHandler = null;
 
-      const cleanup = () => {
-        isDone = true;
-        if (failureHandler) {
-          globalFailureListeners.delete(failureHandler);
+        const cleanup = () => {
+          isDone = true;
+          if (failureHandler) {
+            globalFailureListeners.delete(failureHandler);
+          }
+          if (timer) {
+            clearTimeout(timer);
+          }
+        };
+
+        const timer = setTimeout(() => {
+          if (isDone) return;
+          cleanup();
+          reject(new Error('Resend OTP request timed out. Please try again.'));
+        }, 12000);
+
+        const handleSuccess = (res) => {
+          if (isDone) return;
+          cleanup();
+          debugLog('retryOtp success callback triggered.');
+          const reqId = extractReqId(res);
+          if (reqId) {
+            lastReqId = reqId;
+          }
+          resolve({
+            type: 'success',
+            response: res,
+            reqId: reqId || lastReqId,
+            message: 'OTP resent successfully.',
+          });
+        };
+
+        const handleFailure = (err) => {
+          if (isDone) return;
+          cleanup();
+          const errMsg =
+            err?.message ||
+            (typeof err === 'string' ? err : null) ||
+            'Failed to resend OTP via MSG91.';
+          debugError('retryOtp failure callback triggered:', errMsg);
+          reject(new Error(errMsg));
+        };
+
+        failureHandler = (globalErr) => {
+          if (isDone) return;
+          cleanup();
+          const errMsg =
+            globalErr?.message ||
+            (typeof globalErr === 'string' ? globalErr : null) ||
+            'MSG91 Resend Error';
+          reject(new Error(errMsg));
+        };
+        globalFailureListeners.add(failureHandler);
+
+        try {
+          window.retryOtp(retryChannel, handleSuccess, handleFailure, lastReqId || undefined);
+        } catch (err) {
+          cleanup();
+          reject(err);
         }
-        if (timer) {
-          clearTimeout(timer);
-        }
-      };
+      });
 
-      const timer = setTimeout(() => {
-        if (isDone) return;
-        cleanup();
-        reject(new Error('Resend OTP request timed out. Please try again.'));
-      }, 12000);
-
-      const handleSuccess = (res) => {
-        if (isDone) return;
-        cleanup();
-        debugLog('retryOtp success callback triggered.');
-        const reqId = extractReqId(res);
-        if (reqId) {
-          lastReqId = reqId;
-        }
-        resolve({
-          type: 'success',
-          response: res,
-          reqId: reqId || lastReqId,
-          message: 'OTP resent successfully.',
-        });
-      };
-
-      const handleFailure = (err) => {
-        if (isDone) return;
-        cleanup();
-        const errMsg =
-          err?.message ||
-          (typeof err === 'string' ? err : null) ||
-          'Failed to resend OTP via MSG91.';
-        debugError('retryOtp failure callback triggered:', errMsg);
-        reject(new Error(errMsg));
-      };
-
-      failureHandler = (globalErr) => {
-        if (isDone) return;
-        cleanup();
-        const errMsg =
-          globalErr?.message ||
-          (typeof globalErr === 'string' ? globalErr : null) ||
-          'MSG91 Resend Error';
-        reject(new Error(errMsg));
-      };
-      globalFailureListeners.add(failureHandler);
-
-      try {
-        window.retryOtp(retryChannel, handleSuccess, handleFailure, lastReqId || undefined);
-      } catch (err) {
-        cleanup();
-        reject(err);
-      }
-    });
+      return clientResult;
+    } catch (clientErr) {
+      debugWarn(
+        'Client window.retryOtp failed, falling back to server-side REST API:',
+        clientErr?.message
+      );
+    }
   }
 
-  // Production check: mock OTP is strictly disabled in production
-  if (isProduction) {
-    throw new Error(
-      'MSG91 OTP service is currently unavailable. Mock OTP is strictly disabled in production.'
-    );
-  }
+  // SERVER-SIDE REST FALLBACK:
+  try {
+    const res = await authApi.retryOtp({ reqId: lastReqId, channel: retryChannel });
+    if (res?.success) {
+      return {
+        type: 'success',
+        reqId: res?.data?.reqId || lastReqId,
+        message: res?.message || 'OTP resent successfully.',
+      };
+    }
+    throw new Error(res?.message || 'Failed to resend OTP via server gateway.');
+  } catch (serverErr) {
+    if (isProduction) {
+      throw new Error(
+        serverErr?.message || 'Failed to resend OTP via MSG91 gateway. Please try again.'
+      );
+    }
 
-  debugLog('[DEV-MOCK] Simulated OTP resent.');
-  return {
-    type: 'success',
-    reqId: lastReqId,
-    message: 'OTP resent successfully.',
-  };
+    debugLog('[DEV-MOCK] Simulated OTP resent.');
+    return {
+      type: 'success',
+      reqId: lastReqId,
+      message: 'OTP resent successfully.',
+    };
+  }
 }
 
 /**
  * STEP 3: Verify OTP Code
- * Method: window.verifyOtp(otp, success, failure, reqId)
- * Captures access token returned by MSG91 upon success
+ * Method: window.verifyOtp(otp, success, failure, reqId) with server-side REST API fallback
+ * Captures access token returned by MSG91 upon success, or verifies via backend REST API
  */
 export async function verifyOtpCode(otp, phone) {
   const cleanOtp = String(otp || '').trim();
@@ -621,87 +694,117 @@ export async function verifyOtpCode(otp, phone) {
 
   // Official MSG91 Method 3: window.verifyOtp(otp, success, failure, reqId)
   if (typeof window !== 'undefined' && typeof window.verifyOtp === 'function') {
-    return new Promise((resolve, reject) => {
-      let isDone = false;
-      let failureHandler = null;
+    try {
+      const clientResult = await new Promise((resolve, reject) => {
+        let isDone = false;
+        let failureHandler = null;
 
-      const cleanup = () => {
-        isDone = true;
-        if (failureHandler) {
-          globalFailureListeners.delete(failureHandler);
+        const cleanup = () => {
+          isDone = true;
+          if (failureHandler) {
+            globalFailureListeners.delete(failureHandler);
+          }
+          if (timer) {
+            clearTimeout(timer);
+          }
+        };
+
+        const timer = setTimeout(() => {
+          if (isDone) return;
+          cleanup();
+          reject(new Error('OTP verification timed out. Please try again.'));
+        }, 12000);
+
+        const handleSuccess = (res) => {
+          if (isDone) return;
+          cleanup();
+          debugLog('verifyOtp success callback triggered.');
+          const token = extractAccessToken(res) || lastVerifiedAccessToken;
+          if (token) {
+            lastVerifiedAccessToken = token;
+          }
+          resolve({
+            response: res,
+            accessToken: token,
+          });
+        };
+
+        const handleFailure = (err) => {
+          if (isDone) return;
+          cleanup();
+          const errMsg =
+            err?.message ||
+            (typeof err === 'string' ? err : null) ||
+            'Invalid OTP. Please check and try again.';
+          debugError('verifyOtp failure callback triggered:', errMsg);
+          reject(new Error(errMsg));
+        };
+
+        failureHandler = (globalErr) => {
+          if (isDone) return;
+          cleanup();
+          const errMsg =
+            globalErr?.message ||
+            (typeof globalErr === 'string' ? globalErr : null) ||
+            'MSG91 Verification Error';
+          reject(new Error(errMsg));
+        };
+        globalFailureListeners.add(failureHandler);
+
+        try {
+          window.verifyOtp(cleanOtp, handleSuccess, handleFailure, lastReqId || undefined);
+        } catch (err) {
+          cleanup();
+          reject(err);
         }
-        if (timer) {
-          clearTimeout(timer);
-        }
-      };
+      });
 
-      const timer = setTimeout(() => {
-        if (isDone) return;
-        cleanup();
-        reject(new Error('OTP verification timed out. Please try again.'));
-      }, 12000);
-
-      const handleSuccess = (res) => {
-        if (isDone) return;
-        cleanup();
-        debugLog('verifyOtp success callback triggered.');
-        const token = extractAccessToken(res) || lastVerifiedAccessToken;
-        if (token) {
-          lastVerifiedAccessToken = token;
-        }
-        resolve({
-          response: res,
-          accessToken: token,
-        });
-      };
-
-      const handleFailure = (err) => {
-        if (isDone) return;
-        cleanup();
-        const errMsg =
-          err?.message ||
-          (typeof err === 'string' ? err : null) ||
-          'Invalid OTP. Please check and try again.';
-        debugError('verifyOtp failure callback triggered:', errMsg);
-        reject(new Error(errMsg));
-      };
-
-      failureHandler = (globalErr) => {
-        if (isDone) return;
-        cleanup();
-        const errMsg =
-          globalErr?.message ||
-          (typeof globalErr === 'string' ? globalErr : null) ||
-          'MSG91 Verification Error';
-        reject(new Error(errMsg));
-      };
-      globalFailureListeners.add(failureHandler);
-
-      try {
-        window.verifyOtp(cleanOtp, handleSuccess, handleFailure, lastReqId || undefined);
-      } catch (err) {
-        cleanup();
-        reject(err);
-      }
-    });
+      return clientResult;
+    } catch (clientErr) {
+      debugWarn(
+        'Client window.verifyOtp failed, falling back to server-side REST API:',
+        clientErr?.message
+      );
+    }
   }
 
-  // Production check: mock OTP is strictly disabled in production
-  if (isProduction) {
+  // SERVER-SIDE REST FALLBACK:
+  // Calls POST /api/otp/verify which directly verifies the OTP with MSG91 and creates a verification session
+  try {
+    const res = await authApi.verifyOtp({
+      reqId: lastReqId,
+      otp: cleanOtp,
+      phone: normalizedPhone,
+    });
+
+    if (res?.success && res?.data?.verificationSessionId) {
+      if (res.data.accessToken) {
+        lastVerifiedAccessToken = res.data.accessToken;
+      }
+      return {
+        response: res,
+        accessToken: res.data.accessToken || `verified-session-${res.data.verificationSessionId}`,
+        verificationSessionId: res.data.verificationSessionId,
+      };
+    }
+    throw new Error(res?.message || 'Incorrect OTP or verification failed.');
+  } catch (serverErr) {
+    if (isProduction) {
+      throw new Error(serverErr?.message || 'Incorrect OTP. Please check and try again.');
+    }
+
+    // Local development mock fallback (only non-production)
+    if (cleanOtp === '1234') {
+      const mockAccessToken = `mock-access-token-91${normalizedPhone}-${Date.now()}`;
+      lastVerifiedAccessToken = mockAccessToken;
+      return {
+        response: { type: 'success', message: 'Verified' },
+        accessToken: mockAccessToken,
+      };
+    }
+
     throw new Error(
-      'MSG91 OTP service is currently unavailable. Mock OTP is strictly disabled in production.'
+      serverErr?.message || 'Incorrect OTP. Please enter the 4-digit OTP sent to your phone.'
     );
   }
-
-  // Local development / mock mode (only in non-production)
-  if (cleanOtp === '1234') {
-    const mockAccessToken = `mock-access-token-91${normalizedPhone}-${Date.now()}`;
-    lastVerifiedAccessToken = mockAccessToken;
-    return {
-      response: { type: 'success', message: 'Verified' },
-      accessToken: mockAccessToken,
-    };
-  }
-
-  throw new Error('Incorrect OTP. Please enter the 4-digit OTP sent to your phone.');
 }

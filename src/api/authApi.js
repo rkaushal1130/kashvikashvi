@@ -25,6 +25,34 @@ export const authApi = {
   },
 
   /**
+   * Get public MSG91 widget configuration
+   */
+  async getOtpConfig() {
+    return apiClient.get('/otp/config');
+  },
+
+  /**
+   * Send OTP to phone number via server-side MSG91 REST API
+   */
+  async sendOtp({ phone }) {
+    return apiClient.post('/otp/send', { phone });
+  },
+
+  /**
+   * Resend/retry OTP via server-side MSG91 REST API
+   */
+  async retryOtp({ reqId, channel }) {
+    return apiClient.post('/otp/retry', { reqId, channel });
+  },
+
+  /**
+   * Verify OTP code via server-side MSG91 REST API
+   */
+  async verifyOtp({ reqId, otp, phone }) {
+    return apiClient.post('/otp/verify', { reqId, otp, phone });
+  },
+
+  /**
    * Verify MSG91 Access Token on backend and obtain verification session
    */
   async verifyOtpToken({ accessToken, phone }) {

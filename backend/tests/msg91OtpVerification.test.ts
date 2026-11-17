@@ -299,4 +299,49 @@ describe('MSG91 OTP VERIFICATION & REGISTRATION FLOW (SecureOTPWidget4R29)', () 
       }
     });
   });
+
+  // TEST CASE 16: Server-side REST sendOtpViaRest
+  describe('Test Case 16: Server-side REST sendOtpViaRest', () => {
+    it('should validate phone and send OTP via REST gateway', async () => {
+      const result = await OtpService.sendOtpViaRest('9876543210');
+      expect(result.type).toBe('success');
+      expect(result.reqId).toBeDefined();
+
+      await expect(OtpService.sendOtpViaRest('12345')).rejects.toThrow(/valid 10-digit Indian mobile/i);
+      await expect(OtpService.sendOtpViaRest('09876543210')).rejects.toThrow(/valid 10-digit Indian mobile/i);
+    });
+  });
+
+  // TEST CASE 17: Server-side REST retryOtpViaRest
+  describe('Test Case 17: Server-side REST retryOtpViaRest', () => {
+    it('should resend OTP using reqId and reject empty reqId', async () => {
+      const sendRes = await OtpService.sendOtpViaRest('9876543210');
+      const retryRes = await OtpService.retryOtpViaRest(sendRes.reqId, 11);
+      expect(retryRes.type).toBe('success');
+      expect(retryRes.reqId).toBe(sendRes.reqId);
+
+      await expect(OtpService.retryOtpViaRest('')).rejects.toThrow(/reqId.*required/i);
+    });
+  });
+
+  // TEST CASE 18: Server-side REST verifyOtpViaRest
+  describe('Test Case 18: Server-side REST verifyOtpViaRest', () => {
+    it('should verify 4-digit OTP via REST and issue valid session', async () => {
+      const phone = '9876543210';
+      const sendRes = await OtpService.sendOtpViaRest(phone);
+      const verifyRes = await OtpService.verifyOtpViaRest(sendRes.reqId, '1234', phone);
+
+      expect(verifyRes.sessionId).toBeDefined();
+      expect(verifyRes.phone).toBe(phone);
+
+      // Verify the session is usable for registration
+      const session = OtpService.validateSession(verifyRes.sessionId, phone);
+      expect(session.consumed).toBe(false);
+
+      // Rejects invalid length OTP
+      await expect(
+        OtpService.verifyOtpViaRest(sendRes.reqId, '12', phone)
+      ).rejects.toThrow(/valid 4-digit OTP/i);
+    });
+  });
 });

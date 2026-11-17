@@ -229,6 +229,262 @@ export class OtpService {
   }
 
   /**
+   * Sends OTP via MSG91 v5 Widget REST API
+   * POST https://api.msg91.com/api/v5/widget/sendOtp
+   * Headers: authkey, Content-Type: application/json
+   * Body: { widgetId, identifier }
+   */
+  public static async sendOtpViaRest(
+    phone: string
+  ): Promise<{ type: string; message: string; reqId: string }> {
+    const rawPhone = String(phone || '').trim();
+    if (!this.isValidIndianPhone(rawPhone)) {
+      throw AppError.badRequest(
+        'Please provide a valid 10-digit Indian mobile number starting with 6, 7, 8, or 9.',
+        'INVALID_MOBILE_NUMBER'
+      );
+    }
+
+    const cleanPhone = this.normalizePhone(rawPhone);
+    const identifier = `91${cleanPhone}`;
+    const authKey = env.MSG91_AUTH_KEY || process.env.MSG91_AUTH_KEY;
+    const widgetId =
+      env.MSG91_WIDGET_ID || process.env.MSG91_WIDGET_ID || '366b706c3542343638343034';
+    const isProduction = env.NODE_ENV === 'production' || process.env.NODE_ENV === 'production';
+
+    if (isProduction && !authKey) {
+      throw AppError.internal(
+        'MSG91_AUTH_KEY is not configured on the production server.',
+        'MSG91_AUTH_KEY_MISSING'
+      );
+    }
+
+    // In test environment or when authKey is not set in dev
+    if (process.env.NODE_ENV === 'test' || (!isProduction && !authKey)) {
+      const mockReqId = `test-req-${identifier}-${Date.now()}`;
+      return {
+        type: 'success',
+        message: 'OTP sent successfully (test mode).',
+        reqId: mockReqId,
+      };
+    }
+
+    try {
+      const response = await fetch('https://api.msg91.com/api/v5/widget/sendOtp', {
+        method: 'POST',
+        headers: {
+          authkey: authKey!,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({
+          widgetId,
+          identifier,
+        }),
+      });
+
+      const data: any = await response.json();
+
+      if (!response.ok || data?.type === 'error') {
+        const errMsg = data?.message || 'Failed to send OTP via MSG91 gateway.';
+        logger.warn({ errMsg, status: response.status }, 'MSG91 sendOtp rejected');
+        throw AppError.badRequest(errMsg, 'MSG91_SEND_OTP_FAILED');
+      }
+
+      const reqId = data?.reqId || data?.message || data?.data?.reqId;
+      logger.info({ phone: cleanPhone, reqId }, 'MSG91 sendOtp succeeded');
+      return {
+        type: 'success',
+        message: 'OTP sent successfully to your mobile number.',
+        reqId: String(reqId || ''),
+      };
+    } catch (err: any) {
+      if (err instanceof AppError) throw err;
+      logger.error({ err: err?.message }, 'Failed to call MSG91 sendOtp API');
+      throw AppError.badRequest(
+        'Unable to reach OTP delivery gateway. Please check your connection and try again.',
+        'MSG91_GATEWAY_ERROR'
+      );
+    }
+  }
+
+  /**
+   * Retries / Resends OTP via MSG91 v5 Widget REST API
+   * POST https://api.msg91.com/api/v5/widget/retryOtp
+   * Headers: authkey, Content-Type: application/json
+   * Body: { widgetId, reqId, retryChannel }
+   */
+  public static async retryOtpViaRest(
+    reqId: string,
+    channel: number | string = 11
+  ): Promise<{ type: string; message: string; reqId: string }> {
+    const cleanReqId = String(reqId || '').trim();
+    if (!cleanReqId) {
+      throw AppError.badRequest('Request ID (reqId) is required to resend OTP.', 'REQ_ID_REQUIRED');
+    }
+
+    const authKey = env.MSG91_AUTH_KEY || process.env.MSG91_AUTH_KEY;
+    const widgetId =
+      env.MSG91_WIDGET_ID || process.env.MSG91_WIDGET_ID || '366b706c3542343638343034';
+    const isProduction = env.NODE_ENV === 'production' || process.env.NODE_ENV === 'production';
+
+    if (isProduction && !authKey) {
+      throw AppError.internal(
+        'MSG91_AUTH_KEY is not configured on the production server.',
+        'MSG91_AUTH_KEY_MISSING'
+      );
+    }
+
+    if (process.env.NODE_ENV === 'test' || (!isProduction && !authKey)) {
+      return {
+        type: 'success',
+        message: 'OTP resent successfully (test mode).',
+        reqId: cleanReqId,
+      };
+    }
+
+    try {
+      const response = await fetch('https://api.msg91.com/api/v5/widget/retryOtp', {
+        method: 'POST',
+        headers: {
+          authkey: authKey!,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({
+          widgetId,
+          reqId: cleanReqId,
+          retryChannel: Number(channel) || 11,
+        }),
+      });
+
+      const data: any = await response.json();
+
+      if (!response.ok || data?.type === 'error') {
+        const errMsg = data?.message || 'Failed to resend OTP via MSG91 gateway.';
+        logger.warn({ errMsg, status: response.status }, 'MSG91 retryOtp rejected');
+        throw AppError.badRequest(errMsg, 'MSG91_RETRY_OTP_FAILED');
+      }
+
+      logger.info({ reqId: cleanReqId }, 'MSG91 retryOtp succeeded');
+      return {
+        type: 'success',
+        message: 'OTP resent successfully.',
+        reqId: cleanReqId,
+      };
+    } catch (err: any) {
+      if (err instanceof AppError) throw err;
+      logger.error({ err: err?.message }, 'Failed to call MSG91 retryOtp API');
+      throw AppError.badRequest(
+        'Unable to reach OTP delivery gateway. Please check your connection and try again.',
+        'MSG91_GATEWAY_ERROR'
+      );
+    }
+  }
+
+  /**
+   * Verifies OTP code via MSG91 v5 Widget REST API, extracts access token,
+   * validates it on backend, and creates verification session.
+   * POST https://api.msg91.com/api/v5/widget/verifyOtp
+   * Headers: authkey, Content-Type: application/json
+   * Body: { widgetId, reqId, otp, identifier }
+   */
+  public static async verifyOtpViaRest(
+    reqId: string | undefined,
+    otp: string,
+    phone: string
+  ): Promise<{ sessionId: string; phone: string; expiresAt: Date; accessToken?: string }> {
+    const cleanOtp = String(otp || '').trim();
+    if (!cleanOtp || cleanOtp.length !== 4) {
+      throw AppError.badRequest('Please enter a valid 4-digit OTP.', 'INVALID_OTP');
+    }
+
+    if (!this.isValidIndianPhone(phone)) {
+      throw AppError.badRequest(
+        'Please provide a valid 10-digit Indian mobile number starting with 6, 7, 8, or 9.',
+        'INVALID_MOBILE_NUMBER'
+      );
+    }
+
+    const cleanPhone = this.normalizePhone(phone);
+    const identifier = `91${cleanPhone}`;
+    const cleanReqId = String(reqId || '').trim();
+    const authKey = env.MSG91_AUTH_KEY || process.env.MSG91_AUTH_KEY;
+    const widgetId =
+      env.MSG91_WIDGET_ID || process.env.MSG91_WIDGET_ID || '366b706c3542343638343034';
+    const isProduction = env.NODE_ENV === 'production' || process.env.NODE_ENV === 'production';
+
+    if (isProduction && !authKey) {
+      throw AppError.internal(
+        'MSG91_AUTH_KEY is not configured on the production server.',
+        'MSG91_AUTH_KEY_MISSING'
+      );
+    }
+
+    if (process.env.NODE_ENV === 'test' || (!isProduction && !authKey)) {
+      if (cleanOtp === '1234') {
+        const mockToken = `mock-token-${cleanPhone}`;
+        const session = await this.verifyAccessToken(mockToken, cleanPhone);
+        return { ...session, accessToken: mockToken };
+      }
+      throw AppError.badRequest('Incorrect OTP. Please check and try again.', 'MSG91_INVALID_OTP');
+    }
+
+    try {
+      const response = await fetch('https://api.msg91.com/api/v5/widget/verifyOtp', {
+        method: 'POST',
+        headers: {
+          authkey: authKey!,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({
+          widgetId,
+          otp: cleanOtp,
+          ...(cleanReqId ? { reqId: cleanReqId } : {}),
+          identifier,
+        }),
+      });
+
+      const data: any = await response.json();
+
+      if (!response.ok || data?.type === 'error') {
+        const errMsg = data?.message || 'Incorrect OTP. Please check and try again.';
+        logger.warn({ errMsg, status: response.status }, 'MSG91 verifyOtp rejected');
+        throw AppError.badRequest(errMsg, 'MSG91_VERIFICATION_FAILED');
+      }
+
+      // MSG91 verifyOtp returns access-token in data['access-token'] or data.accessToken or data.message
+      const accessToken =
+        data['access-token'] ||
+        data.accessToken ||
+        data.token ||
+        (typeof data.message === 'string' && data.message.length > 20 ? data.message : null);
+
+      if (!accessToken) {
+        throw AppError.badRequest(
+          'Verification gateway did not return a valid access token.',
+          'MSG91_NO_ACCESS_TOKEN'
+        );
+      }
+
+      // Validate access token and create verification session
+      const session = await this.verifyAccessToken(accessToken, cleanPhone);
+      return {
+        ...session,
+        accessToken,
+      };
+    } catch (err: any) {
+      if (err instanceof AppError) throw err;
+      logger.error({ err: err?.message }, 'Failed to call MSG91 verifyOtp API');
+      throw AppError.badRequest(
+        'Unable to complete OTP verification. Please check your connection and try again.',
+        'MSG91_GATEWAY_ERROR'
+      );
+    }
+  }
+
+  /**
    * Validates an existing verification session for a given mobile number
    */
   public static validateSession(sessionId: string, phone: string): OtpVerificationSession {

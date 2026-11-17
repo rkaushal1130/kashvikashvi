@@ -342,21 +342,27 @@ export function Register() {
         throw new Error(parsed.error);
       }
 
-      // STEP 5, 6, 7: Verify OTP via MSG91 SDK and capture access token
-      const { accessToken } = await verifyOtpCode(rawOtp, parsed.digits);
+      // STEP 5, 6, 7: Verify OTP via MSG91 SDK or server-side REST API
+      const { accessToken, verificationSessionId } = await verifyOtpCode(rawOtp, parsed.digits);
 
-      if (!accessToken) {
-        throw new Error('Verification completed but no access token was returned by MSG91.');
-      }
+      let finalSessionId = verificationSessionId;
 
-      // STEP 8, 9, 10: Validate access token on backend with MSG91 official Verify Access Token API
-      const res = await authApi.verifyOtpToken({
-        accessToken,
-        phone: parsed.digits,
-      });
+      if (!finalSessionId) {
+        if (!accessToken) {
+          throw new Error('Verification completed but no access token was returned by MSG91.');
+        }
 
-      if (!res?.success || !res?.data?.verificationSessionId) {
-        throw new Error(res?.message || 'Failed to validate verification session on server.');
+        // STEP 8, 9, 10: Validate access token on backend with MSG91 official Verify Access Token API
+        const res = await authApi.verifyOtpToken({
+          accessToken,
+          phone: parsed.digits,
+        });
+
+        if (!res?.success || !res?.data?.verificationSessionId) {
+          throw new Error(res?.message || 'Failed to validate verification session on server.');
+        }
+
+        finalSessionId = res.data.verificationSessionId;
       }
 
       // STEP 11: Mark mobile number as verified only after successful backend validation
@@ -364,7 +370,7 @@ export function Register() {
         ...prev,
         flowState: 'VERIFIED',
         verifiedPhone: parsed.digits,
-        verificationSessionId: res.data.verificationSessionId,
+        verificationSessionId: finalSessionId,
         successMsg: 'Mobile number verified successfully!',
         error: null,
       }));
