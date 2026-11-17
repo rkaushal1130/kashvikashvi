@@ -2,6 +2,14 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext.jsx';
 import { api } from '../services/api.js';
+import { authApi } from '../api/authApi.js';
+import {
+  sendOtpToMobile,
+  resendOtp,
+  verifyOtpCode,
+  isValidIndianMobile,
+  initMsg91Widget,
+} from '../services/msg91Service.js';
 import {
   User,
   Mail,
@@ -63,6 +71,20 @@ export function Register() {
   const [generalError, setGeneralError] = useState(null);
   const [isDuplicateEmail, setIsDuplicateEmail] = useState(false);
   const [successData, setSuccessData] = useState(null);
+
+  // MSG91 OTP Verification State (Widget: SecureOTPWidget4R29)
+  const [otpState, setOtpState] = useState({
+    sent: false,
+    sending: false,
+    verifying: false,
+    verified: false,
+    verifiedPhone: '',
+    verificationSessionId: null,
+    otpValue: '',
+    error: null,
+    successMsg: null,
+    resendCountdown: 0,
+  });
 
   // Live Sponsor Verification State
   const [sponsorStatus, setSponsorStatus] = useState({
@@ -151,9 +173,56 @@ export function Register() {
     }
   }, [isAuthenticated, successData, navigate]);
 
+  // Initialize MSG91 OTP Widget on mount
+  useEffect(() => {
+    initMsg91Widget({
+      onSuccess: (data, token) => {
+        if (token) {
+          console.log('[Register] Captured verified token from widget event:', token);
+        }
+      },
+    }).catch((err) => {
+      console.warn('[Register] MSG91 initialization notice:', err?.message);
+    });
+  }, []);
+
+  // Resend OTP Countdown Timer (10-second interval as configured in MSG91)
+  useEffect(() => {
+    let timer;
+    if (otpState.resendCountdown > 0) {
+      timer = setTimeout(() => {
+        setOtpState((prev) => ({
+          ...prev,
+          resendCountdown: Math.max(0, prev.resendCountdown - 1),
+        }));
+      }, 1000);
+    }
+    return () => clearTimeout(timer);
+  }, [otpState.resendCountdown]);
+
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
+
+    // Invalidate OTP verification if mobile number is altered after verification
+    if (name === 'phone') {
+      const cleanPrev = (formData.phone || '').replace(/\D/g, '');
+      const cleanNew = (value || '').replace(/\D/g, '');
+      if (cleanPrev !== cleanNew && (otpState.verified || otpState.sent)) {
+        setOtpState({
+          sent: false,
+          sending: false,
+          verifying: false,
+          verified: false,
+          verifiedPhone: '',
+          verificationSessionId: null,
+          otpValue: '',
+          error: null,
+          successMsg: null,
+          resendCountdown: 0,
+        });
+      }
+    }
 
     // Clear field-level error as user types
     if (fieldErrors[name]) {
@@ -162,6 +231,144 @@ export function Register() {
     if (generalError) {
       setGeneralError(null);
       setIsDuplicateEmail(false);
+    }
+  };
+
+  // STEP 2 & 3: Send OTP to entered mobile number
+  const handleSendOtp = async () => {
+    const rawPhone = (formData.phone || '').trim();
+    const cleanDigits = rawPhone.replace(/\D/g, '');
+
+    if (!cleanDigits) {
+      setFieldErrors((prev) => ({ ...prev, phone: 'Mobile number is required.' }));
+      return;
+    }
+
+    if (cleanDigits.length < 10 || !isValidIndianMobile(cleanDigits)) {
+      setFieldErrors((prev) => ({
+        ...prev,
+        phone: 'Please enter a valid 10-digit Indian mobile number.',
+      }));
+      return;
+    }
+
+    // Prevent duplicate sending while in flight
+    if (otpState.sending) return;
+
+    setOtpState((prev) => ({
+      ...prev,
+      sending: true,
+      error: null,
+      successMsg: null,
+    }));
+
+    try {
+      await sendOtpToMobile(cleanDigits);
+      setOtpState((prev) => ({
+        ...prev,
+        sent: true,
+        sending: false,
+        resendCountdown: 10, // 10-second configured interval
+        successMsg: 'OTP sent successfully to your mobile number.',
+        error: null,
+      }));
+    } catch (err) {
+      setOtpState((prev) => ({
+        ...prev,
+        sending: false,
+        error: err?.message || 'Failed to send OTP. Please check your number and try again.',
+      }));
+    }
+  };
+
+  // Resend OTP with cooldown
+  const handleResendOtp = async () => {
+    if (otpState.resendCountdown > 0 || otpState.sending) return;
+
+    setOtpState((prev) => ({
+      ...prev,
+      sending: true,
+      error: null,
+      successMsg: null,
+    }));
+
+    try {
+      await resendOtp();
+      setOtpState((prev) => ({
+        ...prev,
+        sending: false,
+        resendCountdown: 10,
+        successMsg: 'OTP resent successfully.',
+        error: null,
+      }));
+    } catch (err) {
+      setOtpState((prev) => ({
+        ...prev,
+        sending: false,
+        error: err?.message || 'Failed to resend OTP. Please try again.',
+      }));
+    }
+  };
+
+  // STEP 5, 6, 7, 8, 9, 10, 11: Verify OTP and validate token on backend
+  const handleVerifyOtp = async () => {
+    const rawOtp = (otpState.otpValue || '').trim();
+    if (!rawOtp || rawOtp.length !== 4) {
+      setOtpState((prev) => ({
+        ...prev,
+        error: 'Please enter the 4-digit OTP received.',
+      }));
+      return;
+    }
+
+    if (otpState.verifying) return;
+
+    setOtpState((prev) => ({
+      ...prev,
+      verifying: true,
+      error: null,
+      successMsg: null,
+    }));
+
+    try {
+      const cleanPhone = (formData.phone || '').replace(/\D/g, '').slice(-10);
+
+      // STEP 5, 6, 7: Verify OTP via MSG91 SDK and capture access token
+      const { accessToken } = await verifyOtpCode(rawOtp, cleanPhone);
+
+      if (!accessToken) {
+        throw new Error('Verification completed but no access token was returned by MSG91.');
+      }
+
+      // STEP 8, 9, 10: Validate access token on backend with MSG91 official Verify Access Token API
+      const res = await authApi.verifyOtpToken({
+        accessToken,
+        phone: cleanPhone,
+      });
+
+      if (!res?.success || !res?.data?.verificationSessionId) {
+        throw new Error(res?.message || 'Failed to validate verification session on server.');
+      }
+
+      // STEP 11: Mark mobile number as verified only after successful backend validation
+      setOtpState((prev) => ({
+        ...prev,
+        verifying: false,
+        verified: true,
+        verifiedPhone: cleanPhone,
+        verificationSessionId: res.data.verificationSessionId,
+        successMsg: 'Mobile number verified successfully!',
+        error: null,
+      }));
+
+      // Clear any mobile error
+      setFieldErrors((prev) => ({ ...prev, phone: null }));
+    } catch (err) {
+      setOtpState((prev) => ({
+        ...prev,
+        verifying: false,
+        error: err?.message || 'Incorrect OTP or verification failed. Please try again.',
+      }));
     }
   };
 
@@ -245,6 +452,17 @@ export function Register() {
       return;
     }
 
+    // STEP 12 & Requirement 6: Block registration if mobile number is not verified with OTP
+    const cleanPhoneDigits = formData.phone.replace(/\D/g, '').slice(-10);
+    if (!otpState.verified || !otpState.verificationSessionId || otpState.verifiedPhone !== cleanPhoneDigits) {
+      setFieldErrors((prev) => ({
+        ...prev,
+        phone: 'Please verify your mobile number before registration.',
+      }));
+      setGeneralError('Please verify your mobile number before registration.');
+      return;
+    }
+
     setFieldErrors({});
     setLoading(true);
 
@@ -257,6 +475,7 @@ export function Register() {
         confirmPassword: formData.confirmPassword,
         referralCode: formData.referralCode.trim() || 'KK-0001',
         sponsorId: formData.referralCode.trim() || 'KK-0001',
+        verificationSessionId: otpState.verificationSessionId,
       };
 
       const res = await register(payload);
@@ -405,7 +624,7 @@ export function Register() {
           {/* Mobile Number (Mandatory) */}
           <div className="form-group">
             <label htmlFor="phone">Mobile Number *</label>
-            <div className="input-wrapper">
+            <div className="input-wrapper" style={{ position: 'relative' }}>
               <Phone size={18} className="input-icon" />
               <input
                 id="phone"
@@ -415,14 +634,227 @@ export function Register() {
                 placeholder="10-digit mobile number"
                 value={formData.phone}
                 onChange={handleChange}
-                disabled={loading || Boolean(successData)}
-                style={fieldErrors.phone ? { borderColor: '#ef4444' } : {}}
+                disabled={loading || Boolean(successData) || otpState.verified}
+                style={{
+                  paddingRight: otpState.verified ? '105px' : '95px',
+                  ...(fieldErrors.phone ? { borderColor: '#ef4444' } : {}),
+                  ...(otpState.verified ? { borderColor: '#16a34a', backgroundColor: '#f0fdf4' } : {}),
+                }}
               />
+
+              {/* Verified Badge or Send OTP Button */}
+              {otpState.verified ? (
+                <span
+                  style={{
+                    position: 'absolute',
+                    right: '10px',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    color: '#16a34a',
+                    backgroundColor: '#dcfce7',
+                    padding: '4px 8px',
+                    borderRadius: '6px',
+                  }}
+                >
+                  <CheckCircle2 size={14} /> Verified
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleSendOtp}
+                  disabled={
+                    loading ||
+                    otpState.sending ||
+                    (formData.phone.replace(/\D/g, '').length < 10)
+                  }
+                  style={{
+                    position: 'absolute',
+                    right: '8px',
+                    padding: '6px 12px',
+                    backgroundColor: '#2563eb',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '6px',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    cursor:
+                      loading ||
+                      otpState.sending ||
+                      formData.phone.replace(/\D/g, '').length < 10
+                        ? 'not-allowed'
+                        : 'pointer',
+                    opacity:
+                      loading ||
+                      otpState.sending ||
+                      formData.phone.replace(/\D/g, '').length < 10
+                        ? 0.6
+                        : 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}
+                >
+                  {otpState.sending ? (
+                    <>
+                      <Loader2 size={12} className="animate-spin" />
+                      <span>Sending...</span>
+                    </>
+                  ) : (
+                    <span>{otpState.sent ? 'Resend' : 'Send OTP'}</span>
+                  )}
+                </button>
+              )}
             </div>
+
+            {/* Field Error */}
             {fieldErrors.phone && (
               <span style={{ color: '#ef4444', fontSize: '12px', marginTop: '2px' }}>
                 {fieldErrors.phone}
               </span>
+            )}
+
+            {/* OTP Input & Verification Row (Shown only after OTP sending is successful and before verification) */}
+            {otpState.sent && !otpState.verified && (
+              <div
+                style={{
+                  marginTop: '10px',
+                  padding: '12px',
+                  backgroundColor: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '8px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px',
+                }}
+              >
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <div className="input-wrapper" style={{ flex: 1 }}>
+                    <ShieldCheck size={18} className="input-icon" />
+                    <input
+                      id="otp"
+                      name="otp"
+                      type="text"
+                      maxLength={4}
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      placeholder="Enter 4-digit OTP"
+                      value={otpState.otpValue}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/\D/g, '').slice(0, 4);
+                        setOtpState((prev) => ({ ...prev, otpValue: val, error: null }));
+                      }}
+                      disabled={otpState.verifying}
+                      style={{
+                        paddingLeft: '38px',
+                        letterSpacing: '2px',
+                        fontWeight: 600,
+                        ...(otpState.error ? { borderColor: '#ef4444' } : {}),
+                      }}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleVerifyOtp}
+                    disabled={otpState.verifying || otpState.otpValue.length !== 4}
+                    style={{
+                      padding: '11px 16px',
+                      backgroundColor: '#2563eb',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: '8px',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      cursor:
+                        otpState.verifying || otpState.otpValue.length !== 4
+                          ? 'not-allowed'
+                          : 'pointer',
+                      opacity:
+                        otpState.verifying || otpState.otpValue.length !== 4 ? 0.6 : 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {otpState.verifying ? (
+                      <>
+                        <Loader2 size={14} className="animate-spin" />
+                        <span>Verifying...</span>
+                      </>
+                    ) : (
+                      <span>Verify OTP</span>
+                    )}
+                  </button>
+                </div>
+
+                {/* Resend Countdown & Expiry Interval */}
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    fontSize: '12px',
+                  }}
+                >
+                  {otpState.resendCountdown > 0 ? (
+                    <span style={{ color: '#64748b' }}>
+                      Resend OTP in <strong>{otpState.resendCountdown}s</strong>
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleResendOtp}
+                      disabled={otpState.sending}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#2563eb',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        padding: 0,
+                        fontSize: '12px',
+                        textDecoration: 'underline',
+                      }}
+                    >
+                      Resend OTP
+                    </button>
+                  )}
+                  <span style={{ color: '#94a3b8' }}>OTP valid for 15 minutes</span>
+                </div>
+
+                {/* Status Messages */}
+                {otpState.successMsg && (
+                  <div
+                    style={{
+                      color: '#16a34a',
+                      fontSize: '12px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                    }}
+                  >
+                    <CheckCircle2 size={14} />
+                    <span>{otpState.successMsg}</span>
+                  </div>
+                )}
+                {otpState.error && (
+                  <div
+                    style={{
+                      color: '#ef4444',
+                      fontSize: '12px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                    }}
+                  >
+                    <AlertCircle size={14} />
+                    <span>{otpState.error}</span>
+                  </div>
+                )}
+              </div>
             )}
           </div>
 

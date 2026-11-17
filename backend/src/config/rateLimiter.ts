@@ -53,6 +53,19 @@ export const passwordResetRateLimiter = rateLimit({
   skip: () => isDev || isTest,
 });
 
+export const otpVerifyRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: isDev || isTest ? 10000 : 20, // Max 20 OTP token verifications per 15 minutes per IP
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: {
+    success: false,
+    message: 'Too many OTP verification attempts. Please try again after 15 minutes.',
+    code: 'OTP_RATE_LIMIT_EXCEEDED',
+  },
+  skip: () => isDev || isTest,
+});
+
 export const treeRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: isDev || isTest ? 10000 : 120, // Max 120 tree queries per 15 minutes per IP

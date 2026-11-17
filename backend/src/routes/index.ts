@@ -25,6 +25,10 @@ apiRouter.use('/health', healthRouter);
 // Authentication Endpoints: /api/v1/auth
 apiRouter.use('/auth', authRouter);
 
+// MSG91 OTP Verification: /api/otp and /api/v1/otp
+import { otpRouter } from './otp.routes';
+apiRouter.use('/otp', otpRouter);
+
 // Distributor Management Endpoints: /api/v1/distributors
 apiRouter.use('/distributors', distributorRouter);
 

@@ -30,6 +30,7 @@ export const registerSchema = z
     placementPosition: z.string().trim().optional(),
     confirmPassword: z.string().trim().optional(),
     acceptTerms: z.boolean().optional(),
+    verificationSessionId: z.string().trim().optional(),
   })
   .refine(
     (data) => {

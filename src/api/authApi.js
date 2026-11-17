@@ -25,6 +25,13 @@ export const authApi = {
   },
 
   /**
+   * Verify MSG91 Access Token on backend and obtain verification session
+   */
+  async verifyOtpToken({ accessToken, phone }) {
+    return apiClient.post('/otp/verify-token', { accessToken, phone });
+  },
+
+  /**
    * Log out current session
    */
   async logout() {

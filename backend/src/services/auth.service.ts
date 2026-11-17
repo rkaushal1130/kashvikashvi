@@ -9,6 +9,8 @@ import { hashPassword, verifyPassword, validatePasswordStrength } from '../utils
 import { LoginInput, RegisterInput, ResetPasswordInput } from '../validators/auth.validators';
 import { MemberIdService } from './memberId.service';
 import { TreePlacementService } from './treePlacement.service';
+import { OtpService } from './otp.service';
+import { env } from '../config/env';
 
 interface RequestMetadata {
   userAgent?: string;
@@ -488,6 +490,20 @@ export class AuthService {
       );
     }
 
+    // 4b. Mandatory OTP verification check for distributor registrations
+    if (input.verificationSessionId) {
+      OtpService.validateSession(input.verificationSessionId, rawPhone);
+    } else if (
+      process.env.REQUIRE_OTP_VERIFICATION === 'true' ||
+      process.env.REQUIRE_OTP === 'true' ||
+      (env.MSG91_AUTH_KEY && process.env.NODE_ENV !== 'test')
+    ) {
+      throw AppError.badRequest(
+        'Please verify your mobile number before registration.',
+        'OTP_VERIFICATION_REQUIRED'
+      );
+    }
+
     // 5. Email handling (optional / fallback for backward compatibility)
     const rawEmail = (input.email || '').trim().toLowerCase();
     const email = rawEmail || `${cleanDigits}@user.kashvimlm.com`;
@@ -766,6 +782,10 @@ export class AuthService {
 
     this.saveInMemoryUser(userObj);
 
+    if (input.verificationSessionId) {
+      OtpService.consumeSession(input.verificationSessionId);
+    }
+
     // Re-evaluate Admin / upline levels based on new joining asynchronously
     setImmediate(async () => {
       try {
@@ -875,6 +895,20 @@ export class AuthService {
       throw AppError.conflict(
         'An account with this mobile number already exists.',
         'AUTH_PHONE_ALREADY_EXISTS'
+      );
+    }
+
+    // 4b. Mandatory OTP verification check for distributor registrations
+    if (input.verificationSessionId) {
+      OtpService.validateSession(input.verificationSessionId, rawPhone);
+    } else if (
+      process.env.REQUIRE_OTP_VERIFICATION === 'true' ||
+      process.env.REQUIRE_OTP === 'true' ||
+      (env.MSG91_AUTH_KEY && process.env.NODE_ENV !== 'test')
+    ) {
+      throw AppError.badRequest(
+        'Please verify your mobile number before registration.',
+        'OTP_VERIFICATION_REQUIRED'
       );
     }
 
@@ -989,7 +1023,7 @@ export class AuthService {
     const displayName = `${firstName} ${lastName}`.trim();
 
     // 9. Atomic Registration Transaction
-    return await prisma.$transaction(
+    const registrationResult = await prisma.$transaction(
       async (tx) => {
         // Pick role strictly from the database roles table (always DISTRIBUTOR on public registration)
         const targetRoleName: UserRole = 'DISTRIBUTOR';
@@ -1277,6 +1311,12 @@ export class AuthService {
           token: tokens.accessToken,
         };
       }, { timeout: 30000, maxWait: 10000 });
+
+    if (input.verificationSessionId) {
+      OtpService.consumeSession(input.verificationSessionId);
+    }
+
+    return registrationResult;
   }
 
   /**
